@@ -1,9 +1,23 @@
 package it.cavallium.data.generator.nativedata;
 
+import java.lang.annotation.Native;
 import java.util.Objects;
 import org.jetbrains.annotations.NotNull;
 
 public class Int52 extends Number implements Comparable<Int52> {
+
+	/**
+	 * The number of bits used to represent a {@code Int52} value in two's
+	 * complement binary form.
+	 */
+	@Native
+	public static final int SIZE = 52;
+
+	/**
+	 * The number of bytes used to represent a {@code Int52} value in two's
+	 * complement binary form.
+	 */
+	public static final int BYTES = 7;
 
 	private final long value;
 

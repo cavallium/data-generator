@@ -35,7 +35,7 @@ public class Int52Serializer implements DataSerializer<Int52> {
 	}
 
 	public static long fromByteArray(byte[] bytes) {
-		if (bytes.length != 8) {
+		if (bytes.length != 7) {
 			throw new IllegalArgumentException("Size must be 7, got " + bytes.length + " instead");
 		}
 		return fromBytes((byte) (bytes[0] & 0b00001111), bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6]);
