@@ -15,6 +15,7 @@ import com.squareup.javapoet.TypeSpec.Builder;
 import com.squareup.javapoet.TypeVariableName;
 import com.squareup.javapoet.WildcardTypeName;
 import it.cavallium.data.generator.nativedata.IGenericNullable;
+import it.cavallium.data.generator.nativedata.Int52Serializer;
 import it.cavallium.data.generator.nativedata.StringSerializer;
 import it.unimi.dsi.fastutil.objects.Object2IntLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
@@ -471,7 +472,8 @@ public class SourcesGenerator {
 					"long",
 					"float",
 					"double",
-					"byte"
+					"byte",
+					"Int52"
 			);
 
 			// Generate the type statements
@@ -479,9 +481,9 @@ public class SourcesGenerator {
 				// Generate the native types
 				for (String specialNativeType : specialNativeTypes) {
 					if (Character.isUpperCase(specialNativeType.charAt(0))) {
-						typeTypes.put(specialNativeType, ClassName.get("java.lang", specialNativeType));
+						typeTypes.put(specialNativeType, ClassName.get(getSpecialNativePackage(specialNativeType), specialNativeType));
 						if (nextVersion.isPresent()) {
-							nextVersionTypeTypes.put(specialNativeType, ClassName.get("java.lang", specialNativeType));
+							nextVersionTypeTypes.put(specialNativeType, ClassName.get(getSpecialNativePackage(specialNativeType), specialNativeType));
 						}
 						if (specialNativeType.equals("String")) {
 							typeSerializeStatement.put(specialNativeType,
@@ -492,6 +494,16 @@ public class SourcesGenerator {
 							);
 							typeDeserializeStatement.put(specialNativeType,
 									CodeBlock.builder().add("$T.INSTANCE.deserialize(dataInput)", StringSerializer.class).build()
+							);
+						} else if (specialNativeType.equals("Int52")) {
+							typeSerializeStatement.put(specialNativeType,
+									new SerializeCodeBlockGenerator(CodeBlock
+											.builder()
+											.add("$T.INSTANCE.serialize(dataOutput, ", Int52Serializer.class)
+											.build(), CodeBlock.builder().add(")").build())
+							);
+							typeDeserializeStatement.put(specialNativeType,
+									CodeBlock.builder().add("$T.INSTANCE.deserialize(dataInput)", Int52Serializer.class).build()
 							);
 						} else {
 							typeSerializeStatement.put(specialNativeType,
@@ -1940,6 +1952,16 @@ public class SourcesGenerator {
 
 			// Create an upgrader
 
+		}
+	}
+
+	private static String getSpecialNativePackage(String specialNativeType) {
+		//noinspection SwitchStatementWithTooFewBranches
+		switch (specialNativeType) {
+			case "Int52":
+				return "it.cavallium.data.generator.nativedata";
+			default:
+				return "java.lang";
 		}
 	}
 
