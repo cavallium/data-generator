@@ -12,22 +12,42 @@ public class Int52Serializer implements DataSerializer<Int52> {
 
 	@Override
 	public void serialize(DataOutput dataOutput, @NotNull Int52 data) throws IOException {
-		dataOutput.write(toByteArray(data.getValue()));
+		serializeValue(dataOutput, data);
 	}
 
 	@NotNull
 	@Override
 	public Int52 deserialize(DataInput dataInput) throws IOException {
-		byte[] bytes = new byte[7];
-		dataInput.readFully(bytes);
-		return Int52.fromLong(fromByteArray(bytes));
+		return deserializeValue(dataInput);
+	}
+
+	public static void serializeValue(DataOutput dataOutput, @NotNull Int52 data) throws IOException {
+		long value = data.getValue();
+
+		for(int i = 0; i < 7; i++) {
+			dataOutput.writeByte(((int)((value >> (6 - i) * 8) & (i == 0 ? 0b00001111L : 255L))));
+		}
+	}
+
+	public static Int52 deserializeValue(DataInput dataInput) throws IOException {
+		long value = 0;
+
+		return Int52.fromLong(
+				((long) dataInput.readUnsignedByte() & 0b00001111) << 48
+						| ((long) dataInput.readUnsignedByte()) << 40
+						| ((long) dataInput.readUnsignedByte() << 32)
+						| ((long) dataInput.readUnsignedByte() << 24)
+						| ((long) dataInput.readUnsignedByte()) << 16
+						| ((long) dataInput.readUnsignedByte()) << 8
+						| ((long) dataInput.readUnsignedByte())
+		);
 	}
 
 	public static byte[] toByteArray(long value) {
 		byte[] result = new byte[7];
 
 		for(int i = 6; i >= 0; --i) {
-			result[i] = (byte)((int)(value & (i == 6 ? 0b00001111L : 255L)));
+			result[i] = (byte)((int)(value & (i == 0 ? 0b00001111L : 255L)));
 			value >>= 8;
 		}
 
