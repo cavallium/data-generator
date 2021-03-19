@@ -19,6 +19,8 @@ public class Int52 extends Number implements Comparable<Int52> {
 	 */
 	public static final int BYTES = 7;
 
+	public static final Int52 ZERO = new Int52(0);
+
 	private final long value;
 
 	private Int52(long value) {
