@@ -1100,6 +1100,10 @@ public class SourcesGenerator {
 										currentTransformedFieldTypes.put(className + "." + fieldName, typeTypes.get(fieldType));
 									}
 								}
+								HashMap<ClassName, String> dataUpgraderInstanceFieldName = new HashMap<>();
+								AtomicInteger nextDataUpgraderInstanceFieldId = new AtomicInteger(0);
+								HashMap<ClassName, String> dataInitializerInstanceFieldName = new HashMap<>();
+								AtomicInteger nextDataInitializerInstanceFieldId = new AtomicInteger(0);
 								for (VersionTransformation transformationConfig : transformations) {
 									var transformation = transformationConfig.getTransformation();
 									deserializeMethod.addCode("\n");
@@ -1158,13 +1162,28 @@ public class SourcesGenerator {
 											deserializeMethod.addStatement(
 													"$T $$field$$" + (currentVarNumber.getInt(upgradeDataTransformation.from) + 1) + "$$"
 															+ upgradeDataTransformation.from, toType);
-											deserializeMethod.beginControlFlow("try");
-											deserializeMethod.addStatement("var upgrader = (($T) new $T())",
-													ParameterizedTypeName.get(ClassName.get(DataUpgrader.class), fromTypeBoxed, toTypeBoxed),
-													ClassName.bestGuess(upgradeDataTransformation.upgrader)
+											var dataUpgraderClass = ClassName.bestGuess(upgradeDataTransformation.upgrader);
+											var dataUpgraderFieldName = dataUpgraderInstanceFieldName.computeIfAbsent(dataUpgraderClass,
+													_unused -> {
+														var dataUpgraderType = ParameterizedTypeName.get(ClassName.get(DataUpgrader.class),
+																fromTypeBoxed,
+																toTypeBoxed
+														);
+														var fieldName = "DATA_UPGRADER_" + nextDataUpgraderInstanceFieldId.getAndIncrement();
+														var fieldSpec = FieldSpec
+																.builder(dataUpgraderType,
+																		fieldName,
+																		Modifier.PRIVATE,
+																		Modifier.STATIC,
+																		Modifier.FINAL
+																);
+														fieldSpec.initializer("($T) new $T()", dataUpgraderType, dataUpgraderClass);
+														upgraderClass.addField(fieldSpec.build());
+														return fieldName;
+													}
 											);
 											deserializeMethod.addStatement(
-													"$T upgraded = ($T) upgrader.upgrade(($T) $$field$$" + currentVarNumber.getInt(
+													"$T upgraded = ($T) " + dataUpgraderFieldName + ".upgrade(($T) $$field$$" + currentVarNumber.getInt(
 															upgradeDataTransformation.from) + "$$" + upgradeDataTransformation.from + ")",
 													toType,
 													toTypeBoxed,
@@ -1174,9 +1193,6 @@ public class SourcesGenerator {
 											deserializeMethod.addStatement(
 													"$$field$$" + (currentVarNumber.getInt(upgradeDataTransformation.from) + 1) + "$$"
 															+ upgradeDataTransformation.from + " = upgraded");
-											deserializeMethod.nextControlFlow(" catch ($T e)", ClassCastException.class);
-											deserializeMethod.addStatement("throw new $T(e)", IllegalArgumentException.class);
-											deserializeMethod.endControlFlow();
 											Objects.requireNonNull(currentTransformedFieldTypes.remove(
 													upgradeDataTransformation.transformClass + "." + upgradeDataTransformation.from));
 											currentTransformedFieldTypes.put(
@@ -1196,11 +1212,30 @@ public class SourcesGenerator {
 										{
 											currentVarNumber.addTo(newDataTransformation.to, 1);
 											currentVarDeleted.remove(newDataTransformation.to);
+
+											var dataInitializerClass = ClassName.bestGuess(newDataTransformation.initializer);
+											var dataInitializerFieldName = dataInitializerInstanceFieldName.computeIfAbsent(dataInitializerClass,
+													_unused -> {
+														var dataInitializerType = ParameterizedTypeName.get(ClassName.get(DataInitializer.class),
+																newTypeBoxed
+														);
+														var fieldName = "DATA_INITIALIZER_" + nextDataInitializerInstanceFieldId.getAndIncrement();
+														var fieldSpec = FieldSpec
+																.builder(dataInitializerType,
+																		fieldName,
+																		Modifier.PRIVATE,
+																		Modifier.STATIC,
+																		Modifier.FINAL
+																);
+														fieldSpec.initializer("($T) new $T()", dataInitializerType, dataInitializerClass);
+														upgraderClass.addField(fieldSpec.build());
+														return fieldName;
+													}
+											);
+
 											deserializeMethod.addStatement(
 													"var $$field$$" + currentVarNumber.getInt(newDataTransformation.to) + "$$"
-															+ newDataTransformation.to + " = (($T) new $T()).initialize()",
-													ParameterizedTypeName.get(ClassName.get(DataInitializer.class), newTypeBoxed),
-													ClassName.bestGuess(newDataTransformation.initializer)
+															+ newDataTransformation.to + " = " + dataInitializerFieldName + ".initialize()"
 											);
 										}
 										if (currentTransformedFieldTypes.put(
@@ -1271,8 +1306,29 @@ public class SourcesGenerator {
 								var newIBasicType = ClassName.get(joinPackage(nextVersionPackage.get(), "data"), "IBasicType");
 								upgradeUnknownField.addStatement("$T.requireNonNull(value)", Objects.class);
 								upgradeUnknownField.addStatement("Class<?> type = ((Object) value).getClass()");
-								upgradeUnknownField.beginControlFlow(
-										"if (type.isArray() && $T.class.isAssignableFrom(type.getComponentType()))",
+								upgradeUnknownField.beginControlFlow("if (value instanceof $T)", oldIBasicType);
+								upgradeUnknownField.addStatement("return ($T) $T.upgradeToNextVersion(($T) value)",
+										newIBasicType,
+										oldVersionType,
+										oldIBasicType
+								);
+								upgradeUnknownField.nextControlFlow("else if (value instanceof $T)", oldINullableBasicType);
+								upgradeUnknownField.addStatement("var content = (($T) value).$$getNullable()", IGenericNullable.class);
+								upgradeUnknownField.addStatement("$T newContent", Object.class);
+								upgradeUnknownField.beginControlFlow("if (content instanceof $T)", oldIBasicType);
+								upgradeUnknownField.addStatement("newContent = ($T) $T.upgradeToNextVersion(($T) content)",
+										newIBasicType,
+										oldVersionType,
+										oldIBasicType
+								);
+								upgradeUnknownField.nextControlFlow("else");
+								upgradeUnknownField.addStatement("newContent = content");
+								upgradeUnknownField.endControlFlow();
+								upgradeUnknownField.addStatement("return $T.INSTANCE.createNullableOf(type.getSimpleName(), newContent)",
+										ClassName.get(nextVersionPackage.get(), "Version")
+								);
+								upgradeUnknownField.nextControlFlow(
+										"else if (type.isArray() && $T.class.isAssignableFrom(type.getComponentType()))",
 										oldIType
 								);
 								upgradeUnknownField.addStatement("int arrayLength = $T.getLength(value)", Array.class);
@@ -1289,27 +1345,6 @@ public class SourcesGenerator {
 								upgradeUnknownField.addStatement("$T.set(newArray, i, updatedItem)", Array.class);
 								upgradeUnknownField.endControlFlow();
 								upgradeUnknownField.addStatement("return newArray");
-								upgradeUnknownField.nextControlFlow("else if (value instanceof $T)", oldINullableBasicType);
-								upgradeUnknownField.addStatement("var content = (($T) value).$$getNullable()", IGenericNullable.class);
-								upgradeUnknownField.addStatement("$T newContent", Object.class);
-								upgradeUnknownField.beginControlFlow("if (content instanceof $T)", oldIBasicType);
-								upgradeUnknownField.addStatement("newContent = ($T) $T.upgradeToNextVersion(($T) content)",
-										newIBasicType,
-										oldVersionType,
-										oldIBasicType
-								);
-								upgradeUnknownField.nextControlFlow("else");
-								upgradeUnknownField.addStatement("newContent = content");
-								upgradeUnknownField.endControlFlow();
-								upgradeUnknownField.addStatement("return $T.INSTANCE.createNullableOf(type.getSimpleName(), newContent)",
-										ClassName.get(nextVersionPackage.get(), "Version")
-								);
-								upgradeUnknownField.nextControlFlow("else if (value instanceof $T)", oldIBasicType);
-								upgradeUnknownField.addStatement("return ($T) $T.upgradeToNextVersion(($T) value)",
-										newIBasicType,
-										oldVersionType,
-										oldIBasicType
-								);
 								upgradeUnknownField.nextControlFlow("else");
 								upgradeUnknownField.addStatement("return value");
 								upgradeUnknownField.endControlFlow();
