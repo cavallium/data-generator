@@ -52,7 +52,7 @@ public class Nullableint implements Serializable, IGenericNullable {
 	}
 
 	@Override
-	public Object $getNullable() {
+	public Integer $getNullable() {
 		return this.getNullable();
 	}
 

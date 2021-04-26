@@ -52,7 +52,7 @@ public class Nullablelong implements Serializable, IGenericNullable {
 	}
 
 	@Override
-	public Object $getNullable() {
+	public Long $getNullable() {
 		return this.getNullable();
 	}
 

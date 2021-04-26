@@ -68,7 +68,7 @@ public class NullableString implements Serializable, IGenericNullable {
 	}
 
 	@Override
-	public Object $getNullable() {
+	public String $getNullable() {
 		return this.getNullable();
 	}
 

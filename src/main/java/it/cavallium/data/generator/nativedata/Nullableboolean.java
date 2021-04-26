@@ -52,7 +52,7 @@ public class Nullableboolean implements Serializable, IGenericNullable {
 	}
 
 	@Override
-	public Object $getNullable() {
+	public Boolean $getNullable() {
 		return this.getNullable();
 	}
 

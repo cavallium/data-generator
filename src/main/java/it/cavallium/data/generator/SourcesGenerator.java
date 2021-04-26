@@ -18,6 +18,7 @@ import it.cavallium.data.generator.nativedata.IGenericNullable;
 import it.cavallium.data.generator.nativedata.Int52Serializer;
 import it.cavallium.data.generator.nativedata.StringSerializer;
 import it.unimi.dsi.fastutil.objects.Object2IntLinkedOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import java.io.DataInput;
 import java.io.DataOutput;
@@ -177,6 +178,23 @@ public class SourcesGenerator {
 			}
 			// Save the resulting class in the main package
 			writeClass(outPath, joinPackage(basePackageName, ""), basicTypeClass);
+		}
+
+		// Create the GenericType class
+		{
+			var genericTypeClass = TypeSpec.enumBuilder("GenericType");
+			genericTypeClass.addModifiers(Modifier.PUBLIC);
+			for (Entry<String, VersionConfiguration> stringVersionConfigurationEntry : configuration.versions.entrySet()) {
+				String k = stringVersionConfigurationEntry.getKey();
+				VersionConfiguration value = stringVersionConfigurationEntry.getValue();
+				for (String superTypeName : value.superTypes.keySet()) {
+					if (!genericTypeClass.enumConstants.containsKey(superTypeName)) {
+						genericTypeClass.addEnumConstant(superTypeName);
+					}
+				}
+			}
+			// Save the resulting class in the main package
+			writeClass(outPath, joinPackage(basePackageName, ""), genericTypeClass);
 		}
 
 		// Create the IVersion class
@@ -442,7 +460,25 @@ public class SourcesGenerator {
 					"byte",
 					TypeName.BYTE
 			));
+			HashMap<String, Family> typeFamily = new LinkedHashMap<>(Map.of("boolean",
+					Family.SPECIAL_NATIVE,
+					"short",
+					Family.SPECIAL_NATIVE,
+					"char",
+					Family.SPECIAL_NATIVE,
+					"int",
+					Family.SPECIAL_NATIVE,
+					"long",
+					Family.SPECIAL_NATIVE,
+					"float",
+					Family.SPECIAL_NATIVE,
+					"double",
+					Family.SPECIAL_NATIVE,
+					"byte",
+					Family.SPECIAL_NATIVE
+			));
 			@Nullable HashMap<String, TypeName> nextVersionTypeTypes;
+			@Nullable HashMap<String, Family> nextVersionTypeFamily;
 			if (nextVersion.isPresent()) {
 				nextVersionTypeTypes = new LinkedHashMap<>(Map.of("boolean",
 						TypeName.BOOLEAN,
@@ -461,8 +497,26 @@ public class SourcesGenerator {
 						"byte",
 						TypeName.BYTE
 				));
+				nextVersionTypeFamily = new LinkedHashMap<>(Map.of("boolean",
+						Family.SPECIAL_NATIVE,
+						"short",
+						Family.SPECIAL_NATIVE,
+						"char",
+						Family.SPECIAL_NATIVE,
+						"int",
+						Family.SPECIAL_NATIVE,
+						"long",
+						Family.SPECIAL_NATIVE,
+						"float",
+						Family.SPECIAL_NATIVE,
+						"double",
+						Family.SPECIAL_NATIVE,
+						"byte",
+						Family.SPECIAL_NATIVE
+				));
 			} else {
 				nextVersionTypeTypes = null;
+				nextVersionTypeFamily = null;
 			}
 			Set<String> specialNativeTypes = Set.of("String",
 					"boolean",
@@ -482,8 +536,10 @@ public class SourcesGenerator {
 				for (String specialNativeType : specialNativeTypes) {
 					if (Character.isUpperCase(specialNativeType.charAt(0))) {
 						typeTypes.put(specialNativeType, ClassName.get(getSpecialNativePackage(specialNativeType), specialNativeType));
+						typeFamily.put(specialNativeType, Family.SPECIAL_NATIVE);
 						if (nextVersion.isPresent()) {
 							nextVersionTypeTypes.put(specialNativeType, ClassName.get(getSpecialNativePackage(specialNativeType), specialNativeType));
+							nextVersionTypeFamily.put(specialNativeType, Family.SPECIAL_NATIVE);
 						}
 						if (specialNativeType.equals("String")) {
 							typeSerializeStatement.put(specialNativeType,
@@ -534,12 +590,16 @@ public class SourcesGenerator {
 					typeTypes.put("-" + specialNativeType,
 							ClassName.get("it.cavallium.data.generator.nativedata", "Nullable" + specialNativeType)
 					);
+					typeFamily.put("-" + specialNativeType, Family.NULLABLE_OTHER);
 					typeTypes.put("§" + specialNativeType, ArrayTypeName.of(typeTypes.get(specialNativeType)));
+					typeFamily.put("§" + specialNativeType, Family.OTHER);
 					if (nextVersion.isPresent()) {
 						nextVersionTypeTypes.put("-" + specialNativeType,
 								ClassName.get("it.cavallium.data.generator.nativedata", "Nullable" + specialNativeType)
 						);
+						nextVersionTypeFamily.put("-" + specialNativeType, Family.NULLABLE_OTHER);
 						nextVersionTypeTypes.put("§" + specialNativeType, ArrayTypeName.of(typeTypes.get(specialNativeType)));
+						nextVersionTypeFamily.put("§" + specialNativeType, Family.OTHER);
 					}
 					typeOptionalSerializers.put("-" + specialNativeType,
 							ClassName.get("it.cavallium.data.generator.nativedata",
@@ -599,6 +659,7 @@ public class SourcesGenerator {
 				Stream
 						.concat(versionConfiguration.classes.keySet().stream(), versionConfiguration.superTypes.keySet().stream())
 						.forEach((type) -> {
+							boolean isBasic = versionConfiguration.classes.containsKey(type);
 							typeOptionalSerializers.put(type,
 									ClassName.get(joinPackage(versionPackage, "serializers"), type + "Serializer")
 							);
@@ -616,11 +677,14 @@ public class SourcesGenerator {
 							);
 							typeMustGenerateSerializer.put(type, true);
 							typeTypes.put(type, ClassName.get(joinPackage(versionPackage, "data"), type));
+							typeFamily.put(type, !isBasic ? Family.GENERIC : Family.BASIC);
 							if (nextVersion.isPresent()) {
 								nextVersionTypeTypes.put(type, ClassName.get(joinPackage(nextVersionPackage.get(), "data"), type));
+								nextVersionTypeFamily.put(type, !isBasic ? Family.GENERIC : Family.BASIC);
 							}
 
 							NeededTypes neededTypes = registerNeededTypes(versionConfiguration,
+									!isBasic ? Family.GENERIC : Family.BASIC,
 									type,
 									nextVersion,
 									nextVersionPackage,
@@ -631,7 +695,9 @@ public class SourcesGenerator {
 									typeDeserializeStatement,
 									typeMustGenerateSerializer,
 									typeTypes,
+									typeFamily,
 									nextVersionTypeTypes,
+									nextVersionTypeFamily,
 									() -> ClassName.get(joinPackage(versionPackage, "data"), type),
 									() -> ClassName.get(joinPackage(nextVersionPackage.orElseThrow(), "data"), type)
 							);
@@ -656,12 +722,15 @@ public class SourcesGenerator {
 					);
 					typeMustGenerateSerializer.put(key, false);
 					typeTypes.put(key, ClassName.bestGuess(customTypeConfiguration.javaClass));
+					typeFamily.put(key, Family.OTHER);
 					if (nextVersion.isPresent()) {
 						nextVersionTypeTypes.put(key, ClassName.bestGuess(customTypeConfiguration.javaClass));
+						nextVersionTypeFamily.put(key, Family.OTHER);
 					}
 
 					var arrayClassName = ClassName.bestGuess(customTypeConfiguration.javaClass);
 					var neededTypes = registerNeededTypes(versionConfiguration,
+							Family.OTHER,
 							key,
 							nextVersion,
 							nextVersionPackage,
@@ -672,7 +741,9 @@ public class SourcesGenerator {
 							typeDeserializeStatement,
 							typeMustGenerateSerializer,
 							typeTypes,
+							typeFamily,
 							nextVersionTypeTypes,
+							nextVersionTypeFamily,
 							() -> arrayClassName,
 							() -> arrayClassName
 					);
@@ -786,14 +857,25 @@ public class SourcesGenerator {
 							// Create the nullable X types classes
 							{
 								var typeType = typeTypes.get(substring);
+								var family = typeFamily.get(substring);
 								var nullableTypeType = typeTypes.get("-" + substring);
 								var nullableTypeClass = TypeSpec.classBuilder("Nullable" + capitalize(substring));
 								nullableTypeClass.addModifiers(Modifier.PUBLIC);
 								nullableTypeClass.addModifiers(Modifier.FINAL);
 								nullableTypeClass.addAnnotation(EqualsAndHashCode.class);
 								nullableTypeClass.addAnnotation(ToString.class);
+								if (family == Family.BASIC) {
+									nullableTypeClass.addSuperinterface(ClassName.get(joinPackage(versionPackage, "data.nullables"),
+											"INullableBasicType"
+									));
+								}
+								if (family == Family.GENERIC) {
+									nullableTypeClass.addSuperinterface(ClassName.get(joinPackage(versionPackage, "data.nullables"),
+											"INullableGenericType"
+									));
+								}
 								nullableTypeClass.addSuperinterface(ClassName.get(joinPackage(versionPackage, "data.nullables"),
-										"INullableBasicType"
+										"INullableIType"
 								));
 								nullableTypeClass.addSuperinterface(IGenericNullable.class);
 								var constructor = MethodSpec.constructorBuilder();
@@ -889,6 +971,28 @@ public class SourcesGenerator {
 								getDollarNullableMethod.returns(typeType);
 								getDollarNullableMethod.addStatement("return this.getNullable()");
 								nullableTypeClass.addMethod(getDollarNullableMethod.build());
+								if (family == Family.BASIC) {
+									var getBasicType = MethodSpec.methodBuilder("getBasicType$");
+									getBasicType.addModifiers(Modifier.PUBLIC);
+									getBasicType.addModifiers(Modifier.FINAL);
+									getBasicType.addException(NullPointerException.class);
+									getBasicType.addAnnotation(NotNull.class);
+									getBasicType.addAnnotation(NonNull.class);
+									getBasicType.returns(ClassName.get(joinPackage(basePackageName, ""), "BasicType"));
+									getBasicType.addStatement("return $T." + capitalize(substring), ClassName.get(joinPackage(basePackageName, ""), "BasicType"));
+									nullableTypeClass.addMethod(getBasicType.build());
+								}
+								if (family == Family.GENERIC) {
+									var getBasicType = MethodSpec.methodBuilder("getGenericType$");
+									getBasicType.addModifiers(Modifier.PUBLIC);
+									getBasicType.addModifiers(Modifier.FINAL);
+									getBasicType.addException(NullPointerException.class);
+									getBasicType.addAnnotation(NotNull.class);
+									getBasicType.addAnnotation(NonNull.class);
+									getBasicType.returns(ClassName.get(joinPackage(basePackageName, ""), "GenericType"));
+									getBasicType.addStatement("return $T." + capitalize(substring), ClassName.get(joinPackage(basePackageName, ""), "GenericType"));
+									nullableTypeClass.addMethod(getBasicType.build());
+								}
 
 								try {
 									writeClass(outPath, joinPackage(versionPackage, "data.nullables"), nullableTypeClass);
@@ -1072,6 +1176,14 @@ public class SourcesGenerator {
 								deserializeMethod.addException(IOException.class);
 								Object2IntLinkedOpenHashMap<String> currentVarNumber = new Object2IntLinkedOpenHashMap<>(
 										basicTypeConfiguration.getData().size());
+								Object2ObjectLinkedOpenHashMap<String, String> currentVarTypeName = new Object2ObjectLinkedOpenHashMap<>(
+										basicTypeConfiguration.getData().size());
+								Object2ObjectLinkedOpenHashMap<String, TypeName> currentVarTypeClass = new Object2ObjectLinkedOpenHashMap<>(
+										basicTypeConfiguration.getData().size());
+								Object2ObjectLinkedOpenHashMap<String, Family> currentVarFamily = new Object2ObjectLinkedOpenHashMap<>(
+										basicTypeConfiguration.getData().size());
+								ObjectOpenHashSet<String> currentVarUpgraded = new ObjectOpenHashSet<>(
+										basicTypeConfiguration.getData().size());
 								ObjectOpenHashSet<String> currentVarDeleted = new ObjectOpenHashSet<>();
 								currentVarNumber.defaultReturnValue(-1);
 								deserializeMethod.addStatement("$T.requireNonNull(data)", Objects.class);
@@ -1079,6 +1191,10 @@ public class SourcesGenerator {
 									String k = stringStringEntry.getKey();
 									String value = stringStringEntry.getValue();
 									currentVarNumber.addTo(k, 1);
+									currentVarTypeName.put(k, value);
+									currentVarTypeClass.put(k, typeTypes.get(value));
+									currentVarFamily.put(k, typeFamily.get(value));
+									currentVarUpgraded.remove(k);
 									deserializeMethod.addStatement("var $$field$$" + 0 + "$$" + k + " = data.get" + capitalize(k) + "()");
 								}
 
@@ -1117,6 +1233,10 @@ public class SourcesGenerator {
 													"Deleted $$field$$" + currentVarNumber.getInt(removeDataTransformation.from) + "$$"
 															+ removeDataTransformation.from);
 											currentVarNumber.addTo(removeDataTransformation.from, 1);
+											currentVarTypeName.remove(removeDataTransformation.from);
+											currentVarTypeClass.remove(removeDataTransformation.from);
+											currentVarFamily.remove(removeDataTransformation.from);
+											currentVarUpgraded.remove(removeDataTransformation.from);
 											currentVarDeleted.add(removeDataTransformation.from);
 										}
 
@@ -1128,6 +1248,18 @@ public class SourcesGenerator {
 
 										{
 											currentVarNumber.addTo(moveDataTransformation.to, 1);
+											currentVarTypeName.put(moveDataTransformation.to,
+													Objects.requireNonNull(currentVarTypeName.get(moveDataTransformation.from))
+											);
+											currentVarTypeClass.put(moveDataTransformation.to,
+													Objects.requireNonNull(currentVarTypeClass.get(moveDataTransformation.from))
+											);
+											currentVarFamily.put(moveDataTransformation.to,
+													Objects.requireNonNull(currentVarFamily.get(moveDataTransformation.from))
+											);
+											if (currentVarUpgraded.remove(moveDataTransformation.from)) {
+												currentVarUpgraded.add(moveDataTransformation.to);
+											}
 											currentVarDeleted.remove(moveDataTransformation.to);
 											deserializeMethod.addStatement(
 													"var $$field$$" + currentVarNumber.getInt(moveDataTransformation.to) + "$$"
@@ -1139,6 +1271,10 @@ public class SourcesGenerator {
 													"Deleted $$field$$" + currentVarNumber.getInt(moveDataTransformation.from) + "$$"
 															+ moveDataTransformation.from);
 											currentVarNumber.addTo(moveDataTransformation.from, 1);
+											currentVarTypeName.remove(moveDataTransformation.from);
+											currentVarTypeClass.remove(moveDataTransformation.from);
+											currentVarFamily.remove(moveDataTransformation.from);
+											currentVarUpgraded.remove(moveDataTransformation.from);
 											currentVarDeleted.add(moveDataTransformation.from);
 										}
 
@@ -1199,6 +1335,14 @@ public class SourcesGenerator {
 													upgradeDataTransformation.transformClass + "." + upgradeDataTransformation.from, toType);
 
 											currentVarNumber.addTo(upgradeDataTransformation.from, 1);
+											currentVarTypeName.put(upgradeDataTransformation.from, toTypeName);
+											currentVarTypeClass.put(upgradeDataTransformation.from, toType);
+											currentVarFamily.put(upgradeDataTransformation.from,
+													Objects.requireNonNull(typeFamily.get(toTypeName),
+															() -> "Type \"" + toTypeName + "\" has no type family!"
+													)
+											);
+											currentVarUpgraded.add(upgradeDataTransformation.from);
 											currentVarDeleted.remove(upgradeDataTransformation.from);
 											break;
 										case "new-data":
@@ -1211,6 +1355,12 @@ public class SourcesGenerator {
 											TypeName newTypeBoxed = newType.isPrimitive() ? newType.box() : newType;
 										{
 											currentVarNumber.addTo(newDataTransformation.to, 1);
+											currentVarTypeName.put(newDataTransformation.to, newTypeName);
+											currentVarTypeClass.put(newDataTransformation.to, newType);
+											currentVarFamily.put(newDataTransformation.to, Objects.requireNonNull(typeFamily.get(newTypeName),
+													() -> "Type \"" + newTypeName + "\" has no type family!"
+											));
+											currentVarUpgraded.add(newDataTransformation.to);
 											currentVarDeleted.remove(newDataTransformation.to);
 
 											var dataInitializerClass = ClassName.bestGuess(newDataTransformation.initializer);
@@ -1256,16 +1406,94 @@ public class SourcesGenerator {
 								for (var e : currentVarNumber.object2IntEntrySet()) {
 									String key = e.getKey();
 									int number = e.getIntValue();
-									if (!currentVarDeleted.contains(key)) {
+									if (!currentVarDeleted.contains(key) && !currentVarUpgraded.contains(key)) {
+										Family currentFamily = Objects.requireNonNull(currentVarFamily.get(key));
+										switch (currentFamily) {
+											case OTHER:
+											case SPECIAL_NATIVE:
+												// Don't upgrade "other" families because they are already upgraded
+												continue;
+										}
+
 										String toTypeName = nextVersionFieldTypes.get(key);
+										Family toFamily = typeFamily.get(toTypeName);
 										TypeName toType = nextVersionTypeTypes.get(toTypeName);
 										TypeName toTypeBoxed = toType.isPrimitive() ? toType.box() : toType;
 										{
 											currentVarNumber.addTo(key, 1);
+											currentVarTypeName.put(key, toTypeName);
+											currentVarTypeClass.put(key, toType);
+											currentVarFamily.put(key, toFamily);
+											currentVarUpgraded.add(key);
 											currentVarDeleted.remove(key);
-											deserializeMethod.addStatement(
-													"$T $$field$$" + (number + 1) + "$$" + key + " = ($T) " + "upgradeUnknownField($$field$$"
-															+ number + "$$" + key + ")", toType, toTypeBoxed);
+
+											switch (currentFamily) {
+												case BASIC:
+												case GENERIC:
+													deserializeMethod.addCode(buildStatementUpgradeBasicType(
+															versionPackage,
+															nextVersionPackage.get(),
+															number,
+															key,
+															toTypeName,
+															toFamily,
+															toType,
+															toTypeBoxed
+													));
+													break;
+												case I_TYPE_ARRAY:
+													deserializeMethod.addCode(buildStatementUpgradeITypeArrayField(
+															versionPackage,
+															nextVersionPackage.get(),
+															number,
+															key,
+															toTypeName,
+															toFamily,
+															toType,
+															toTypeBoxed
+													));
+													break;
+												case NULLABLE_BASIC:
+													deserializeMethod.addCode(buildStatementUpgradeNullableBasicField(
+															versionPackage,
+															nextVersionPackage.get(),
+															number,
+															key,
+															toTypeName,
+															toFamily,
+															toType,
+															toTypeBoxed,
+															nextVersionTypeTypes.get(toTypeName.substring(1))
+													));
+													break;
+												case NULLABLE_GENERIC:
+													deserializeMethod.addCode(buildStatementUpgradeNullableGenericField(
+															versionPackage,
+															nextVersionPackage.get(),
+															number,
+															key,
+															toTypeName,
+															toFamily,
+															toType,
+															toTypeBoxed,
+															nextVersionTypeTypes.get(toTypeName.substring(1))
+													));
+													break;
+												case NULLABLE_OTHER:
+													deserializeMethod.addCode(buildStatementUpgradeNullableOtherField(
+															versionPackage,
+															nextVersionPackage.get(),
+															number,
+															key,
+															toTypeName,
+															toFamily,
+															toType,
+															toTypeBoxed
+													));
+													break;
+												default:
+													throw new IllegalStateException("Unexpected value: " + currentFamily);
+											}
 										}
 									}
 								}
@@ -1282,73 +1510,6 @@ public class SourcesGenerator {
 								}
 								deserializeMethod.addStatement(")");
 								upgraderClass.addMethod(deserializeMethod.build());
-							}
-							// Create the upgradeUnknownField method
-							{
-								var upgradeUnknownField = MethodSpec.methodBuilder("upgradeUnknownField");
-								upgradeUnknownField.addModifiers(Modifier.PRIVATE);
-								upgradeUnknownField.addModifiers(Modifier.STATIC);
-								upgradeUnknownField.addModifiers(Modifier.FINAL);
-								upgradeUnknownField.returns(Object.class);
-								upgradeUnknownField.addParameter(ParameterSpec
-										.builder(Object.class, "value")
-										.addAnnotation(NotNull.class)
-										.addAnnotation(NonNull.class)
-										.build());
-								upgradeUnknownField.addException(IOException.class);
-
-								var oldVersionType = ClassName.get(joinPackage(versionPackage, ""), "Version");
-								var oldIBasicType = ClassName.get(joinPackage(versionPackage, "data"), "IBasicType");
-								var oldIType = ClassName.get(joinPackage(versionPackage, "data"), "IType");
-								var oldINullableBasicType = ClassName.get(joinPackage(versionPackage, "data.nullables"),
-										"INullableBasicType"
-								);
-								var newIBasicType = ClassName.get(joinPackage(nextVersionPackage.get(), "data"), "IBasicType");
-								upgradeUnknownField.addStatement("$T.requireNonNull(value)", Objects.class);
-								upgradeUnknownField.addStatement("Class<?> type = ((Object) value).getClass()");
-								upgradeUnknownField.beginControlFlow("if (value instanceof $T)", oldIBasicType);
-								upgradeUnknownField.addStatement("return ($T) $T.upgradeToNextVersion(($T) value)",
-										newIBasicType,
-										oldVersionType,
-										oldIBasicType
-								);
-								upgradeUnknownField.nextControlFlow("else if (value instanceof $T)", oldINullableBasicType);
-								upgradeUnknownField.addStatement("var content = (($T) value).$$getNullable()", IGenericNullable.class);
-								upgradeUnknownField.addStatement("$T newContent", Object.class);
-								upgradeUnknownField.beginControlFlow("if (content instanceof $T)", oldIBasicType);
-								upgradeUnknownField.addStatement("newContent = ($T) $T.upgradeToNextVersion(($T) content)",
-										newIBasicType,
-										oldVersionType,
-										oldIBasicType
-								);
-								upgradeUnknownField.nextControlFlow("else");
-								upgradeUnknownField.addStatement("newContent = content");
-								upgradeUnknownField.endControlFlow();
-								upgradeUnknownField.addStatement("return $T.INSTANCE.createNullableOf(type.getSimpleName(), newContent)",
-										ClassName.get(nextVersionPackage.get(), "Version")
-								);
-								upgradeUnknownField.nextControlFlow(
-										"else if (type.isArray() && $T.class.isAssignableFrom(type.getComponentType()))",
-										oldIType
-								);
-								upgradeUnknownField.addStatement("int arrayLength = $T.getLength(value)", Array.class);
-								upgradeUnknownField.addStatement(
-										"Object newArray = $T.INSTANCE.createArrayOf(type.getComponentType().getSimpleName(), arrayLength)",
-										ClassName.get(nextVersionPackage.get(), "Version")
-								);
-								upgradeUnknownField.beginControlFlow("for (int i = 0; i < arrayLength; i++)");
-								upgradeUnknownField.addStatement("var item = $T.get(value, i)", Array.class);
-								upgradeUnknownField.addStatement("var updatedItem = $T.upgradeToNextVersion(($T) item)",
-										oldVersionType,
-										oldIBasicType
-								);
-								upgradeUnknownField.addStatement("$T.set(newArray, i, updatedItem)", Array.class);
-								upgradeUnknownField.endControlFlow();
-								upgradeUnknownField.addStatement("return newArray");
-								upgradeUnknownField.nextControlFlow("else");
-								upgradeUnknownField.addStatement("return value");
-								upgradeUnknownField.endControlFlow();
-								upgraderClass.addMethod(upgradeUnknownField.build());
 							}
 							// Save the resulting class in the main package
 							try {
@@ -1642,7 +1803,7 @@ public class SourcesGenerator {
 							.methodBuilder("createNullableOf")
 							.addModifiers(Modifier.PUBLIC)
 							.addModifiers(Modifier.FINAL)
-							.returns(ClassName.get(joinPackage(versionPackage, "data.nullables"), "INullableBasicType"))
+							.returns(ClassName.get(joinPackage(versionPackage, "data.nullables"), "INullableIType"))
 							.addException(IOException.class)
 							.addParameter(ParameterSpec.builder(String.class, "type").build())
 							.addParameter(ParameterSpec.builder(Object.class, "content").build())
@@ -1665,6 +1826,64 @@ public class SourcesGenerator {
 							.endControlFlow()
 							.endControlFlow();
 					versionClass.addMethod(createNullableOfMethod.build());
+				}
+				// Add createNullableOfBasicType method
+				{
+					var createNullableOfBasicTypeMethod = MethodSpec
+							.methodBuilder("createNullableOfBasicType")
+							.addModifiers(Modifier.PUBLIC)
+							.addModifiers(Modifier.FINAL)
+							.returns(ClassName.get(joinPackage(versionPackage, "data.nullables"), "INullableBasicType"))
+							.addException(IOException.class)
+							.addParameter(ParameterSpec.builder(ClassName.get(joinPackage(basePackageName, ""), "BasicType"), "type").build())
+							.addParameter(ParameterSpec.builder(Object.class, "content").build())
+							.beginControlFlow("switch (type)");
+					for (String item : typeTypes.keySet()) {
+						if (typeFamily.get(item) == Family.NULLABLE_BASIC) {
+							String type = item.substring(1);
+							if (!specialNativeTypes.contains(type)) {
+								createNullableOfBasicTypeMethod.addStatement("case " + type + ": return $T.ofNullable(($T) content)",
+										typeTypes.get("-" + type),
+										typeTypes.get(type)
+								);
+							}
+						}
+					}
+					createNullableOfBasicTypeMethod
+							.beginControlFlow("default: ")
+							.addStatement("throw new $T(\"Unknown nullable type: \" + type)", IOException.class)
+							.endControlFlow()
+							.endControlFlow();
+					versionClass.addMethod(createNullableOfBasicTypeMethod.build());
+				}
+				// Add createNullableOfGenericType method
+				{
+					var createNullableOfGenericTypeMethod = MethodSpec
+							.methodBuilder("createNullableOfGenericType")
+							.addModifiers(Modifier.PUBLIC)
+							.addModifiers(Modifier.FINAL)
+							.returns(ClassName.get(joinPackage(versionPackage, "data.nullables"), "INullableGenericType"))
+							.addException(IOException.class)
+							.addParameter(ParameterSpec.builder(ClassName.get(joinPackage(basePackageName, ""), "GenericType"), "type").build())
+							.addParameter(ParameterSpec.builder(Object.class, "content").build())
+							.beginControlFlow("switch (type)");
+					for (String item : typeTypes.keySet()) {
+						if (typeFamily.get(item) == Family.NULLABLE_GENERIC) {
+							String type = item.substring(1);
+							if (!specialNativeTypes.contains(type)) {
+								createNullableOfGenericTypeMethod.addStatement("case " + type + ": return $T.ofNullable(($T) content)",
+										typeTypes.get("-" + type),
+										typeTypes.get(type)
+								);
+							}
+						}
+					}
+					createNullableOfGenericTypeMethod
+							.beginControlFlow("default: ")
+							.addStatement("throw new $T(\"Unknown nullable type: \" + type)", IOException.class)
+							.endControlFlow()
+							.endControlFlow();
+					versionClass.addMethod(createNullableOfGenericTypeMethod.build());
 				}
 				// Add createArrayOf method
 				{
@@ -1747,14 +1966,53 @@ public class SourcesGenerator {
 				}
 			}
 
-			// Create the interface INullableBasicType
+			// Create the interface INullableIType
 			{
 				var iTypeInterfaceType = ClassName.get(joinPackage(versionPackage, "data"), "IType");
+				var inullableITypeInterface = TypeSpec.interfaceBuilder("INullableIType");
+				inullableITypeInterface.addModifiers(Modifier.PUBLIC);
+				inullableITypeInterface.addSuperinterface(iTypeInterfaceType);
+				inullableITypeInterface.addSuperinterface(IGenericNullable.class);
+				try {
+					writeClass(outPath, joinPackage(versionPackage, "data.nullables"), inullableITypeInterface);
+				} catch (IOException e) {
+					throw new IOError(e);
+				}
+			}
+
+			// Create the interface INullableBasicType
+			{
+				var iTypeInterfaceType = ClassName.get(joinPackage(versionPackage, "data.nullables"), "INullableIType");
 				var inullableBasicTypeInterface = TypeSpec.interfaceBuilder("INullableBasicType");
 				inullableBasicTypeInterface.addModifiers(Modifier.PUBLIC);
 				inullableBasicTypeInterface.addSuperinterface(iTypeInterfaceType);
+				var getBasicTypeMethod = MethodSpec
+						.methodBuilder("getBasicType$")
+						.addModifiers(Modifier.PUBLIC)
+						.addModifiers(Modifier.ABSTRACT)
+						.returns(ClassName.get(joinPackage(basePackageName, ""), "BasicType"));
+				inullableBasicTypeInterface.addMethod(getBasicTypeMethod.build());
 				try {
 					writeClass(outPath, joinPackage(versionPackage, "data.nullables"), inullableBasicTypeInterface);
+				} catch (IOException e) {
+					throw new IOError(e);
+				}
+			}
+
+			// Create the interface INullableGenericType
+			{
+				var iTypeInterfaceType = ClassName.get(joinPackage(versionPackage, "data.nullables"), "INullableIType");
+				var inullablegenericTypeInterface = TypeSpec.interfaceBuilder("INullableGenericType");
+				inullablegenericTypeInterface.addModifiers(Modifier.PUBLIC);
+				inullablegenericTypeInterface.addSuperinterface(iTypeInterfaceType);
+				var getBasicTypeMethod = MethodSpec
+						.methodBuilder("getGenericType$")
+						.addModifiers(Modifier.PUBLIC)
+						.addModifiers(Modifier.ABSTRACT)
+						.returns(ClassName.get(joinPackage(basePackageName, ""), "GenericType"));
+				inullablegenericTypeInterface.addMethod(getBasicTypeMethod.build());
+				try {
+					writeClass(outPath, joinPackage(versionPackage, "data.nullables"), inullablegenericTypeInterface);
 				} catch (IOException e) {
 					throw new IOError(e);
 				}
@@ -1765,11 +2023,11 @@ public class SourcesGenerator {
 				for (Entry<String, Set<String>> superType : versionConfiguration.superTypes.entrySet()) {
 					String type = superType.getKey();
 					Set<String> superTypeConfiguration = superType.getValue();
-					var iTypeInterfaceType = ClassName.get(joinPackage(versionPackage, "data"), "IType");
+					var iBasicTypeInterfaceType = ClassName.get(joinPackage(versionPackage, "data"), "IBasicType");
 					var typeInterfaceType = ClassName.get(joinPackage(versionPackage, "data"), type);
 					var typeInterface = TypeSpec.interfaceBuilder(type);
 					typeInterface.addModifiers(Modifier.PUBLIC);
-					typeInterface.addSuperinterface(iTypeInterfaceType);
+					typeInterface.addSuperinterface(iBasicTypeInterfaceType);
 					var getMetaTypeMethod = MethodSpec
 							.methodBuilder("getMetaId$" + type)
 							.addModifiers(Modifier.PUBLIC)
@@ -1990,6 +2248,206 @@ public class SourcesGenerator {
 		}
 	}
 
+	private CodeBlock buildStatementUpgradeBasicType(
+			String versionPackage,
+			String nextVersionPackage,
+			int number,
+			String key,
+			String toTypeName,
+			Family toFamily,
+			TypeName toType,
+			TypeName toTypeBoxed) {
+		var deserializeMethod = CodeBlock.builder();
+		String inputFieldName = "$field$" + number + "$" + key;
+		String resultFieldName = "$field$" + (number + 1) + "$" + key;
+		deserializeMethod.addStatement("$T $N", toType, resultFieldName);
+		deserializeMethod.beginControlFlow("");
+		deserializeMethod.addStatement("var value = $N", inputFieldName);
+
+		var oldIBasicType = ClassName.get(joinPackage(versionPackage, "data"), "IBasicType");
+		var upgradeBasicTypeField = MethodSpec.methodBuilder("upgradeBasicTypeField");
+		upgradeBasicTypeField.addModifiers(Modifier.PRIVATE);
+		upgradeBasicTypeField.addModifiers(Modifier.STATIC);
+		upgradeBasicTypeField.addModifiers(Modifier.FINAL);
+		upgradeBasicTypeField.returns(Object.class);
+		upgradeBasicTypeField.addParameter(ParameterSpec
+				.builder(oldIBasicType, "value")
+				.addAnnotation(NotNull.class)
+				.addAnnotation(NonNull.class)
+				.build());
+		upgradeBasicTypeField.addException(IOException.class);
+
+		var oldVersionType = ClassName.get(joinPackage(versionPackage, ""), "Version");
+		var oldIType = ClassName.get(joinPackage(versionPackage, "data"), "IType");
+		var oldINullableBasicType = ClassName.get(joinPackage(versionPackage, "data.nullables"),
+				"INullableBasicType"
+		);
+		upgradeBasicTypeField.addStatement("$T.requireNonNull(value)", Objects.class);
+		deserializeMethod.addStatement("$N = ($T) $T.upgradeToNextVersion(($T) value)",
+				resultFieldName,
+				toTypeBoxed,
+				oldVersionType,
+				oldIBasicType
+		);
+
+		deserializeMethod.endControlFlow();
+		return deserializeMethod.build();
+	}
+
+	private CodeBlock buildStatementUpgradeNullableOtherField(
+			String versionPackage,
+			String nextVersionPackage,
+			int number,
+			String key,
+			String toTypeName,
+			Family toFamily,
+			TypeName toType,
+			TypeName toTypeBoxed) {
+		var deserializeMethod = CodeBlock.builder();
+		String inputFieldName = "$field$" + number + "$" + key;
+		String resultFieldName = "$field$" + (number + 1) + "$" + key;
+		deserializeMethod.addStatement("$T $N", toType, resultFieldName);
+		deserializeMethod.beginControlFlow("");
+		deserializeMethod.addStatement("var value = $N", inputFieldName);
+
+
+		var oldINullableGenericType = ClassName.get(joinPackage(versionPackage, "data.nullables"),
+				"INullableGenericType"
+		);
+
+		var oldVersionType = ClassName.get(joinPackage(versionPackage, ""), "Version");
+		var oldIBasicType = ClassName.get(joinPackage(versionPackage, "data"), "IBasicType");
+		var oldIType = ClassName.get(joinPackage(versionPackage, "data"), "IType");
+		deserializeMethod.addStatement("$T.requireNonNull(value)", Objects.class);
+		deserializeMethod.addStatement("var content = value.$$getNullable()");
+		deserializeMethod.addStatement("$N = $T.ofNullable(content)", resultFieldName, toTypeBoxed);
+
+		deserializeMethod.endControlFlow();
+		return deserializeMethod.build();
+	}
+
+	private CodeBlock buildStatementUpgradeNullableGenericField(
+			String versionPackage,
+			String nextVersionPackage,
+			int number,
+			String key,
+			String toTypeName,
+			Family toFamily,
+			TypeName toType,
+			TypeName toTypeBoxed,
+			TypeName toGenericType) {
+		var deserializeMethod = CodeBlock.builder();
+		String inputFieldName = "$field$" + number + "$" + key;
+		String resultFieldName = "$field$" + (number + 1) + "$" + key;
+		deserializeMethod.addStatement("$T $N", toType, resultFieldName);
+		deserializeMethod.beginControlFlow("");
+		deserializeMethod.addStatement("var value = $N", inputFieldName);
+
+
+		var oldINullableGenericType = ClassName.get(joinPackage(versionPackage, "data.nullables"),
+				"INullableGenericType"
+		);
+
+		var oldVersionType = ClassName.get(joinPackage(versionPackage, ""), "Version");
+		var oldIBasicType = ClassName.get(joinPackage(versionPackage, "data"), "IBasicType");
+		var oldIType = ClassName.get(joinPackage(versionPackage, "data"), "IType");
+		deserializeMethod.addStatement("$T.requireNonNull(value)", Objects.class);
+		deserializeMethod.addStatement("var content = value.$$getNullable()");
+		deserializeMethod.addStatement("var newContent = ($T) $T.upgradeToNextVersion(($T) content)",
+				toGenericType,
+				oldVersionType,
+				oldIBasicType
+		);
+		deserializeMethod.addStatement("$N = $T.ofNullable(newContent)", resultFieldName, toTypeBoxed);
+
+		deserializeMethod.endControlFlow();
+		return deserializeMethod.build();
+	}
+
+	private CodeBlock buildStatementUpgradeNullableBasicField(
+			String versionPackage,
+			String nextVersionPackage,
+			int number,
+			String key,
+			String toTypeName,
+			Family toFamily,
+			TypeName toType,
+			TypeName toTypeBoxed,
+			TypeName toBasicType) {
+		var deserializeMethod = CodeBlock.builder();
+		String inputFieldName = "$field$" + number + "$" + key;
+		String resultFieldName = "$field$" + (number + 1) + "$" + key;
+		deserializeMethod.addStatement("$T $N", toType, resultFieldName);
+		deserializeMethod.beginControlFlow("");
+		deserializeMethod.addStatement("var value = $N", inputFieldName);
+
+
+		var oldINullableBasicType = ClassName.get(joinPackage(versionPackage, "data.nullables"),
+				"INullableBasicType"
+		);
+
+		var oldVersionType = ClassName.get(joinPackage(versionPackage, ""), "Version");
+		var oldIBasicType = ClassName.get(joinPackage(versionPackage, "data"), "IBasicType");
+		var oldIType = ClassName.get(joinPackage(versionPackage, "data"), "IType");
+		deserializeMethod.addStatement("$T.requireNonNull(value)", Objects.class);
+		deserializeMethod.addStatement("var content = value.$$getNullable()");
+		deserializeMethod.addStatement("var newContent = ($T) $T.upgradeToNextVersion(($T) content)",
+				toBasicType,
+				oldVersionType,
+				oldIBasicType
+		);
+		deserializeMethod.addStatement("$N = $T.ofNullable(newContent)", resultFieldName, toTypeBoxed);
+
+
+		deserializeMethod.endControlFlow();
+		return deserializeMethod.build();
+	}
+
+	private CodeBlock buildStatementUpgradeITypeArrayField(
+			String versionPackage,
+			@Nullable String nextVersionPackage,
+			int number,
+			String key,
+			String toTypeName,
+			Family toFamily,
+			TypeName toType,
+			TypeName toTypeBoxed) {
+		var deserializeMethod = CodeBlock.builder();
+		String inputFieldName = "$field$" + number + "$" + key;
+		String resultFieldName = "$field$" + (number + 1) + "$" + key;
+		deserializeMethod.addStatement("$T $N", toType, resultFieldName);
+		deserializeMethod.beginControlFlow("");
+		deserializeMethod.addStatement("var value = $N", inputFieldName);
+
+		var oldIType = ClassName.get(joinPackage(versionPackage, "data"), "IType");
+		var oldITypeArray = ArrayTypeName.of(oldIType);
+
+		var newIType = ClassName.get(joinPackage(nextVersionPackage, "data"), "IType");
+		var newITypeArray = ArrayTypeName.of(newIType);
+
+		var oldVersionType = ClassName.get(joinPackage(versionPackage, ""), "Version");
+		var oldIBasicType = ClassName.get(joinPackage(versionPackage, "data"), "IBasicType");
+		var oldINullableBasicType = ClassName.get(joinPackage(versionPackage, "data.nullables"),
+				"INullableBasicType"
+		);
+		deserializeMethod.addStatement("$T.requireNonNull(value)", Objects.class);
+		deserializeMethod.addStatement("var newArray = new $T[value.length]", ((ArrayTypeName) toTypeBoxed).componentType);
+		deserializeMethod.beginControlFlow("for (int i = 0; i < value.length; i++)");
+		deserializeMethod.addStatement("var item = value[i]", Array.class);
+		deserializeMethod.addStatement("var updatedItem = ($T) $T.upgradeToNextVersion(($T) item)",
+				((ArrayTypeName) toTypeBoxed).componentType,
+				oldVersionType,
+				oldIBasicType
+		);
+		deserializeMethod.addStatement("newArray[i] = updatedItem");
+		deserializeMethod.endControlFlow();
+		deserializeMethod.addStatement("$N = newArray", resultFieldName);
+
+
+		deserializeMethod.endControlFlow();
+		return deserializeMethod.build();
+	}
+
 	private static String getSpecialNativePackage(String specialNativeType) {
 		//noinspection SwitchStatementWithTooFewBranches
 		switch (specialNativeType) {
@@ -2055,6 +2513,7 @@ public class SourcesGenerator {
 
 	@SuppressWarnings("OptionalUsedAsFieldOrParameterType")
 	public NeededTypes registerNeededTypes(VersionConfiguration versionConfiguration,
+			Family family,
 			String type,
 			Optional<String> nextVersion,
 			Optional<String> nextVersionPackage,
@@ -2064,7 +2523,10 @@ public class SourcesGenerator {
 			HashMap<String, SerializeCodeBlockGenerator> typeSerializeStatement,
 			HashMap<String, CodeBlock> typeDeserializeStatement,
 			HashMap<String, Boolean> typeMustGenerateSerializer,
-			HashMap<String, TypeName> typeTypes, @Nullable HashMap<String, TypeName> nextVersionTypeTypes,
+			HashMap<String, TypeName> typeTypes,
+			HashMap<String, Family> typeFamily,
+			@Nullable HashMap<String, TypeName> nextVersionTypeTypes,
+			@Nullable HashMap<String, Family> nextVersionTypeFamily,
 			Supplier<ClassName> arrayClassName,
 			Supplier<ClassName> nextArrayClassName) {
 		// Check if the nullable type is needed
@@ -2090,6 +2552,20 @@ public class SourcesGenerator {
 						.anyMatch((typeZ) -> typeZ.equals(type)))
 				.isPresent();
 
+		Family nullableFamily;
+		switch (family) {
+			case BASIC:
+				nullableFamily = Family.NULLABLE_BASIC;
+				break;
+			case GENERIC:
+				nullableFamily = Family.NULLABLE_GENERIC;
+				break;
+			case OTHER:
+				nullableFamily = Family.NULLABLE_OTHER;
+				break;
+			default:
+				throw new IllegalStateException("Unexpected value: " + family);
+		}
 
 		if (nullableTypeNeeded) {
 			typeOptionalSerializers.put("-" + type,
@@ -2101,10 +2577,13 @@ public class SourcesGenerator {
 					.add("$T.Nullable" + type + "SerializerInstance.deserialize(dataInput)", versionClassType).build());
 			typeMustGenerateSerializer.put("-" + type, true);
 			typeTypes.put("-" + type, ClassName.get(joinPackage(versionPackage, "data.nullables"), "Nullable" + type));
+			typeFamily.put("-" + type, nullableFamily);
 		}
 		if (nextVersionNullableTypeNeeded) {
 			assert nextVersionTypeTypes != null;
+			assert nextVersionTypeFamily != null;
 			nextVersionTypeTypes.put("-" + type, ClassName.get(joinPackage(nextVersionPackage.orElseThrow(), "data.nullables"), "Nullable" + type));
+			nextVersionTypeFamily.put("-" + type, nullableFamily);
 		}
 
 		// Check if the array type is needed
@@ -2139,10 +2618,13 @@ public class SourcesGenerator {
 					type
 			);
 			typeTypes.put("§" + type, ArrayTypeName.of(arrayClassName.get()));
+			typeFamily.put("§" + type, Family.I_TYPE_ARRAY);
 		}
 		if (nextVersionArrayTypeNeeded) {
 			assert nextVersionTypeTypes != null;
+			assert nextVersionTypeFamily != null;
 			nextVersionTypeTypes.put("§" + type, ArrayTypeName.of(nextArrayClassName.get()));
+			nextVersionTypeFamily.put("§" + type, Family.I_TYPE_ARRAY);
 		}
 
 		return new NeededTypes(nullableTypeNeeded,
@@ -2361,5 +2843,13 @@ public class SourcesGenerator {
 			return "0";
 		}
 		return version;
+	}
+
+	private enum Family {
+		BASIC,
+		NULLABLE_BASIC,
+		NULLABLE_OTHER,
+		I_TYPE_ARRAY,
+		SPECIAL_NATIVE, GENERIC, NULLABLE_GENERIC, OTHER
 	}
 }

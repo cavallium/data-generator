@@ -5,7 +5,7 @@ import java.util.Objects;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-public class Nullabledouble implements Serializable {
+public class Nullabledouble implements Serializable, IGenericNullable {
 
 	private static final long serialVersionUID = 1L;
 
@@ -49,6 +49,11 @@ public class Nullabledouble implements Serializable {
 		} else {
 			return value;
 		}
+	}
+
+	@Override
+	public Double $getNullable() {
+		return this.getNullable();
 	}
 
 	@Nullable

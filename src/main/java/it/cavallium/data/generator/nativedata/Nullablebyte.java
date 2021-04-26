@@ -56,7 +56,7 @@ public class Nullablebyte implements Serializable, IGenericNullable {
 	}
 
 	@Override
-	public Object $getNullable() {
+	public Byte $getNullable() {
 		return this.getNullable();
 	}
 
