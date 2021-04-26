@@ -2353,7 +2353,8 @@ public class SourcesGenerator {
 		var oldIType = ClassName.get(joinPackage(versionPackage, "data"), "IType");
 		deserializeMethod.addStatement("$T.requireNonNull(value)", Objects.class);
 		deserializeMethod.addStatement("var content = value.$$getNullable()");
-		deserializeMethod.addStatement("var newContent = ($T) $T.upgradeToNextVersion(($T) content)",
+		deserializeMethod.addStatement("var newContent = content == null ? null : $T.requireNonNull(($T) $T.upgradeToNextVersion(($T) content))",
+				ClassName.get(Objects.class),
 				toGenericType,
 				oldVersionType,
 				oldIBasicType
@@ -2391,7 +2392,8 @@ public class SourcesGenerator {
 		var oldIType = ClassName.get(joinPackage(versionPackage, "data"), "IType");
 		deserializeMethod.addStatement("$T.requireNonNull(value)", Objects.class);
 		deserializeMethod.addStatement("var content = value.$$getNullable()");
-		deserializeMethod.addStatement("var newContent = ($T) $T.upgradeToNextVersion(($T) content)",
+		deserializeMethod.addStatement("var newContent = content == null ? null : $T.requireNonNull(($T) $T.upgradeToNextVersion(($T) content))",
+				ClassName.get(Objects.class),
 				toBasicType,
 				oldVersionType,
 				oldIBasicType
