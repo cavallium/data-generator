@@ -2124,8 +2124,6 @@ public class SourcesGenerator {
 							.build());
 					typeClass.addAnnotation(lombok.Builder.class);
 					typeClass.addAnnotation(ToString.class);
-					var constructor = MethodSpec.constructorBuilder();
-					constructor.addModifiers(Modifier.PUBLIC);
 					var getBasicTypeMethod = MethodSpec
 							.methodBuilder("getBasicType$")
 							.addModifiers(Modifier.PUBLIC)
@@ -2186,7 +2184,7 @@ public class SourcesGenerator {
 							}
 						}
 
-						addField(typeClass, constructor, key, typeTypes.get(value), true, true, false, isGetterOverride);
+						addField(typeClass, key, typeTypes.get(value), true, true, false, isGetterOverride);
 						addImmutableSetter(typeClass,
 								ClassName.get(joinPackage(versionPackage, "data"), type),
 								classConfiguration.getData().keySet(),
@@ -2205,8 +2203,6 @@ public class SourcesGenerator {
 								.addStatement("return " + classConfiguration.getStringRepresenter() + "(this)")
 								.build());
 					}
-					//todo: now we use lombok to generate the constructor.
-					//typeClass.addMethod(constructor.build());
 
 					var mapConstructor = MethodSpec.constructorBuilder().addModifiers(Modifier.PUBLIC);
 					mapConstructor.addException(IllegalStateException.class);
@@ -2424,7 +2420,7 @@ public class SourcesGenerator {
 		var oldIType = ClassName.get(joinPackage(versionPackage, "data"), "IType");
 		var oldITypeArray = ArrayTypeName.of(oldIType);
 
-		var newIType = ClassName.get(joinPackage(nextVersionPackage, "data"), "IType");
+		var newIType = ClassName.get(joinPackage(Objects.requireNonNull(nextVersionPackage), "data"), "IType");
 		var newITypeArray = ArrayTypeName.of(newIType);
 
 		var oldVersionType = ClassName.get(joinPackage(versionPackage, ""), "Version");
@@ -2694,11 +2690,8 @@ public class SourcesGenerator {
 		classBuilder.addMethod(setterMethod.build());
 	}
 
-	private void addField(Builder classBuilder, @Nullable MethodSpec.Builder constructorBuilder, String fieldName,
+	private void addField(Builder classBuilder, String fieldName,
 			TypeName fieldType, boolean isFinal, boolean hasGetter, boolean hasSetter, boolean isOverride) {
-		if (isFinal && constructorBuilder == null) {
-			throw new IllegalStateException();
-		}
 		if (isFinal && hasSetter) {
 			throw new IllegalStateException();
 		}
@@ -2728,28 +2721,6 @@ public class SourcesGenerator {
 			getter.returns(fieldType);
 			getter.addStatement("return this." + fieldName);
 			classBuilder.addMethod(getter.build());
-		}
-		if (constructorBuilder != null) {
-			var param = ParameterSpec.builder(fieldType, fieldName, Modifier.FINAL);
-			boolean requiresNotNull = !fieldType.isPrimitive();
-			if (requiresNotNull) {
-				param.addAnnotation(NotNull.class);
-				param.addAnnotation(NonNull.class);
-			}
-			constructorBuilder.addParameter(param.build());
-
-			var assignStatementBuilder = CodeBlock
-					.builder()
-					.add("this." + fieldName + " = ");
-			if (requiresNotNull) {
-				assignStatementBuilder.add("$T.requireNonNull(", Objects.class);
-			}
-			assignStatementBuilder.add(fieldName);
-			if (requiresNotNull) {
-				assignStatementBuilder.add(")");
-			}
-
-			constructorBuilder.addStatement(assignStatementBuilder.build());
 		}
 	}
 
