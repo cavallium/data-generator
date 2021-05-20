@@ -2,13 +2,9 @@ package it.cavallium.data.generator.nativedata;
 
 import java.io.Serializable;
 import java.util.Objects;
-import lombok.EqualsAndHashCode;
-import lombok.ToString;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-@EqualsAndHashCode
-@ToString
 public class Nullablechar implements Serializable, IGenericNullable {
 
 	private static final long serialVersionUID = 1L;

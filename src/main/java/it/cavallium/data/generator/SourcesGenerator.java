@@ -14,6 +14,7 @@ import com.squareup.javapoet.TypeSpec;
 import com.squareup.javapoet.TypeSpec.Builder;
 import com.squareup.javapoet.TypeVariableName;
 import com.squareup.javapoet.WildcardTypeName;
+import io.soabase.recordbuilder.core.RecordBuilder;
 import it.cavallium.data.generator.nativedata.IGenericNullable;
 import it.cavallium.data.generator.nativedata.Int52Serializer;
 import it.cavallium.data.generator.nativedata.StringSerializer;
@@ -48,11 +49,6 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.lang.model.element.Modifier;
-import lombok.AllArgsConstructor;
-import lombok.EqualsAndHashCode;
-import lombok.NonNull;
-import lombok.ToString;
-import lombok.Value;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -758,15 +754,9 @@ public class SourcesGenerator {
 								+ "\",\n\tdeserialize: \"" + a2 + "\"\n}");
 					} else {
 						switch (type.charAt(0)) {
-							case '$':
-								logger.debug("Found array: " + type.substring(1));
-								break;
-							case '-':
-								logger.debug("Found nullable type: " + type.substring(1));
-								break;
-							default:
-								logger.debug("Found type: " + type);
-								break;
+							case '$' -> logger.debug("Found array: " + type.substring(1));
+							case '-' -> logger.debug("Found nullable type: " + type.substring(1));
+							default -> logger.debug("Found type: " + type);
 						}
 					}
 				}
@@ -859,11 +849,10 @@ public class SourcesGenerator {
 								var typeType = typeTypes.get(substring);
 								var family = typeFamily.get(substring);
 								var nullableTypeType = typeTypes.get("-" + substring);
-								var nullableTypeClass = TypeSpec.classBuilder("Nullable" + capitalize(substring));
+								var nullableTypeClass = TypeSpec.recordBuilder("Nullable" + capitalize(substring));
 								nullableTypeClass.addModifiers(Modifier.PUBLIC);
+								nullableTypeClass.addModifiers(Modifier.STATIC);
 								nullableTypeClass.addModifiers(Modifier.FINAL);
-								nullableTypeClass.addAnnotation(EqualsAndHashCode.class);
-								nullableTypeClass.addAnnotation(ToString.class);
 								if (family == Family.BASIC) {
 									nullableTypeClass.addSuperinterface(ClassName.get(joinPackage(versionPackage, "data.nullables"),
 											"INullableBasicType"
@@ -878,13 +867,8 @@ public class SourcesGenerator {
 										"INullableIType"
 								));
 								nullableTypeClass.addSuperinterface(IGenericNullable.class);
-								var constructor = MethodSpec.constructorBuilder();
-								constructor.addModifiers(Modifier.PUBLIC);
-								constructor.addParameter(ParameterSpec.builder(typeType, "value").build());
-								constructor.addStatement("this.value = value");
-								nullableTypeClass.addMethod(constructor.build());
-								var valueField = FieldSpec.builder(typeType, "value");
-								nullableTypeClass.addField(valueField.build());
+								var valueField = ParameterSpec.builder(typeType, "value");
+								nullableTypeClass.addRecordComponent(valueField.build());
 								var ofMethod = MethodSpec.methodBuilder("of");
 								ofMethod.addModifiers(Modifier.PUBLIC);
 								ofMethod.addModifiers(Modifier.STATIC);
@@ -930,7 +914,6 @@ public class SourcesGenerator {
 								getMethod.addModifiers(Modifier.FINAL);
 								getMethod.addException(NullPointerException.class);
 								getMethod.addAnnotation(NotNull.class);
-								getMethod.addAnnotation(NonNull.class);
 								getMethod.returns(typeType);
 								getMethod.beginControlFlow("if (value == null)");
 								getMethod.addStatement("throw new $T()", NullPointerException.class);
@@ -942,13 +925,11 @@ public class SourcesGenerator {
 								orElseMethod.addParameter(ParameterSpec
 										.builder(typeType, "defaultValue")
 										.addAnnotation(NotNull.class)
-										.addAnnotation(NonNull.class)
 										.build());
 								orElseMethod.addModifiers(Modifier.PUBLIC);
 								orElseMethod.addModifiers(Modifier.FINAL);
 								orElseMethod.addException(NullPointerException.class);
 								orElseMethod.addAnnotation(NotNull.class);
-								orElseMethod.addAnnotation(NonNull.class);
 								orElseMethod.returns(typeType);
 								orElseMethod.beginControlFlow("if (value == null)");
 								orElseMethod.addStatement("return defaultValue");
@@ -977,7 +958,6 @@ public class SourcesGenerator {
 									getBasicType.addModifiers(Modifier.FINAL);
 									getBasicType.addException(NullPointerException.class);
 									getBasicType.addAnnotation(NotNull.class);
-									getBasicType.addAnnotation(NonNull.class);
 									getBasicType.returns(ClassName.get(joinPackage(basePackageName, ""), "BasicType"));
 									getBasicType.addStatement("return $T." + capitalize(substring), ClassName.get(joinPackage(basePackageName, ""), "BasicType"));
 									nullableTypeClass.addMethod(getBasicType.build());
@@ -988,7 +968,6 @@ public class SourcesGenerator {
 									getBasicType.addModifiers(Modifier.FINAL);
 									getBasicType.addException(NullPointerException.class);
 									getBasicType.addAnnotation(NotNull.class);
-									getBasicType.addAnnotation(NonNull.class);
 									getBasicType.returns(ClassName.get(joinPackage(basePackageName, ""), "GenericType"));
 									getBasicType.addStatement("return $T." + capitalize(substring), ClassName.get(joinPackage(basePackageName, ""), "GenericType"));
 									nullableTypeClass.addMethod(getBasicType.build());
@@ -1163,7 +1142,6 @@ public class SourcesGenerator {
 							{
 								var deserializeMethod = MethodSpec.methodBuilder("upgrade");
 								deserializeMethod.addAnnotation(NotNull.class);
-								deserializeMethod.addAnnotation(NonNull.class);
 								deserializeMethod.addAnnotation(Override.class);
 								deserializeMethod.addModifiers(Modifier.PUBLIC);
 								deserializeMethod.addModifiers(Modifier.FINAL);
@@ -1171,7 +1149,6 @@ public class SourcesGenerator {
 								deserializeMethod.addParameter(ParameterSpec
 										.builder(classType, "data")
 										.addAnnotation(NotNull.class)
-										.addAnnotation(NonNull.class)
 										.build());
 								deserializeMethod.addException(IOException.class);
 								Object2IntLinkedOpenHashMap<String> currentVarNumber = new Object2IntLinkedOpenHashMap<>(
@@ -2065,14 +2042,24 @@ public class SourcesGenerator {
 										: typeTypes.get(fieldInfo.fieldType);
 								// Add common data getter
 								{
-									var getterMethod = MethodSpec
+									var oldGetterMethod = MethodSpec
 											.methodBuilder("get" + capitalize(fieldInfo.fieldName))
+											.addModifiers(Modifier.PUBLIC)
+											.addModifiers(Modifier.ABSTRACT)
+											.addAnnotation(Deprecated.class)
+											.returns(fieldTypeType);
+									if (!fieldTypeType.isPrimitive()) {
+										oldGetterMethod.addAnnotation(NotNull.class);
+									}
+									typeInterface.addMethod(oldGetterMethod.build());
+
+									var getterMethod = MethodSpec
+											.methodBuilder(fieldInfo.fieldName)
 											.addModifiers(Modifier.PUBLIC)
 											.addModifiers(Modifier.ABSTRACT)
 											.returns(fieldTypeType);
 									if (!fieldTypeType.isPrimitive()) {
 										getterMethod.addAnnotation(NotNull.class);
-										getterMethod.addAnnotation(NonNull.class);
 									}
 									typeInterface.addMethod(getterMethod.build());
 								}
@@ -2083,7 +2070,6 @@ public class SourcesGenerator {
 										var param = ParameterSpec.builder(fieldTypeType, fieldInfo.fieldName, Modifier.FINAL);
 										if (!fieldTypeType.isPrimitive()) {
 											param.addAnnotation(NotNull.class);
-											param.addAnnotation(NonNull.class);
 										}
 										var setterMethod = MethodSpec
 												.methodBuilder("set" + capitalize(fieldInfo.fieldName))
@@ -2091,8 +2077,7 @@ public class SourcesGenerator {
 												.addModifiers(Modifier.ABSTRACT)
 												.addParameter(param.build())
 												.returns(typeInterfaceType)
-												.addAnnotation(NotNull.class)
-												.addAnnotation(NonNull.class);
+												.addAnnotation(NotNull.class);
 										typeInterface.addMethod(setterMethod.build());
 									}
 								}
@@ -2113,17 +2098,12 @@ public class SourcesGenerator {
 				for (Entry<String, ClassConfiguration> stringClassConfigurationEntry : versionConfiguration.classes.entrySet()) {
 					String type = stringClassConfigurationEntry.getKey();
 					ClassConfiguration classConfiguration = stringClassConfigurationEntry.getValue();
-					var typeClass = TypeSpec.classBuilder(type);
+					var typeClass = TypeSpec.recordBuilder(type);
 					typeClass.addModifiers(Modifier.PUBLIC);
+					typeClass.addModifiers(Modifier.STATIC);
 					typeClass.addModifiers(Modifier.FINAL);
 					typeClass.addSuperinterface(ClassName.get(joinPackage(versionPackage, "data"), "IBasicType"));
-					typeClass.addAnnotation(EqualsAndHashCode.class);
-					typeClass.addAnnotation(AnnotationSpec
-							.builder(AllArgsConstructor.class)
-							.addMember("staticName", "$S", "of")
-							.build());
-					typeClass.addAnnotation(lombok.Builder.class);
-					typeClass.addAnnotation(ToString.class);
+					typeClass.addAnnotation(RecordBuilder.class);
 					var getBasicTypeMethod = MethodSpec
 							.methodBuilder("getBasicType$")
 							.addModifiers(Modifier.PUBLIC)
@@ -2184,7 +2164,7 @@ public class SourcesGenerator {
 							}
 						}
 
-						addField(typeClass, key, typeTypes.get(value), true, true, false, isGetterOverride);
+						addField(typeClass, key, typeTypes.get(value), true, true, true, false, isGetterOverride);
 						addImmutableSetter(typeClass,
 								ClassName.get(joinPackage(versionPackage, "data"), type),
 								classConfiguration.getData().keySet(),
@@ -2204,14 +2184,34 @@ public class SourcesGenerator {
 								.build());
 					}
 
-					var mapConstructor = MethodSpec.constructorBuilder().addModifiers(Modifier.PUBLIC);
+					var ofConstructor = MethodSpec
+							.methodBuilder("of")
+							.returns(typeTypes.get(type))
+							.addModifiers(Modifier.STATIC)
+							.addModifiers(Modifier.PUBLIC)
+							.addModifiers(Modifier.FINAL);
+					var mapConstructor = MethodSpec
+							.methodBuilder("parse")
+							.returns(typeTypes.get(type))
+							.addModifiers(Modifier.STATIC)
+							.addModifiers(Modifier.PUBLIC)
+							.addModifiers(Modifier.FINAL);
 					mapConstructor.addException(IllegalStateException.class);
 					mapConstructor.addParameter(ParameterizedTypeName.get(Map.class, String.class, Object.class), "fields");
 					mapConstructor.addStatement(
 							"if (fields.size() != " + classConfiguration.getData().size() + ") throw new $T()",
 							IllegalStateException.class
 					);
+					var returnMapNewInstanceStamentBuilder = CodeBlock.builder().add("return new $T(", typeTypes.get(type));
+					var returnOfNewInstanceStamentBuilder = CodeBlock.builder().add("return new $T(", typeTypes.get(type));
+					boolean first = true;
 					for (Entry<String, String> entry : classConfiguration.getData().entrySet()) {
+						if (!first) {
+							returnMapNewInstanceStamentBuilder.add(", ");
+							returnOfNewInstanceStamentBuilder.add(", ");
+						} else {
+							first = false;
+						}
 						String field = entry.getKey();
 						String fieldType = entry.getValue();
 						var fieldTypeType = typeTypes.get(fieldType);
@@ -2219,17 +2219,22 @@ public class SourcesGenerator {
 								IllegalStateException.class
 						);
 						boolean requiresNotNull = !fieldTypeType.isPrimitive();
-						var assignMethodStatementBuilder = CodeBlock.builder().add("this." + field + " = ");
 						if (requiresNotNull) {
-							assignMethodStatementBuilder.add("$T.requireNonNull(", Objects.class);
+							returnMapNewInstanceStamentBuilder.add("$T.requireNonNull(", Objects.class);
+							returnOfNewInstanceStamentBuilder.add("$T.requireNonNull(", Objects.class);
 						}
-						assignMethodStatementBuilder.add("($T) fields.get(\"" + field + "\")", typeTypes.get(fieldType));
+						returnMapNewInstanceStamentBuilder.add("($T) fields.get(\"" + field + "\")", typeTypes.get(fieldType));
+						returnOfNewInstanceStamentBuilder.add("($T) " + field + "", typeTypes.get(fieldType));
+						ofConstructor.addParameter(typeTypes.get(fieldType),"" + field);
 						if (requiresNotNull) {
-							assignMethodStatementBuilder.add(")");
+							returnMapNewInstanceStamentBuilder.add(")");
+							returnOfNewInstanceStamentBuilder.add(")");
 						}
-						mapConstructor.addStatement(assignMethodStatementBuilder.build());
 					}
+					mapConstructor.addStatement(returnMapNewInstanceStamentBuilder.add(")").build());
+					ofConstructor.addStatement(returnOfNewInstanceStamentBuilder.add(")").build());
 					typeClass.addMethod(mapConstructor.build());
+					typeClass.addMethod(ofConstructor.build());
 
 					try {
 						writeClass(outPath, joinPackage(versionPackage, "data"), typeClass);
@@ -2269,7 +2274,6 @@ public class SourcesGenerator {
 		upgradeBasicTypeField.addParameter(ParameterSpec
 				.builder(oldIBasicType, "value")
 				.addAnnotation(NotNull.class)
-				.addAnnotation(NonNull.class)
 				.build());
 		upgradeBasicTypeField.addException(IOException.class);
 
@@ -2448,12 +2452,10 @@ public class SourcesGenerator {
 
 	private static String getSpecialNativePackage(String specialNativeType) {
 		//noinspection SwitchStatementWithTooFewBranches
-		switch (specialNativeType) {
-			case "Int52":
-				return "it.cavallium.data.generator.nativedata";
-			default:
-				return "java.lang";
-		}
+		return switch (specialNativeType) {
+			case "Int52" -> "it.cavallium.data.generator.nativedata";
+			default -> "java.lang";
+		};
 	}
 
 	private void registerArrayType(String versionPackage,
@@ -2482,7 +2484,7 @@ public class SourcesGenerator {
 		serializeMethod.returns(TypeName.VOID);
 		serializeMethod.addParameter(ParameterSpec.builder(DataOutput.class, "dataOutput").build());
 		serializeMethod
-				.addParameter(ParameterSpec.builder(classType, "data").addAnnotation(NotNull.class).addAnnotation(NonNull.class).build());
+				.addParameter(ParameterSpec.builder(classType, "data").addAnnotation(NotNull.class).build());
 		serializeMethod.addException(IOException.class);
 		serializeMethod.addStatement("$T.requireNonNull(data)", Objects.class);
 		return serializeMethod;
@@ -2492,7 +2494,6 @@ public class SourcesGenerator {
 		var deserializeMethod = MethodSpec.methodBuilder("deserialize");
 		deserializeMethod.addAnnotation(Override.class);
 		deserializeMethod.addAnnotation(NotNull.class);
-		deserializeMethod.addAnnotation(NonNull.class);
 		deserializeMethod.addModifiers(Modifier.PUBLIC);
 		deserializeMethod.addModifiers(Modifier.FINAL);
 		deserializeMethod.returns(classType);
@@ -2501,13 +2502,11 @@ public class SourcesGenerator {
 		return deserializeMethod;
 	}
 
-	@Value
-	public static class NeededTypes {
-		boolean nullableTypeNeeded;
-		boolean nextVersionNullableTypeNeeded;
-		boolean arrayTypeNeeded;
-		boolean nextVersionArrayTypeNeeded;
-	}
+	public static record NeededTypes(
+				boolean nullableTypeNeeded,
+				boolean nextVersionNullableTypeNeeded,
+				boolean arrayTypeNeeded,
+				boolean nextVersionArrayTypeNeeded){}
 
 	@SuppressWarnings("OptionalUsedAsFieldOrParameterType")
 	public NeededTypes registerNeededTypes(VersionConfiguration versionConfiguration,
@@ -2550,20 +2549,12 @@ public class SourcesGenerator {
 						.anyMatch((typeZ) -> typeZ.equals(type)))
 				.isPresent();
 
-		Family nullableFamily;
-		switch (family) {
-			case BASIC:
-				nullableFamily = Family.NULLABLE_BASIC;
-				break;
-			case GENERIC:
-				nullableFamily = Family.NULLABLE_GENERIC;
-				break;
-			case OTHER:
-				nullableFamily = Family.NULLABLE_OTHER;
-				break;
-			default:
-				throw new IllegalStateException("Unexpected value: " + family);
-		}
+		Family nullableFamily = switch (family) {
+			case BASIC -> Family.NULLABLE_BASIC;
+			case GENERIC -> Family.NULLABLE_GENERIC;
+			case OTHER -> Family.NULLABLE_OTHER;
+			default -> throw new IllegalStateException("Unexpected value: " + family);
+		};
 
 		if (nullableTypeNeeded) {
 			typeOptionalSerializers.put("-" + type,
@@ -2664,11 +2655,9 @@ public class SourcesGenerator {
 		setterMethod.addModifiers(Modifier.PUBLIC);
 		setterMethod.addModifiers(Modifier.FINAL);
 		setterMethod.addAnnotation(NotNull.class);
-		setterMethod.addAnnotation(NonNull.class);
 		var param = ParameterSpec.builder(fieldType, fieldName, Modifier.FINAL);
 		if (!fieldType.isPrimitive()) {
 			param.addAnnotation(NotNull.class);
-			param.addAnnotation(NonNull.class);
 		}
 		if (isOverride) {
 			setterMethod.addAnnotation(Override.class);
@@ -2691,33 +2680,43 @@ public class SourcesGenerator {
 	}
 
 	private void addField(Builder classBuilder, String fieldName,
-			TypeName fieldType, boolean isFinal, boolean hasGetter, boolean hasSetter, boolean isOverride) {
+			TypeName fieldType, boolean isRecord, boolean isFinal, boolean hasGetter, boolean hasSetter, boolean isOverride) {
 		if (isFinal && hasSetter) {
 			throw new IllegalStateException();
 		}
 		if (hasSetter) {
 			throw new UnsupportedOperationException();
 		}
-		var field = FieldSpec.builder(fieldType, fieldName, Modifier.PRIVATE);
-		if (!fieldType.isPrimitive()) {
-			field.addAnnotation(NotNull.class);
-			field.addAnnotation(NonNull.class);
+		if (isRecord) {
+			var field = ParameterSpec.builder(fieldType, fieldName);
+			if (!fieldType.isPrimitive()) {
+				field.addAnnotation(NotNull.class);
+			}
+			if (!isFinal) {
+				throw new IllegalArgumentException("Record fields must be final");
+			}
+			classBuilder.addRecordComponent(field.build());
+		} else {
+			var field = FieldSpec.builder(fieldType, fieldName, Modifier.PRIVATE);
+			if (!fieldType.isPrimitive()) {
+				field.addAnnotation(NotNull.class);
+			}
+			if (isFinal) {
+				field.addModifiers(Modifier.FINAL);
+			}
+			classBuilder.addField(field.build());
 		}
-		if (isFinal) {
-			field.addModifiers(Modifier.FINAL);
-		}
-		classBuilder.addField(field.build());
 		if (hasGetter) {
 			var getter = MethodSpec.methodBuilder("get" + capitalize(fieldName));
 			getter.addModifiers(Modifier.PUBLIC);
 			getter.addModifiers(Modifier.FINAL);
 			if (!fieldType.isPrimitive()) {
 				getter.addAnnotation(NotNull.class);
-				getter.addAnnotation(NonNull.class);
 			}
 			if (isOverride) {
 				getter.addAnnotation(Override.class);
 			}
+			getter.addAnnotation(Deprecated.class);
 			getter.returns(fieldType);
 			getter.addStatement("return this." + fieldName);
 			classBuilder.addMethod(getter.build());
