@@ -18,9 +18,17 @@ import io.soabase.recordbuilder.core.RecordBuilder;
 import it.cavallium.data.generator.nativedata.IGenericNullable;
 import it.cavallium.data.generator.nativedata.Int52Serializer;
 import it.cavallium.data.generator.nativedata.StringSerializer;
+import it.unimi.dsi.fastutil.booleans.BooleanList;
+import it.unimi.dsi.fastutil.bytes.ByteList;
+import it.unimi.dsi.fastutil.chars.CharList;
+import it.unimi.dsi.fastutil.doubles.DoubleList;
+import it.unimi.dsi.fastutil.floats.FloatList;
+import it.unimi.dsi.fastutil.ints.IntList;
+import it.unimi.dsi.fastutil.longs.LongList;
 import it.unimi.dsi.fastutil.objects.Object2IntLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
+import it.unimi.dsi.fastutil.shorts.ShortList;
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.File;
@@ -587,14 +595,14 @@ public class SourcesGenerator {
 							ClassName.get("it.cavallium.data.generator.nativedata", "Nullable" + specialNativeType)
 					);
 					typeFamily.put("-" + specialNativeType, Family.NULLABLE_OTHER);
-					typeTypes.put("§" + specialNativeType, ArrayTypeName.of(typeTypes.get(specialNativeType)));
+					typeTypes.put("§" + specialNativeType, getImmutableArrayType(typeTypes, specialNativeType));
 					typeFamily.put("§" + specialNativeType, Family.OTHER);
 					if (nextVersion.isPresent()) {
 						nextVersionTypeTypes.put("-" + specialNativeType,
 								ClassName.get("it.cavallium.data.generator.nativedata", "Nullable" + specialNativeType)
 						);
 						nextVersionTypeFamily.put("-" + specialNativeType, Family.NULLABLE_OTHER);
-						nextVersionTypeTypes.put("§" + specialNativeType, ArrayTypeName.of(typeTypes.get(specialNativeType)));
+						nextVersionTypeTypes.put("§" + specialNativeType, getImmutableArrayType(typeTypes, specialNativeType));
 						nextVersionTypeFamily.put("§" + specialNativeType, Family.OTHER);
 					}
 					typeOptionalSerializers.put("-" + specialNativeType,
@@ -991,7 +999,7 @@ public class SourcesGenerator {
 						if (typeMustGenerateSerializer.get(type)) {
 							String substring = type.substring(1);
 							var classType = ClassName.get(joinPackage(versionPackage, "data"), substring);
-							var arrayClassType = ArrayTypeName.of(classType);
+							var arrayClassType = getImmutableArrayType(classType);
 
 							// Create the array X serializer class
 							{
@@ -1018,22 +1026,26 @@ public class SourcesGenerator {
 								// Create the serialize method
 								{
 									var serializeMethod = createEmptySerializeMethod(arrayClassType);
-									serializeMethod.addStatement("dataOutput.writeInt(data.length)");
-									serializeMethod.beginControlFlow("for (int i = 0; i < data.length; i++)");
-									serializeMethod.addStatement(typeSerializeStatement.get(substring).generate("data[i]"));
+									serializeMethod.addStatement("dataOutput.writeInt(data.size())");
+									serializeMethod.beginControlFlow("for (int i = 0; i < data.size(); i++)");
+									serializeMethod.addStatement(typeSerializeStatement.get(substring).generate("data.get(i)"));
 									serializeMethod.endControlFlow();
 									arraySerializerClass.addMethod(serializeMethod.build());
 								}
 								// Create the deserialize method
 								{
 									var deserializeMethod = createEmptyDeserializeMethod(arrayClassType);
-									deserializeMethod.addStatement("var data = new $T[dataInput.readInt()]", classType);
-									deserializeMethod.beginControlFlow("for (int i = 0; i < data.length; i++)");
-									deserializeMethod.addStatement(CodeBlock.join(List.of(CodeBlock.of("data[i] ="),
+									deserializeMethod.addStatement("int length = dataInput.readInt()");
+									deserializeMethod.addStatement("var data = new $T[length]", classType);
+									deserializeMethod.beginControlFlow("for (int i = 0; i < length; i++)");
+									deserializeMethod.addStatement(CodeBlock.join(List.of(CodeBlock.of("data[i] = "),
 											typeDeserializeStatement.get(substring)
-									), " "));
+									), ""));
 									deserializeMethod.endControlFlow();
-									deserializeMethod.addStatement("return data");
+									deserializeMethod.addStatement("return $T.of(data)",
+											(arrayClassType instanceof ParameterizedTypeName
+													? ((ParameterizedTypeName) arrayClassType).rawType : arrayClassType)
+									);
 									arraySerializerClass.addMethod(deserializeMethod.build());
 								}
 								// Save the resulting class in the main package
@@ -2249,6 +2261,43 @@ public class SourcesGenerator {
 		}
 	}
 
+	private TypeName getImmutableArrayType(HashMap<String, TypeName> typeTypes, String typeString) {
+		var type = typeTypes.get(typeString);
+		return getImmutableArrayType(type);
+	}
+
+	private TypeName getImmutableArrayType(TypeName type) {
+		return switch (type.toString()) {
+			case "boolean" -> ClassName.get(BooleanList.class);
+			case "byte" -> ClassName.get(ByteList.class);
+			case "short" -> ClassName.get(ShortList.class);
+			case "char" -> ClassName.get(CharList.class);
+			case "int" -> ClassName.get(IntList.class);
+			case "long" -> ClassName.get(LongList.class);
+			case "float" -> ClassName.get(FloatList.class);
+			case "double" -> ClassName.get(DoubleList.class);
+			default -> ParameterizedTypeName.get(ClassName.get(List.class), type);
+		};
+	}
+
+	private TypeName getArrayComponentType(TypeName listType) {
+		if (listType instanceof ParameterizedTypeName) {
+			return ((ParameterizedTypeName) listType).typeArguments.get(0);
+		} else {
+			return switch (listType.toString()) {
+				case "BooleanList" -> ClassName.BOOLEAN;
+				case "ByteList" -> ClassName.BYTE;
+				case "ShortList" -> ClassName.SHORT;
+				case "CharList" -> ClassName.CHAR;
+				case "IntList" -> ClassName.INT;
+				case "LongList" -> ClassName.LONG;
+				case "FloatList" -> ClassName.FLOAT;
+				case "DoubleList" -> ClassName.DOUBLE;
+				default -> throw new IllegalStateException("Unexpected value: " + listType);
+			};
+		}
+	}
+
 	private CodeBlock buildStatementUpgradeBasicType(
 			String versionPackage,
 			String nextVersionPackage,
@@ -2421,29 +2470,26 @@ public class SourcesGenerator {
 		deserializeMethod.beginControlFlow("");
 		deserializeMethod.addStatement("var value = $N", inputFieldName);
 
-		var oldIType = ClassName.get(joinPackage(versionPackage, "data"), "IType");
-		var oldITypeArray = ArrayTypeName.of(oldIType);
-
-		var newIType = ClassName.get(joinPackage(Objects.requireNonNull(nextVersionPackage), "data"), "IType");
-		var newITypeArray = ArrayTypeName.of(newIType);
-
 		var oldVersionType = ClassName.get(joinPackage(versionPackage, ""), "Version");
 		var oldIBasicType = ClassName.get(joinPackage(versionPackage, "data"), "IBasicType");
 		var oldINullableBasicType = ClassName.get(joinPackage(versionPackage, "data.nullables"),
 				"INullableBasicType"
 		);
 		deserializeMethod.addStatement("$T.requireNonNull(value)", Objects.class);
-		deserializeMethod.addStatement("var newArray = new $T[value.length]", ((ArrayTypeName) toTypeBoxed).componentType);
-		deserializeMethod.beginControlFlow("for (int i = 0; i < value.length; i++)");
-		deserializeMethod.addStatement("var item = value[i]", Array.class);
+		deserializeMethod.addStatement("var newArray = new $T[value.size()]", getArrayComponentType(toType));
+		deserializeMethod.beginControlFlow("for (int i = 0; i < value.size(); i++)");
+		deserializeMethod.addStatement("var item = value.get(i)", Array.class);
 		deserializeMethod.addStatement("var updatedItem = ($T) $T.upgradeToNextVersion(($T) item)",
-				((ArrayTypeName) toTypeBoxed).componentType,
+				getArrayComponentType(toType),
 				oldVersionType,
 				oldIBasicType
 		);
 		deserializeMethod.addStatement("newArray[i] = updatedItem");
 		deserializeMethod.endControlFlow();
-		deserializeMethod.addStatement("$N = newArray", resultFieldName);
+		deserializeMethod.addStatement("$N = $T.of(newArray)",
+				resultFieldName,
+				toType instanceof ParameterizedTypeName ? ((ParameterizedTypeName) toType).rawType : toType
+		);
 
 
 		deserializeMethod.endControlFlow();
@@ -2606,13 +2652,13 @@ public class SourcesGenerator {
 					typeMustGenerateSerializer,
 					type
 			);
-			typeTypes.put("§" + type, ArrayTypeName.of(arrayClassName.get()));
+			typeTypes.put("§" + type, getImmutableArrayType(arrayClassName.get()));
 			typeFamily.put("§" + type, Family.I_TYPE_ARRAY);
 		}
 		if (nextVersionArrayTypeNeeded) {
 			assert nextVersionTypeTypes != null;
 			assert nextVersionTypeFamily != null;
-			nextVersionTypeTypes.put("§" + type, ArrayTypeName.of(nextArrayClassName.get()));
+			nextVersionTypeTypes.put("§" + type, getImmutableArrayType(nextArrayClassName.get()));
 			nextVersionTypeFamily.put("§" + type, Family.I_TYPE_ARRAY);
 		}
 
