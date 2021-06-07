@@ -711,6 +711,10 @@ public class SourcesGenerator {
 				for (Entry<String, CustomTypesConfiguration> entry : versionConfiguration.customTypes.entrySet()) {
 					String key = entry.getKey();
 					CustomTypesConfiguration customTypeConfiguration = entry.getValue();
+					Optional<CustomTypesConfiguration> nextVersionCustomTypeConfiguration = nextVersion
+							.map(s -> Objects.requireNonNull(configuration.versions.get(s).customTypes.get(key),
+									() -> "Custom type " + key + " not found in version " + s
+							));
 					typeOptionalSerializers.put(key, ClassName.bestGuess(customTypeConfiguration.serializer));
 					typeSerializeStatement.put(key,
 							new SerializeCodeBlockGenerator(CodeBlock
@@ -727,8 +731,8 @@ public class SourcesGenerator {
 					typeMustGenerateSerializer.put(key, false);
 					typeTypes.put(key, ClassName.bestGuess(customTypeConfiguration.javaClass));
 					typeFamily.put(key, Family.OTHER);
-					if (nextVersion.isPresent()) {
-						nextVersionTypeTypes.put(key, ClassName.bestGuess(customTypeConfiguration.javaClass));
+					if (nextVersionCustomTypeConfiguration.isPresent()) {
+						nextVersionTypeTypes.put(key, ClassName.bestGuess(nextVersionCustomTypeConfiguration.get().javaClass));
 						nextVersionTypeFamily.put(key, Family.OTHER);
 					}
 
@@ -1342,46 +1346,46 @@ public class SourcesGenerator {
 													.get(newDataTransformation.to);
 											TypeName newType = nextVersionTypeTypes.get(newTypeName);
 											TypeName newTypeBoxed = newType.isPrimitive() ? newType.box() : newType;
-										{
-											currentVarNumber.addTo(newDataTransformation.to, 1);
-											currentVarTypeName.put(newDataTransformation.to, newTypeName);
-											currentVarTypeClass.put(newDataTransformation.to, newType);
-											currentVarFamily.put(newDataTransformation.to, Objects.requireNonNull(typeFamily.get(newTypeName),
-													() -> "Type \"" + newTypeName + "\" has no type family!"
-											));
-											currentVarUpgraded.add(newDataTransformation.to);
-											currentVarDeleted.remove(newDataTransformation.to);
+											{
+												currentVarNumber.addTo(newDataTransformation.to, 1);
+												currentVarTypeName.put(newDataTransformation.to, newTypeName);
+												currentVarTypeClass.put(newDataTransformation.to, newType);
+												currentVarFamily.put(newDataTransformation.to, Objects.requireNonNull(typeFamily.get(newTypeName),
+														() -> "Type \"" + newTypeName + "\" has no type family!"
+												));
+												currentVarUpgraded.add(newDataTransformation.to);
+												currentVarDeleted.remove(newDataTransformation.to);
 
-											var dataInitializerClass = ClassName.bestGuess(newDataTransformation.initializer);
-											var dataInitializerFieldName = dataInitializerInstanceFieldName.computeIfAbsent(dataInitializerClass,
-													_unused -> {
-														var dataInitializerType = ParameterizedTypeName.get(ClassName.get(DataInitializer.class),
-																newTypeBoxed
-														);
-														var fieldName = "DATA_INITIALIZER_" + nextDataInitializerInstanceFieldId.getAndIncrement();
-														var fieldSpec = FieldSpec
-																.builder(dataInitializerType,
-																		fieldName,
-																		Modifier.PRIVATE,
-																		Modifier.STATIC,
-																		Modifier.FINAL
-																);
-														fieldSpec.initializer("($T) new $T()", dataInitializerType, dataInitializerClass);
-														upgraderClass.addField(fieldSpec.build());
-														return fieldName;
-													}
-											);
+												var dataInitializerClass = ClassName.bestGuess(newDataTransformation.initializer);
+												var dataInitializerFieldName = dataInitializerInstanceFieldName.computeIfAbsent(dataInitializerClass,
+														_unused -> {
+															var dataInitializerType = ParameterizedTypeName.get(ClassName.get(DataInitializer.class),
+																	newTypeBoxed
+															);
+															var fieldName = "DATA_INITIALIZER_" + nextDataInitializerInstanceFieldId.getAndIncrement();
+															var fieldSpec = FieldSpec
+																	.builder(dataInitializerType,
+																			fieldName,
+																			Modifier.PRIVATE,
+																			Modifier.STATIC,
+																			Modifier.FINAL
+																	);
+															fieldSpec.initializer("($T) new $T()", dataInitializerType, dataInitializerClass);
+															upgraderClass.addField(fieldSpec.build());
+															return fieldName;
+														}
+												);
 
-											deserializeMethod.addStatement(
-													"var $$field$$" + currentVarNumber.getInt(newDataTransformation.to) + "$$"
-															+ newDataTransformation.to + " = " + dataInitializerFieldName + ".initialize()"
-											);
-										}
-										if (currentTransformedFieldTypes.put(
-												newDataTransformation.transformClass + "." + newDataTransformation.to, newType) != null) {
-											throw new IllegalStateException();
-										}
-										break;
+												deserializeMethod.addStatement(
+														"var $$field$$" + currentVarNumber.getInt(newDataTransformation.to) + "$$"
+																+ newDataTransformation.to + " = " + dataInitializerFieldName + ".initialize()"
+												);
+											}
+											if (currentTransformedFieldTypes.put(
+													newDataTransformation.transformClass + "." + newDataTransformation.to, newType) != null) {
+												throw new IllegalStateException();
+											}
+											break;
 										default:
 											throw new UnsupportedOperationException(
 													"Unknown transform type: " + transformation.getTransformName());
@@ -1494,6 +1498,12 @@ public class SourcesGenerator {
 									String fieldType = entry.getValue();
 									if (!isFirst.getAndSet(false)) {
 										deserializeMethod.addCode(", ");
+									}
+									if (currentVarNumber.getInt(field) < 0) {
+										throw new IllegalStateException(
+												"Field " + field + " in class " + type + " has an invalid var number ("
+														+ currentVarNumber.getInt(field) + ") after upgrading from version " + version
+														+ " to version " + nextVersion.orElse("---"));
 									}
 									deserializeMethod.addCode("$$field$$" + currentVarNumber.getInt(field) + "$$" + field);
 								}
@@ -2612,12 +2622,17 @@ public class SourcesGenerator {
 					.add("$T.Nullable" + type + "SerializerInstance.deserialize(dataInput)", versionClassType).build());
 			typeMustGenerateSerializer.put("-" + type, true);
 			typeTypes.put("-" + type, ClassName.get(joinPackage(versionPackage, "data.nullables"), "Nullable" + type));
+		}
+		if (typeFamily != null) {
 			typeFamily.put("-" + type, nullableFamily);
 		}
+
 		if (nextVersionNullableTypeNeeded) {
 			assert nextVersionTypeTypes != null;
 			assert nextVersionTypeFamily != null;
 			nextVersionTypeTypes.put("-" + type, ClassName.get(joinPackage(nextVersionPackage.orElseThrow(), "data.nullables"), "Nullable" + type));
+		}
+		if (nextVersionTypeFamily != null) {
 			nextVersionTypeFamily.put("-" + type, nullableFamily);
 		}
 
@@ -2653,12 +2668,17 @@ public class SourcesGenerator {
 					type
 			);
 			typeTypes.put("§" + type, getImmutableArrayType(arrayClassName.get()));
+		}
+		if (typeFamily != null) {
 			typeFamily.put("§" + type, Family.I_TYPE_ARRAY);
 		}
+
 		if (nextVersionArrayTypeNeeded) {
 			assert nextVersionTypeTypes != null;
 			assert nextVersionTypeFamily != null;
 			nextVersionTypeTypes.put("§" + type, getImmutableArrayType(nextArrayClassName.get()));
+		}
+		if (nextVersionTypeFamily != null) {
 			nextVersionTypeFamily.put("§" + type, Family.I_TYPE_ARRAY);
 		}
 
