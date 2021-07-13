@@ -1101,7 +1101,7 @@ public class SourcesGenerator {
 									String fieldType = entry.getValue();
 									serializeMethod.addStatement(typeSerializeStatement
 											.get(fieldType)
-											.generate("data.get" + capitalize(field) + "()"));
+											.generate("data." + field + "()"));
 								}
 							}
 							serializerClass.addMethod(serializeMethod.build());
@@ -1187,7 +1187,7 @@ public class SourcesGenerator {
 									currentVarTypeClass.put(k, typeTypes.get(value));
 									currentVarFamily.put(k, typeFamily.get(value));
 									currentVarUpgraded.remove(k);
-									deserializeMethod.addStatement("var $$field$$" + 0 + "$$" + k + " = data.get" + capitalize(k) + "()");
+									deserializeMethod.addStatement("var $$field$$" + 0 + "$$" + k + " = data." + k + "()");
 								}
 
 								List<VersionTransformation> list = new ArrayList<>();
