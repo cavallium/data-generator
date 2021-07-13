@@ -1,6 +1,5 @@
 package it.cavallium.data.generator;
 
-import com.squareup.javapoet.AnnotationSpec;
 import com.squareup.javapoet.ArrayTypeName;
 import com.squareup.javapoet.ClassName;
 import com.squareup.javapoet.CodeBlock;
@@ -2064,17 +2063,6 @@ public class SourcesGenerator {
 										: typeTypes.get(fieldInfo.fieldType);
 								// Add common data getter
 								{
-									var oldGetterMethod = MethodSpec
-											.methodBuilder("get" + capitalize(fieldInfo.fieldName))
-											.addModifiers(Modifier.PUBLIC)
-											.addModifiers(Modifier.ABSTRACT)
-											.addAnnotation(Deprecated.class)
-											.returns(fieldTypeType);
-									if (!fieldTypeType.isPrimitive()) {
-										oldGetterMethod.addAnnotation(NotNull.class);
-									}
-									typeInterface.addMethod(oldGetterMethod.build());
-
 									var getterMethod = MethodSpec
 											.methodBuilder(fieldInfo.fieldName)
 											.addModifiers(Modifier.PUBLIC)
@@ -2186,7 +2174,7 @@ public class SourcesGenerator {
 							}
 						}
 
-						addField(typeClass, key, typeTypes.get(value), true, true, true, false, isGetterOverride);
+						addField(typeClass, key, typeTypes.get(value), true, true, false);
 						addImmutableSetter(typeClass,
 								ClassName.get(joinPackage(versionPackage, "data"), type),
 								classConfiguration.getData().keySet(),
@@ -2746,7 +2734,7 @@ public class SourcesGenerator {
 	}
 
 	private void addField(Builder classBuilder, String fieldName,
-			TypeName fieldType, boolean isRecord, boolean isFinal, boolean hasGetter, boolean hasSetter, boolean isOverride) {
+			TypeName fieldType, boolean isRecord, boolean isFinal, boolean hasSetter) {
 		if (isFinal && hasSetter) {
 			throw new IllegalStateException();
 		}
@@ -2771,21 +2759,6 @@ public class SourcesGenerator {
 				field.addModifiers(Modifier.FINAL);
 			}
 			classBuilder.addField(field.build());
-		}
-		if (hasGetter) {
-			var getter = MethodSpec.methodBuilder("get" + capitalize(fieldName));
-			getter.addModifiers(Modifier.PUBLIC);
-			getter.addModifiers(Modifier.FINAL);
-			if (!fieldType.isPrimitive()) {
-				getter.addAnnotation(NotNull.class);
-			}
-			if (isOverride) {
-				getter.addAnnotation(Override.class);
-			}
-			getter.addAnnotation(Deprecated.class);
-			getter.returns(fieldType);
-			getter.addStatement("return this." + fieldName);
-			classBuilder.addMethod(getter.build());
 		}
 	}
 
