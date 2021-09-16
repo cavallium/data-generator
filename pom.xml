@@ -10,6 +10,7 @@
   <version>0.9.${revision}</version>
   <packaging>maven-plugin</packaging>
   <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <revision>0-SNAPSHOT</revision>
   </properties>
   <repositories>
