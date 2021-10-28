@@ -392,7 +392,7 @@ public class SourcesGenerator {
 						.addStatement("int intermediateVersion = oldVersion")
 						.addStatement("$T intermediateData = oldData", Object.class)
 						.beginControlFlow("while (true)")
-						.beginControlFlow("switch (oldVersion)");
+						.beginControlFlow("switch (intermediateVersion)");
 				for (Entry<String, VersionConfiguration> entry : configuration.versions.entrySet()) {
 					String version = entry.getKey();
 					VersionConfiguration versionConfiguration = entry.getValue();
