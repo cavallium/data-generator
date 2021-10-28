@@ -380,6 +380,7 @@ public class SourcesGenerator {
 			}
 			// UpgradeDataToLatestVersion2 Method
 			{
+				var versionsClassName = ClassName.get(joinPackage(basePackageName, ""), "Versions");
 				var upgradeDataToLatestVersion2MethodBuilder = MethodSpec.methodBuilder("upgradeDataToLatestVersion")
 						.addModifiers(Modifier.PUBLIC).addModifiers(Modifier.STATIC).addModifiers(Modifier.FINAL).addTypeVariable(TypeVariableName.get("T"))
 						.addTypeVariable(TypeVariableName.get("U", ClassName
@@ -387,38 +388,42 @@ public class SourcesGenerator {
 										"IBasicType"))).returns(TypeVariableName.get("U"))
 						.addParameter(ParameterSpec.builder(TypeName.INT, "oldVersion").build())
 						.addParameter(ParameterSpec.builder(TypeVariableName.get("T"), "oldData").build())
-						.addException(IOException.class).beginControlFlow("switch (oldVersion)");
-				AtomicInteger seqNumber = new AtomicInteger(0);
+						.addException(IOException.class)
+						.addStatement("int intermediateVersion = oldVersion")
+						.addStatement("$T intermediateData = oldData", Object.class)
+						.beginControlFlow("while (true)")
+						.beginControlFlow("switch (oldVersion)");
 				for (Entry<String, VersionConfiguration> entry : configuration.versions.entrySet()) {
 					String version = entry.getKey();
 					VersionConfiguration versionConfiguration = entry.getValue();
 // Add a case in which the data version deserializes the serialized data and upgrades it
 					upgradeDataToLatestVersion2MethodBuilder.beginControlFlow("case $T." + getVersionVarName(version) + ":",
-							ClassName.get(joinPackage(basePackageName, ""), "Versions")
+							versionsClassName
 					);
 					if (version.equalsIgnoreCase(configuration.currentVersion)) {
 						// This is the latest version, don't upgrade.
-						upgradeDataToLatestVersion2MethodBuilder.addStatement("return ($T) oldData", TypeVariableName.get("U"));
+						upgradeDataToLatestVersion2MethodBuilder.addStatement("return ($T) intermediateData", TypeVariableName.get("U"));
 					} else {
 						// Upgrade
-						upgradeDataToLatestVersion2MethodBuilder.addStatement(
-								"var upgradedData" + seqNumber.incrementAndGet() + " = "
-										+ getVersionPackage(configuration.currentVersion, basePackageName, version)
-										+ ".Version.upgradeToNextVersion(($T) oldData)",
-								ClassName.get(joinPackage(getVersionPackage(configuration.currentVersion, basePackageName, version),
-										"data"
-								), "IBasicType")
-						);
-						upgradeDataToLatestVersion2MethodBuilder.addStatement(
-								"return upgradeDataToLatestVersion(Versions." + getVersionVarName(findNextVersion(configuration,
-										version
-								).orElseThrow()) + ", upgradedData" + seqNumber.get() + ")");
+						upgradeDataToLatestVersion2MethodBuilder
+								.addStatement(
+										"intermediateData = " + getVersionPackage(configuration.currentVersion, basePackageName, version)
+												+ ".Version.upgradeToNextVersion(($T) intermediateData)",
+										ClassName.get(joinPackage(getVersionPackage(configuration.currentVersion, basePackageName, version),
+												"data"
+										), "IBasicType")
+								)
+								.addStatement("intermediateVersion = $T."
+										+ getVersionVarName(findNextVersion(configuration, version).orElseThrow()), versionsClassName)
+								.addStatement("break");
 					}
 					upgradeDataToLatestVersion2MethodBuilder.endControlFlow();
 				}
 				var upgradeDataToLatestVersion2Method = upgradeDataToLatestVersion2MethodBuilder.beginControlFlow("default:")
 						.addStatement("throw new $T(\"Unknown version: \" + oldVersion)", IOException.class).endControlFlow()
-						.endControlFlow().build();
+						.endControlFlow()
+						.endControlFlow()
+						.build();
 				currentVersionClass.addMethod(upgradeDataToLatestVersion2Method);
 			}
 			// Save the resulting class in the main package
