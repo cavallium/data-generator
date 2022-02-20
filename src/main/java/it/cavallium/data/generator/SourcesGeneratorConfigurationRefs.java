@@ -8,8 +8,8 @@ import java.util.Map;
 import java.util.Set;
 
 public class SourcesGeneratorConfigurationRefs {
-	public Map<String, Set<String>> superTypes;
-	public Map<String, CustomTypesConfiguration> customTypes;
-	public Map<String, ClassConfiguration> classes;
-	public List<VersionTransformation> transformations;
+	public Map<String, Map<String, Set<String>>> superTypes;
+	public Map<String, Map<String, CustomTypesConfiguration>> customTypes;
+	public Map<String, Map<String, ClassConfiguration>> classes;
+	public Map<String, List<VersionTransformation>> transformations;
 }
