@@ -11,6 +11,7 @@ public class SourcesGeneratorConfiguration {
 	public String currentVersion;
 	public Map<String, InterfaceDataConfiguration> interfacesData;
 	public Map<String, VersionConfiguration> versions;
+	public Map<String, Object> refs = new HashMap<>();
 
 	public static class InterfaceDataConfiguration {
 		public Set<String> extendInterfaces = new HashSet<>();
