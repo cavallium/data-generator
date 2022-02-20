@@ -61,15 +61,6 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.Yaml;
-import it.cavallium.data.generator.SourcesGeneratorConfiguration.ClassConfiguration;
-import it.cavallium.data.generator.SourcesGeneratorConfiguration.CustomTypesConfiguration;
-import it.cavallium.data.generator.SourcesGeneratorConfiguration.InterfaceDataConfiguration;
-import it.cavallium.data.generator.SourcesGeneratorConfiguration.MoveDataConfiguration;
-import it.cavallium.data.generator.SourcesGeneratorConfiguration.NewDataConfiguration;
-import it.cavallium.data.generator.SourcesGeneratorConfiguration.RemoveDataConfiguration;
-import it.cavallium.data.generator.SourcesGeneratorConfiguration.UpgradeDataConfiguration;
-import it.cavallium.data.generator.SourcesGeneratorConfiguration.VersionConfiguration;
-import it.cavallium.data.generator.SourcesGeneratorConfiguration.VersionTransformation;
 
 @SuppressWarnings({"SameParameterValue", "unused"})
 public class SourcesGenerator {
