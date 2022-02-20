@@ -874,6 +874,9 @@ public class SourcesGenerator {
 										"INullableIType"
 								));
 								nullableTypeClass.addSuperinterface(IGenericNullable.class);
+								var nullInstance = FieldSpec.builder(nullableTypeType, "NULL", Modifier.PRIVATE, Modifier.STATIC, Modifier.FINAL);
+								nullInstance.initializer("new $T(null)", nullableTypeType);
+								nullableTypeClass.addField(nullInstance.build());
 								var valueField = ParameterSpec.builder(typeType, "value");
 								nullableTypeClass.addRecordComponent(valueField.build());
 								var ofMethod = MethodSpec.methodBuilder("of");
@@ -883,10 +886,10 @@ public class SourcesGenerator {
 								ofMethod.addException(NullPointerException.class);
 								ofMethod.returns(nullableClassType);
 								ofMethod.addParameter(ParameterSpec.builder(typeType, "value").build());
-								ofMethod.beginControlFlow("if (value == null)");
-								ofMethod.addStatement("throw new $T()", NullPointerException.class);
-								ofMethod.nextControlFlow("else");
+								ofMethod.beginControlFlow("if (value != null)");
 								ofMethod.addStatement("return new $T(value)", nullableTypeType);
+								ofMethod.nextControlFlow("else");
+								ofMethod.addStatement("throw new $T()", NullPointerException.class);
 								ofMethod.endControlFlow();
 								nullableTypeClass.addMethod(ofMethod.build());
 								var ofNullableMethod = MethodSpec.methodBuilder("ofNullable");
@@ -895,14 +898,18 @@ public class SourcesGenerator {
 								ofNullableMethod.addModifiers(Modifier.FINAL);
 								ofNullableMethod.returns(nullableClassType);
 								ofNullableMethod.addParameter(ParameterSpec.builder(typeType, "value").build());
+								ofNullableMethod.beginControlFlow("if (value != null)");
 								ofNullableMethod.addStatement("return new $T(value)", nullableTypeType);
+								ofNullableMethod.nextControlFlow("else");
+								ofNullableMethod.addStatement("return NULL");
+								ofNullableMethod.endControlFlow();
 								nullableTypeClass.addMethod(ofNullableMethod.build());
 								var emptyMethod = MethodSpec.methodBuilder("empty");
 								emptyMethod.addModifiers(Modifier.PUBLIC);
 								emptyMethod.addModifiers(Modifier.STATIC);
 								emptyMethod.addModifiers(Modifier.FINAL);
 								emptyMethod.returns(nullableClassType);
-								emptyMethod.addStatement("return new $T(null)", nullableTypeType);
+								emptyMethod.addStatement("return NULL");
 								nullableTypeClass.addMethod(emptyMethod.build());
 								var isEmptyMethod = MethodSpec.methodBuilder("isEmpty");
 								isEmptyMethod.addModifiers(Modifier.PUBLIC);
@@ -1340,6 +1347,7 @@ public class SourcesGenerator {
 													.getData()
 													.get(newDataTransformation.to);
 											TypeName newType = nextVersionTypeTypes.get(newTypeName);
+											Objects.requireNonNull(newType, () -> "Type \"" + newTypeName + "\" is not present from next version " + version + " to version " + nextVersion.get() + " in upgrader " + newDataTransformation.transformClass + "." + newDataTransformation.to);
 											TypeName newTypeBoxed = newType.isPrimitive() ? newType.box() : newType;
 											{
 												currentVarNumber.addTo(newDataTransformation.to, 1);
@@ -2237,8 +2245,17 @@ public class SourcesGenerator {
 							returnOfNewInstanceStamentBuilder.add(")");
 						}
 					}
-					mapConstructor.addStatement(returnMapNewInstanceStamentBuilder.add(")").build());
-					ofConstructor.addStatement(returnOfNewInstanceStamentBuilder.add(")").build());
+					if (first) {
+						typeClass.addField(FieldSpec
+								.builder(typeTypes.get(type), "INSTANCE", Modifier.PRIVATE, Modifier.STATIC, Modifier.FINAL)
+								.initializer("new $T()", typeTypes.get(type))
+								.build());
+						mapConstructor.addStatement("return INSTANCE");
+						ofConstructor.addStatement("return INSTANCE");
+					} else {
+						mapConstructor.addStatement(returnMapNewInstanceStamentBuilder.add(")").build());
+						ofConstructor.addStatement(returnOfNewInstanceStamentBuilder.add(")").build());
+					}
 					typeClass.addMethod(mapConstructor.build());
 					typeClass.addMethod(ofConstructor.build());
 
