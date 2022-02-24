@@ -2733,6 +2733,14 @@ public class SourcesGenerator {
 		setterMethod.returns(classType);
 		if (!fieldType.isPrimitive()) {
 			setterMethod.addStatement("$T.requireNonNull(" + fieldName + ")", Objects.class);
+
+			setterMethod.beginControlFlow("if ($T.equals(" + fieldName + ", this." + fieldName + "))", Objects.class);
+			setterMethod.addStatement("return this");
+			setterMethod.endControlFlow();
+		} else {
+			setterMethod.beginControlFlow("if (" + fieldName + " == this." + fieldName + ")");
+			setterMethod.addStatement("return this");
+			setterMethod.endControlFlow();
 		}
 		setterMethod.addCode("$[return $T.of(\n$]", classType);
 		setterMethod.addCode("$>");
