@@ -724,14 +724,14 @@ public class SourcesGenerator {
 									.build()
 					);
 					typeMustGenerateSerializer.put(key, false);
-					typeTypes.put(key, ClassName.bestGuess(customTypeConfiguration.javaClass));
+					typeTypes.put(key, customTypeConfiguration.getJavaClassType());
 					typeFamily.put(key, Family.OTHER);
 					if (nextVersionCustomTypeConfiguration.isPresent()) {
-						nextVersionTypeTypes.put(key, ClassName.bestGuess(nextVersionCustomTypeConfiguration.get().javaClass));
+						nextVersionTypeTypes.put(key, nextVersionCustomTypeConfiguration.get().getJavaClassType());
 						nextVersionTypeFamily.put(key, Family.OTHER);
 					}
 
-					var arrayClassName = ClassName.bestGuess(customTypeConfiguration.javaClass);
+					var arrayClassName = customTypeConfiguration.getJavaClassType();
 					var neededTypes = registerNeededTypes(versionConfiguration,
 							Family.OTHER,
 							key,
@@ -2581,8 +2581,8 @@ public class SourcesGenerator {
 			HashMap<String, Family> typeFamily,
 			@Nullable HashMap<String, TypeName> nextVersionTypeTypes,
 			@Nullable HashMap<String, Family> nextVersionTypeFamily,
-			Supplier<ClassName> arrayClassName,
-			Supplier<ClassName> nextArrayClassName) {
+			Supplier<TypeName> arrayClassName,
+			Supplier<TypeName> nextArrayClassName) {
 		// Check if the nullable type is needed
 		boolean nullableTypeNeeded = versionConfiguration.classes
 				.values()
