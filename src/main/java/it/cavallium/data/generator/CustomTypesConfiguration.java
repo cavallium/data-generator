@@ -16,16 +16,16 @@ public class CustomTypesConfiguration {
 	public TypeName getJavaClassType() {
 		int indexOfGeneric;
 		if ((indexOfGeneric = javaClass.indexOf("<")) == -1) {
-			return ClassName.bestGuess(javaClass);
+			return ClassName.bestGuess(javaClass.trim());
 		} else {
 			var rawTypesArray = javaClass.substring(indexOfGeneric + 1, javaClass.length() - 1).split(",");
 			var genericsResult = new TypeName[rawTypesArray.length];
 			int i = 0;
 			for (String rawType : rawTypesArray) {
-				genericsResult[i] = ClassName.bestGuess(rawType);
+				genericsResult[i] = ClassName.bestGuess(rawType.trim());
 				i++;
 			}
-			var base = ClassName.bestGuess(javaClass.substring(0, indexOfGeneric));
+			var base = ClassName.bestGuess(javaClass.substring(0, indexOfGeneric).trim());
 			return ParameterizedTypeName.get(base, genericsResult);
 		}
 	}
