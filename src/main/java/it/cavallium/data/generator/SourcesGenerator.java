@@ -2239,7 +2239,12 @@ public class SourcesGenerator {
 						}
 						returnMapNewInstanceStamentBuilder.add("($T) fields.get(\"" + field + "\")", typeTypes.get(fieldType));
 						returnOfNewInstanceStamentBuilder.add("($T) " + field + "", typeTypes.get(fieldType));
-						ofConstructor.addParameter(typeTypes.get(fieldType),"" + field);
+						var fieldTypeName = typeTypes.get(fieldType);
+						var parameterSpecBuilder = ParameterSpec.builder(fieldTypeName, "" + field);
+						if (!fieldTypeName.isPrimitive()) {
+							parameterSpecBuilder.addAnnotation(NotNull.class);
+						}
+						ofConstructor.addParameter(parameterSpecBuilder.build());
 						if (requiresNotNull) {
 							returnMapNewInstanceStamentBuilder.add(")");
 							returnOfNewInstanceStamentBuilder.add(")");
