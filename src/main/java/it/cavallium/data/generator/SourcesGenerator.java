@@ -93,8 +93,9 @@ public class SourcesGenerator {
 	/**
 	 * @param basePackageName org.example
 	 * @param outPath         path/to/output
+	 * @param useRecordBuilders if true, the data will have @RecordBuilder annotation
 	 */
-	public void generateSources(String basePackageName, Path outPath) throws IOException {
+	public void generateSources(String basePackageName, Path outPath, boolean useRecordBuilders) throws IOException {
 
 		// Fix the configuration
 		for (Entry<String, InterfaceDataConfiguration> interfacesDatum : configuration.interfacesData.entrySet()) {
@@ -2117,7 +2118,9 @@ public class SourcesGenerator {
 					typeClass.addModifiers(Modifier.STATIC);
 					typeClass.addModifiers(Modifier.FINAL);
 					typeClass.addSuperinterface(ClassName.get(joinPackage(versionPackage, "data"), "IBasicType"));
-					typeClass.addAnnotation(RecordBuilder.class);
+					if (nextVersion.isEmpty() && useRecordBuilders) {
+						typeClass.addAnnotation(RecordBuilder.class);
+					}
 					var getBasicTypeMethod = MethodSpec
 							.methodBuilder("getBasicType$")
 							.addModifiers(Modifier.PUBLIC)

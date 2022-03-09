@@ -21,6 +21,9 @@ public class MavenPlugin extends AbstractMojo {
 	@Parameter( required = true)
 	private String basePackageName;
 
+	@Parameter( required = true, defaultValue = "false")
+	private String useRecordBuilder;
+
 	/**
 	 * @parameter default-value="${project}"
 	 * @required
@@ -38,7 +41,7 @@ public class MavenPlugin extends AbstractMojo {
 
 			Path outPath = genRecordsPath.resolve("java");
 			this.project.addCompileSourceRoot(outPath.toString());
-			sourcesGenerator.generateSources(basePackageName, outPath);
+			sourcesGenerator.generateSources(basePackageName, outPath, Boolean.parseBoolean(useRecordBuilder));
 		} catch (IOException e) {
 			throw new MojoExecutionException("Exception while generating classes", e);
 		}
