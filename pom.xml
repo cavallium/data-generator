@@ -77,6 +77,19 @@
           <encoding>UTF-8</encoding>
         </configuration>
       </plugin>
+			<plugin>
+				<groupId>com.outbrain.swinfra</groupId>
+				<artifactId>ci-friendly-flatten-maven-plugin</artifactId>
+				<version>1.0.14</version>
+				<executions>
+					<execution>
+						<goals>
+							<goal>clean</goal>
+							<goal>flatten</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
     </plugins>
   </build>
 
@@ -245,7 +258,7 @@
       <dependency>
         <groupId>it.cavallium</groupId>
         <artifactId>data-generator-runtime</artifactId>
-        <version>1.0.53</version>
+        <version>1.0.54</version>
       </dependency>
     </dependencies>
   </dependencyManagement>
