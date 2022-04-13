@@ -142,7 +142,6 @@
     <dependency>
       <groupId>io.soabase.record-builder</groupId>
       <artifactId>record-builder-core</artifactId>
-			<scope>provided</scope>
     </dependency>
     <dependency>
       <groupId>org.slf4j</groupId>
