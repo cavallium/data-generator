@@ -64,7 +64,7 @@
           <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter-engine</artifactId>
-            <version>5.8.0-M1</version>
+            <version>5.8.2</version>
           </dependency>
         </dependencies>
       </plugin>
@@ -77,6 +77,19 @@
           <encoding>UTF-8</encoding>
         </configuration>
       </plugin>
+			<plugin>
+				<groupId>com.outbrain.swinfra</groupId>
+				<artifactId>ci-friendly-flatten-maven-plugin</artifactId>
+				<version>1.0.14</version>
+				<executions>
+					<execution>
+						<goals>
+							<goal>clean</goal>
+							<goal>flatten</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
     </plugins>
   </build>
 
@@ -234,7 +247,7 @@
       <dependency>
         <groupId>org.junit.jupiter</groupId>
         <artifactId>junit-jupiter-api</artifactId>
-        <version>5.8.0-M1</version>
+        <version>5.8.2</version>
         <exclusions>
           <exclusion>
             <groupId>org.hamcrest</groupId>
@@ -245,7 +258,7 @@
       <dependency>
         <groupId>it.cavallium</groupId>
         <artifactId>data-generator-runtime</artifactId>
-        <version>1.0.46</version>
+        <version>1.0.54</version>
       </dependency>
     </dependencies>
   </dependencyManagement>
