@@ -1,11 +1,6 @@
 <lifecycleMappingMetadata>
   <pluginExecutions>
     <pluginExecution>
-      <pluginExecutionFilter>
-        <goals>
-          <goal>generate-data-classes</goal>
-        </goals>
-      </pluginExecutionFilter>
       <action>
         <execute>
           <runOnIncremental>true</runOnIncremental>
