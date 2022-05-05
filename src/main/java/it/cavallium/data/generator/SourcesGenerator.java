@@ -959,7 +959,7 @@ public class SourcesGenerator {
 								var orMethodGeneric = MethodSpec.methodBuilder("or");
 								orMethodGeneric.addParameter(ParameterSpec
 										.builder(ParameterizedTypeName.get(
-												ClassName.get("it.cavallium.data.generator", "NativeTypedNullable"),
+												ClassName.get("it.cavallium.data.generator", "NativeNullable"),
 												WildcardTypeName.subtypeOf(typeType)), "fallback")
 										.addAnnotation(NotNull.class)
 										.build());
@@ -985,7 +985,6 @@ public class SourcesGenerator {
 										.build());
 								orMethodSpecific.addModifiers(Modifier.PUBLIC);
 								orMethodSpecific.addModifiers(Modifier.FINAL);
-								orMethodSpecific.addAnnotation(Override.class);
 								orMethodSpecific.addAnnotation(NotNull.class);
 								orMethodSpecific.returns(nullableClassType);
 								orMethodSpecific.beginControlFlow("if (value == null)");
