@@ -167,8 +167,9 @@
       </exclusions>
     </dependency>
     <dependency>
-      <groupId>it.cavallium</groupId>
-      <artifactId>data-generator-runtime</artifactId>
+			<groupId>it.cavallium</groupId>
+			<artifactId>data-generator-runtime</artifactId>
+			<version>1.0.62</version>
     </dependency>
   </dependencies>
   <dependencyManagement>
@@ -254,11 +255,6 @@
             <artifactId>hamcrest-core</artifactId>
           </exclusion>
         </exclusions>
-      </dependency>
-      <dependency>
-        <groupId>it.cavallium</groupId>
-        <artifactId>data-generator-runtime</artifactId>
-        <version>1.0.54</version>
       </dependency>
     </dependencies>
   </dependencyManagement>

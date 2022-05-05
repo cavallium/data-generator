@@ -875,6 +875,7 @@ public class SourcesGenerator {
 										"INullableIType"
 								));
 								nullableTypeClass.addSuperinterface(IGenericNullable.class);
+								nullableTypeClass.addSuperinterface(ParameterizedTypeName.get(ClassName.get( "it.cavallium.data.generator", "TypedNullable"), typeType));
 								var nullInstance = FieldSpec.builder(nullableTypeType, "NULL", Modifier.PRIVATE, Modifier.STATIC, Modifier.FINAL);
 								nullInstance.initializer("new $T(null)", nullableTypeType);
 								nullableTypeClass.addField(nullInstance.build());
@@ -915,12 +916,14 @@ public class SourcesGenerator {
 								var isEmptyMethod = MethodSpec.methodBuilder("isEmpty");
 								isEmptyMethod.addModifiers(Modifier.PUBLIC);
 								isEmptyMethod.addModifiers(Modifier.FINAL);
+								isEmptyMethod.addAnnotation(Override.class);
 								isEmptyMethod.returns(TypeName.BOOLEAN);
 								isEmptyMethod.addStatement("return value == null");
 								nullableTypeClass.addMethod(isEmptyMethod.build());
 								var isPresentMethod = MethodSpec.methodBuilder("isPresent");
 								isPresentMethod.addModifiers(Modifier.PUBLIC);
 								isPresentMethod.addModifiers(Modifier.FINAL);
+								isPresentMethod.addAnnotation(Override.class);
 								isPresentMethod.returns(TypeName.BOOLEAN);
 								isPresentMethod.addStatement("return value != null");
 								nullableTypeClass.addMethod(isPresentMethod.build());
@@ -928,6 +931,7 @@ public class SourcesGenerator {
 								getMethod.addModifiers(Modifier.PUBLIC);
 								getMethod.addModifiers(Modifier.FINAL);
 								getMethod.addException(NullPointerException.class);
+								getMethod.addAnnotation(Override.class);
 								getMethod.addAnnotation(NotNull.class);
 								getMethod.returns(typeType);
 								getMethod.beginControlFlow("if (value == null)");
@@ -943,7 +947,7 @@ public class SourcesGenerator {
 										.build());
 								orElseMethod.addModifiers(Modifier.PUBLIC);
 								orElseMethod.addModifiers(Modifier.FINAL);
-								orElseMethod.addException(NullPointerException.class);
+								orElseMethod.addAnnotation(Override.class);
 								orElseMethod.addAnnotation(NotNull.class);
 								orElseMethod.returns(typeType);
 								orElseMethod.beginControlFlow("if (value == null)");
@@ -952,13 +956,68 @@ public class SourcesGenerator {
 								orElseMethod.addStatement("return value");
 								orElseMethod.endControlFlow();
 								nullableTypeClass.addMethod(orElseMethod.build());
+								var orMethodGeneric = MethodSpec.methodBuilder("or");
+								orMethodGeneric.addParameter(ParameterSpec
+										.builder(ParameterizedTypeName.get(
+												ClassName.get("it.cavallium.data.generator", "NativeTypedNullable"),
+												WildcardTypeName.subtypeOf(typeType)), "fallback")
+										.addAnnotation(NotNull.class)
+										.build());
+								orMethodGeneric.addModifiers(Modifier.PUBLIC);
+								orMethodGeneric.addModifiers(Modifier.FINAL);
+								orMethodGeneric.addAnnotation(Override.class);
+								orMethodGeneric.addAnnotation(NotNull.class);
+								orMethodGeneric.returns(nullableClassType);
+								orMethodGeneric.beginControlFlow("if (value == null)");
+								orMethodGeneric.beginControlFlow("if (fallback.getClass() == $T.class)", nullableClassType);
+								orMethodGeneric.addStatement("return ($T) fallback", nullableClassType);
+								orMethodGeneric.nextControlFlow("else");
+								orMethodGeneric.addStatement("return ofNullable(fallback.getNullable())");
+								orMethodGeneric.endControlFlow();
+								orMethodGeneric.nextControlFlow("else");
+								orMethodGeneric.addStatement("return this");
+								orMethodGeneric.endControlFlow();
+								nullableTypeClass.addMethod(orMethodGeneric.build());
+								var orMethodSpecific = MethodSpec.methodBuilder("or");
+								orMethodSpecific.addParameter(ParameterSpec
+										.builder(nullableTypeType, "fallback")
+										.addAnnotation(NotNull.class)
+										.build());
+								orMethodSpecific.addModifiers(Modifier.PUBLIC);
+								orMethodSpecific.addModifiers(Modifier.FINAL);
+								orMethodSpecific.addAnnotation(Override.class);
+								orMethodSpecific.addAnnotation(NotNull.class);
+								orMethodSpecific.returns(nullableClassType);
+								orMethodSpecific.beginControlFlow("if (value == null)");
+								orMethodSpecific.addStatement("return fallback");
+								orMethodSpecific.nextControlFlow("else");
+								orMethodSpecific.addStatement("return this");
+								orMethodSpecific.endControlFlow();
+								nullableTypeClass.addMethod(orMethodSpecific.build());
 								var getNullableMethod = MethodSpec.methodBuilder("getNullable");
 								getNullableMethod.addModifiers(Modifier.PUBLIC);
 								getNullableMethod.addModifiers(Modifier.FINAL);
+								getNullableMethod.addAnnotation(Override.class);
 								getNullableMethod.addAnnotation(Nullable.class);
 								getNullableMethod.returns(typeType);
 								getNullableMethod.addStatement("return value");
 								nullableTypeClass.addMethod(getNullableMethod.build());
+								var getNullableParam = MethodSpec.methodBuilder("getNullable");
+								getNullableParam.addParameter(ParameterSpec
+										.builder(typeType, "defaultValue")
+										.addAnnotation(Nullable.class)
+										.build());
+								getNullableParam.addModifiers(Modifier.PUBLIC);
+								getNullableParam.addModifiers(Modifier.FINAL);
+								getNullableParam.addAnnotation(Override.class);
+								getNullableParam.addAnnotation(Nullable.class);
+								getNullableParam.returns(typeType);
+								getNullableParam.beginControlFlow("if (value == null)");
+								getNullableParam.addStatement("return defaultValue");
+								getNullableParam.nextControlFlow("else");
+								getNullableParam.addStatement("return value");
+								getNullableParam.endControlFlow();
+								nullableTypeClass.addMethod(getNullableParam.build());
 								var getDollarNullableMethod = MethodSpec.methodBuilder("$getNullable");
 								getDollarNullableMethod.addModifiers(Modifier.PUBLIC);
 								getDollarNullableMethod.addModifiers(Modifier.FINAL);
