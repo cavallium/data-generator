@@ -66,6 +66,7 @@ import org.yaml.snakeyaml.Yaml;
 public class SourcesGenerator {
 
 	private static final Logger logger = LoggerFactory.getLogger(SourcesGenerator.class);
+	private static final boolean OVERRIDE_ALL_NULLABLE_METHODS = false;
 
 	private final SourcesGeneratorConfiguration configuration;
 
@@ -913,71 +914,73 @@ public class SourcesGenerator {
 								emptyMethod.returns(nullableClassType);
 								emptyMethod.addStatement("return NULL");
 								nullableTypeClass.addMethod(emptyMethod.build());
-								var isEmptyMethod = MethodSpec.methodBuilder("isEmpty");
-								isEmptyMethod.addModifiers(Modifier.PUBLIC);
-								isEmptyMethod.addModifiers(Modifier.FINAL);
-								isEmptyMethod.addAnnotation(Override.class);
-								isEmptyMethod.returns(TypeName.BOOLEAN);
-								isEmptyMethod.addStatement("return value == null");
-								nullableTypeClass.addMethod(isEmptyMethod.build());
-								var isPresentMethod = MethodSpec.methodBuilder("isPresent");
-								isPresentMethod.addModifiers(Modifier.PUBLIC);
-								isPresentMethod.addModifiers(Modifier.FINAL);
-								isPresentMethod.addAnnotation(Override.class);
-								isPresentMethod.returns(TypeName.BOOLEAN);
-								isPresentMethod.addStatement("return value != null");
-								nullableTypeClass.addMethod(isPresentMethod.build());
-								var getMethod = MethodSpec.methodBuilder("get");
-								getMethod.addModifiers(Modifier.PUBLIC);
-								getMethod.addModifiers(Modifier.FINAL);
-								getMethod.addException(NullPointerException.class);
-								getMethod.addAnnotation(Override.class);
-								getMethod.addAnnotation(NotNull.class);
-								getMethod.returns(typeType);
-								getMethod.beginControlFlow("if (value == null)");
-								getMethod.addStatement("throw new $T()", NullPointerException.class);
-								getMethod.nextControlFlow("else");
-								getMethod.addStatement("return value");
-								getMethod.endControlFlow();
-								nullableTypeClass.addMethod(getMethod.build());
-								var orElseMethod = MethodSpec.methodBuilder("orElse");
-								orElseMethod.addParameter(ParameterSpec
-										.builder(typeType, "defaultValue")
-										.addAnnotation(NotNull.class)
-										.build());
-								orElseMethod.addModifiers(Modifier.PUBLIC);
-								orElseMethod.addModifiers(Modifier.FINAL);
-								orElseMethod.addAnnotation(Override.class);
-								orElseMethod.addAnnotation(NotNull.class);
-								orElseMethod.returns(typeType);
-								orElseMethod.beginControlFlow("if (value == null)");
-								orElseMethod.addStatement("return defaultValue");
-								orElseMethod.nextControlFlow("else");
-								orElseMethod.addStatement("return value");
-								orElseMethod.endControlFlow();
-								nullableTypeClass.addMethod(orElseMethod.build());
-								var orMethodGeneric = MethodSpec.methodBuilder("or");
-								orMethodGeneric.addParameter(ParameterSpec
-										.builder(ParameterizedTypeName.get(
-												ClassName.get("it.cavallium.data.generator", "NativeNullable"),
-												WildcardTypeName.subtypeOf(typeType)), "fallback")
-										.addAnnotation(NotNull.class)
-										.build());
-								orMethodGeneric.addModifiers(Modifier.PUBLIC);
-								orMethodGeneric.addModifiers(Modifier.FINAL);
-								orMethodGeneric.addAnnotation(Override.class);
-								orMethodGeneric.addAnnotation(NotNull.class);
-								orMethodGeneric.returns(nullableClassType);
-								orMethodGeneric.beginControlFlow("if (value == null)");
-								orMethodGeneric.beginControlFlow("if (fallback.getClass() == $T.class)", nullableClassType);
-								orMethodGeneric.addStatement("return ($T) fallback", nullableClassType);
-								orMethodGeneric.nextControlFlow("else");
-								orMethodGeneric.addStatement("return ofNullable(fallback.getNullable())");
-								orMethodGeneric.endControlFlow();
-								orMethodGeneric.nextControlFlow("else");
-								orMethodGeneric.addStatement("return this");
-								orMethodGeneric.endControlFlow();
-								nullableTypeClass.addMethod(orMethodGeneric.build());
+								if (OVERRIDE_ALL_NULLABLE_METHODS) {
+									var isEmptyMethod = MethodSpec.methodBuilder("isEmpty");
+									isEmptyMethod.addModifiers(Modifier.PUBLIC);
+									isEmptyMethod.addModifiers(Modifier.FINAL);
+									isEmptyMethod.addAnnotation(Override.class);
+									isEmptyMethod.returns(TypeName.BOOLEAN);
+									isEmptyMethod.addStatement("return value == null");
+									nullableTypeClass.addMethod(isEmptyMethod.build());
+									var isPresentMethod = MethodSpec.methodBuilder("isPresent");
+									isPresentMethod.addModifiers(Modifier.PUBLIC);
+									isPresentMethod.addModifiers(Modifier.FINAL);
+									isPresentMethod.addAnnotation(Override.class);
+									isPresentMethod.returns(TypeName.BOOLEAN);
+									isPresentMethod.addStatement("return value != null");
+									nullableTypeClass.addMethod(isPresentMethod.build());
+									var getMethod = MethodSpec.methodBuilder("get");
+									getMethod.addModifiers(Modifier.PUBLIC);
+									getMethod.addModifiers(Modifier.FINAL);
+									getMethod.addException(NullPointerException.class);
+									getMethod.addAnnotation(Override.class);
+									getMethod.addAnnotation(NotNull.class);
+									getMethod.returns(typeType);
+									getMethod.beginControlFlow("if (value == null)");
+									getMethod.addStatement("throw new $T()", NullPointerException.class);
+									getMethod.nextControlFlow("else");
+									getMethod.addStatement("return value");
+									getMethod.endControlFlow();
+									nullableTypeClass.addMethod(getMethod.build());
+									var orElseMethod = MethodSpec.methodBuilder("orElse");
+									orElseMethod.addParameter(ParameterSpec
+											.builder(typeType, "defaultValue")
+											.addAnnotation(NotNull.class)
+											.build());
+									orElseMethod.addModifiers(Modifier.PUBLIC);
+									orElseMethod.addModifiers(Modifier.FINAL);
+									orElseMethod.addAnnotation(Override.class);
+									orElseMethod.addAnnotation(NotNull.class);
+									orElseMethod.returns(typeType);
+									orElseMethod.beginControlFlow("if (value == null)");
+									orElseMethod.addStatement("return defaultValue");
+									orElseMethod.nextControlFlow("else");
+									orElseMethod.addStatement("return value");
+									orElseMethod.endControlFlow();
+									nullableTypeClass.addMethod(orElseMethod.build());
+									var orMethodGeneric = MethodSpec.methodBuilder("or");
+									orMethodGeneric.addParameter(ParameterSpec
+											.builder(ParameterizedTypeName.get(
+													ClassName.get("it.cavallium.data.generator", "NativeNullable"),
+													WildcardTypeName.subtypeOf(typeType)), "fallback")
+											.addAnnotation(NotNull.class)
+											.build());
+									orMethodGeneric.addModifiers(Modifier.PUBLIC);
+									orMethodGeneric.addModifiers(Modifier.FINAL);
+									orMethodGeneric.addAnnotation(Override.class);
+									orMethodGeneric.addAnnotation(NotNull.class);
+									orMethodGeneric.returns(nullableClassType);
+									orMethodGeneric.beginControlFlow("if (value == null)");
+									orMethodGeneric.beginControlFlow("if (fallback.getClass() == $T.class)", nullableClassType);
+									orMethodGeneric.addStatement("return ($T) fallback", nullableClassType);
+									orMethodGeneric.nextControlFlow("else");
+									orMethodGeneric.addStatement("return ofNullable(fallback.getNullable())");
+									orMethodGeneric.endControlFlow();
+									orMethodGeneric.nextControlFlow("else");
+									orMethodGeneric.addStatement("return this");
+									orMethodGeneric.endControlFlow();
+									nullableTypeClass.addMethod(orMethodGeneric.build());
+								}
 								var orMethodSpecific = MethodSpec.methodBuilder("or");
 								orMethodSpecific.addParameter(ParameterSpec
 										.builder(nullableTypeType, "fallback")
@@ -1001,22 +1004,24 @@ public class SourcesGenerator {
 								getNullableMethod.returns(typeType);
 								getNullableMethod.addStatement("return value");
 								nullableTypeClass.addMethod(getNullableMethod.build());
-								var getNullableParam = MethodSpec.methodBuilder("getNullable");
-								getNullableParam.addParameter(ParameterSpec
-										.builder(typeType, "defaultValue")
-										.addAnnotation(Nullable.class)
-										.build());
-								getNullableParam.addModifiers(Modifier.PUBLIC);
-								getNullableParam.addModifiers(Modifier.FINAL);
-								getNullableParam.addAnnotation(Override.class);
-								getNullableParam.addAnnotation(Nullable.class);
-								getNullableParam.returns(typeType);
-								getNullableParam.beginControlFlow("if (value == null)");
-								getNullableParam.addStatement("return defaultValue");
-								getNullableParam.nextControlFlow("else");
-								getNullableParam.addStatement("return value");
-								getNullableParam.endControlFlow();
-								nullableTypeClass.addMethod(getNullableParam.build());
+								if (OVERRIDE_ALL_NULLABLE_METHODS) {
+									var getNullableParam = MethodSpec.methodBuilder("getNullable");
+									getNullableParam.addParameter(ParameterSpec
+											.builder(typeType, "defaultValue")
+											.addAnnotation(Nullable.class)
+											.build());
+									getNullableParam.addModifiers(Modifier.PUBLIC);
+									getNullableParam.addModifiers(Modifier.FINAL);
+									getNullableParam.addAnnotation(Override.class);
+									getNullableParam.addAnnotation(Nullable.class);
+									getNullableParam.returns(typeType);
+									getNullableParam.beginControlFlow("if (value == null)");
+									getNullableParam.addStatement("return defaultValue");
+									getNullableParam.nextControlFlow("else");
+									getNullableParam.addStatement("return value");
+									getNullableParam.endControlFlow();
+									nullableTypeClass.addMethod(getNullableParam.build());
+								}
 								var getDollarNullableMethod = MethodSpec.methodBuilder("$getNullable");
 								getDollarNullableMethod.addModifiers(Modifier.PUBLIC);
 								getDollarNullableMethod.addModifiers(Modifier.FINAL);
