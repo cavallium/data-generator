@@ -1285,65 +1285,62 @@ public class SourcesGenerator {
 									deserializeMethod.addComment("TRANSFORMATION #" + transformationNumber.incrementAndGet() + ": "
 											+ transformation.getTransformName());
 									switch (transformation.getTransformName()) {
-										case "remove-data":
+										case "remove-data" -> {
 											var removeDataTransformation = (RemoveDataConfiguration) transformation;
-										{
-											deserializeMethod.addComment(
-													"Deleted $$field$$" + currentVarNumber.getInt(removeDataTransformation.from) + "$$"
-															+ removeDataTransformation.from);
-											currentVarNumber.addTo(removeDataTransformation.from, 1);
-											currentVarTypeName.remove(removeDataTransformation.from);
-											currentVarTypeClass.remove(removeDataTransformation.from);
-											currentVarFamily.remove(removeDataTransformation.from);
-											currentVarUpgraded.remove(removeDataTransformation.from);
-											currentVarDeleted.add(removeDataTransformation.from);
-										}
-
-										Objects.requireNonNull(currentTransformedFieldTypes.remove(
-												removeDataTransformation.transformClass + "." + removeDataTransformation.from));
-										break;
-										case "move-data":
-											var moveDataTransformation = (MoveDataConfiguration) transformation;
-
-										{
-											currentVarNumber.addTo(moveDataTransformation.to, 1);
-											currentVarTypeName.put(moveDataTransformation.to,
-													Objects.requireNonNull(currentVarTypeName.get(moveDataTransformation.from))
-											);
-											currentVarTypeClass.put(moveDataTransformation.to,
-													Objects.requireNonNull(currentVarTypeClass.get(moveDataTransformation.from))
-											);
-											currentVarFamily.put(moveDataTransformation.to,
-													Objects.requireNonNull(currentVarFamily.get(moveDataTransformation.from))
-											);
-											if (currentVarUpgraded.remove(moveDataTransformation.from)) {
-												currentVarUpgraded.add(moveDataTransformation.to);
+											{
+												deserializeMethod.addComment(
+														"Deleted $$field$$" + currentVarNumber.getInt(removeDataTransformation.from) + "$$"
+																+ removeDataTransformation.from);
+												currentVarNumber.addTo(removeDataTransformation.from, 1);
+												currentVarTypeName.remove(removeDataTransformation.from);
+												currentVarTypeClass.remove(removeDataTransformation.from);
+												currentVarFamily.remove(removeDataTransformation.from);
+												currentVarUpgraded.remove(removeDataTransformation.from);
+												currentVarDeleted.add(removeDataTransformation.from);
 											}
-											currentVarDeleted.remove(moveDataTransformation.to);
-											deserializeMethod.addStatement(
-													"var $$field$$" + currentVarNumber.getInt(moveDataTransformation.to) + "$$"
-															+ moveDataTransformation.to + " = $$field$$" + currentVarNumber.getInt(
-															moveDataTransformation.from) + "$$" + moveDataTransformation.from);
+											Objects.requireNonNull(currentTransformedFieldTypes.remove(
+													removeDataTransformation.transformClass + "." + removeDataTransformation.from));
 										}
-										{
-											deserializeMethod.addComment(
-													"Deleted $$field$$" + currentVarNumber.getInt(moveDataTransformation.from) + "$$"
-															+ moveDataTransformation.from);
-											currentVarNumber.addTo(moveDataTransformation.from, 1);
-											currentVarTypeName.remove(moveDataTransformation.from);
-											currentVarTypeClass.remove(moveDataTransformation.from);
-											currentVarFamily.remove(moveDataTransformation.from);
-											currentVarUpgraded.remove(moveDataTransformation.from);
-											currentVarDeleted.add(moveDataTransformation.from);
+										case "move-data" -> {
+											var moveDataTransformation = (MoveDataConfiguration) transformation;
+											{
+												currentVarNumber.addTo(moveDataTransformation.to, 1);
+												currentVarTypeName.put(moveDataTransformation.to,
+														Objects.requireNonNull(currentVarTypeName.get(moveDataTransformation.from))
+												);
+												currentVarTypeClass.put(moveDataTransformation.to,
+														Objects.requireNonNull(currentVarTypeClass.get(moveDataTransformation.from))
+												);
+												currentVarFamily.put(moveDataTransformation.to,
+														Objects.requireNonNull(currentVarFamily.get(moveDataTransformation.from))
+												);
+												if (currentVarUpgraded.remove(moveDataTransformation.from)) {
+													currentVarUpgraded.add(moveDataTransformation.to);
+												}
+												currentVarDeleted.remove(moveDataTransformation.to);
+												deserializeMethod.addStatement(
+														"var $$field$$" + currentVarNumber.getInt(moveDataTransformation.to) + "$$"
+																+ moveDataTransformation.to + " = $$field$$" + currentVarNumber.getInt(
+																moveDataTransformation.from) + "$$" + moveDataTransformation.from);
+											}
+											{
+												deserializeMethod.addComment(
+														"Deleted $$field$$" + currentVarNumber.getInt(moveDataTransformation.from) + "$$"
+																+ moveDataTransformation.from);
+												currentVarNumber.addTo(moveDataTransformation.from, 1);
+												currentVarTypeName.remove(moveDataTransformation.from);
+												currentVarTypeClass.remove(moveDataTransformation.from);
+												currentVarFamily.remove(moveDataTransformation.from);
+												currentVarUpgraded.remove(moveDataTransformation.from);
+												currentVarDeleted.add(moveDataTransformation.from);
+											}
+											currentTransformedFieldTypes.put(
+													moveDataTransformation.transformClass + "." + moveDataTransformation.to,
+													Objects.requireNonNull(currentTransformedFieldTypes.remove(
+															moveDataTransformation.transformClass + "." + moveDataTransformation.from))
+											);
 										}
-
-										currentTransformedFieldTypes.put(
-												moveDataTransformation.transformClass + "." + moveDataTransformation.to,
-												Objects.requireNonNull(currentTransformedFieldTypes.remove(
-														moveDataTransformation.transformClass + "." + moveDataTransformation.from))
-										);
-										break;
-										case "upgrade-data":
+										case "upgrade-data" -> {
 											var upgradeDataTransformation = (UpgradeDataConfiguration) transformation;
 											TypeName fromType = currentTransformedFieldTypes.get(
 													upgradeDataTransformation.transformClass + "." + upgradeDataTransformation.from);
@@ -1365,26 +1362,21 @@ public class SourcesGenerator {
 																toTypeBoxed
 														);
 														var fieldName = "DATA_UPGRADER_" + nextDataUpgraderInstanceFieldId.getAndIncrement();
-														var fieldSpec = FieldSpec
-																.builder(dataUpgraderType,
-																		fieldName,
-																		Modifier.PRIVATE,
-																		Modifier.STATIC,
-																		Modifier.FINAL
-																);
+														var fieldSpec = FieldSpec.builder(dataUpgraderType,
+																fieldName,
+																Modifier.PRIVATE,
+																Modifier.STATIC,
+																Modifier.FINAL
+														);
 														fieldSpec.initializer("($T) new $T()", dataUpgraderType, dataUpgraderClass);
 														upgraderClass.addField(fieldSpec.build());
 														return fieldName;
 													}
 											);
 											deserializeMethod.addStatement(
-													"$T upgraded = ($T) " + dataUpgraderFieldName + ".upgrade(($T) $$field$$" + currentVarNumber.getInt(
-															upgradeDataTransformation.from) + "$$" + upgradeDataTransformation.from + ")",
-													toType,
-													toTypeBoxed,
-													fromTypeBoxed
-											);
-
+													"$T upgraded = ($T) " + dataUpgraderFieldName + ".upgrade(($T) $$field$$"
+															+ currentVarNumber.getInt(upgradeDataTransformation.from) + "$$"
+															+ upgradeDataTransformation.from + ")", toType, toTypeBoxed, fromTypeBoxed);
 											deserializeMethod.addStatement(
 													"$$field$$" + (currentVarNumber.getInt(upgradeDataTransformation.from) + 1) + "$$"
 															+ upgradeDataTransformation.from + " = upgraded");
@@ -1392,7 +1384,6 @@ public class SourcesGenerator {
 													upgradeDataTransformation.transformClass + "." + upgradeDataTransformation.from));
 											currentTransformedFieldTypes.put(
 													upgradeDataTransformation.transformClass + "." + upgradeDataTransformation.from, toType);
-
 											currentVarNumber.addTo(upgradeDataTransformation.from, 1);
 											currentVarTypeName.put(upgradeDataTransformation.from, toTypeName);
 											currentVarTypeClass.put(upgradeDataTransformation.from, toType);
@@ -1403,40 +1394,47 @@ public class SourcesGenerator {
 											);
 											currentVarUpgraded.add(upgradeDataTransformation.from);
 											currentVarDeleted.remove(upgradeDataTransformation.from);
-											break;
-										case "new-data":
+										}
+										case "new-data" -> {
 											var newDataTransformation = (NewDataConfiguration) transformation;
 											String newTypeName = configuration.versions.get(nextVersion.get()).classes
 													.get(newDataTransformation.transformClass)
 													.getData()
 													.get(newDataTransformation.to);
 											TypeName newType = nextVersionTypeTypes.get(newTypeName);
-											Objects.requireNonNull(newType, () -> "Type \"" + newTypeName + "\" is not present from next version " + version + " to version " + nextVersion.get() + " in upgrader " + newDataTransformation.transformClass + "." + newDataTransformation.to);
+											Objects.requireNonNull(newType,
+													() -> "Type \"" + newTypeName + "\" is not present from next version " + version
+															+ " to version " + nextVersion.get() + " in upgrader "
+															+ newDataTransformation.transformClass + "." + newDataTransformation.to
+											);
 											TypeName newTypeBoxed = newType.isPrimitive() ? newType.box() : newType;
 											{
 												currentVarNumber.addTo(newDataTransformation.to, 1);
 												currentVarTypeName.put(newDataTransformation.to, newTypeName);
 												currentVarTypeClass.put(newDataTransformation.to, newType);
-												currentVarFamily.put(newDataTransformation.to, Objects.requireNonNull(typeFamily.get(newTypeName),
-														() -> "Type \"" + newTypeName + "\" has no type family!"
-												));
+												currentVarFamily.put(newDataTransformation.to,
+														Objects.requireNonNull(typeFamily.get(newTypeName),
+																() -> "Type \"" + newTypeName + "\" has no type family!"
+														)
+												);
 												currentVarUpgraded.add(newDataTransformation.to);
 												currentVarDeleted.remove(newDataTransformation.to);
 
 												var dataInitializerClass = ClassName.bestGuess(newDataTransformation.initializer);
-												var dataInitializerFieldName = dataInitializerInstanceFieldName.computeIfAbsent(dataInitializerClass,
+												var dataInitializerFieldName = dataInitializerInstanceFieldName.computeIfAbsent(
+														dataInitializerClass,
 														_unused -> {
 															var dataInitializerType = ParameterizedTypeName.get(ClassName.get(DataInitializer.class),
 																	newTypeBoxed
 															);
-															var fieldName = "DATA_INITIALIZER_" + nextDataInitializerInstanceFieldId.getAndIncrement();
-															var fieldSpec = FieldSpec
-																	.builder(dataInitializerType,
-																			fieldName,
-																			Modifier.PRIVATE,
-																			Modifier.STATIC,
-																			Modifier.FINAL
-																	);
+															var fieldName =
+																	"DATA_INITIALIZER_" + nextDataInitializerInstanceFieldId.getAndIncrement();
+															var fieldSpec = FieldSpec.builder(dataInitializerType,
+																	fieldName,
+																	Modifier.PRIVATE,
+																	Modifier.STATIC,
+																	Modifier.FINAL
+															);
 															fieldSpec.initializer("($T) new $T()", dataInitializerType, dataInitializerClass);
 															upgraderClass.addField(fieldSpec.build());
 															return fieldName;
@@ -1445,17 +1443,15 @@ public class SourcesGenerator {
 
 												deserializeMethod.addStatement(
 														"var $$field$$" + currentVarNumber.getInt(newDataTransformation.to) + "$$"
-																+ newDataTransformation.to + " = " + dataInitializerFieldName + ".initialize()"
-												);
+																+ newDataTransformation.to + " = " + dataInitializerFieldName + ".initialize()");
 											}
 											if (currentTransformedFieldTypes.put(
 													newDataTransformation.transformClass + "." + newDataTransformation.to, newType) != null) {
 												throw new IllegalStateException();
 											}
-											break;
-										default:
-											throw new UnsupportedOperationException(
-													"Unknown transform type: " + transformation.getTransformName());
+										}
+										default -> throw new UnsupportedOperationException(
+												"Unknown transform type: " + transformation.getTransformName());
 									}
 								}
 								deserializeMethod.addCode("\n");
@@ -1491,71 +1487,58 @@ public class SourcesGenerator {
 											currentVarDeleted.remove(key);
 
 											switch (currentFamily) {
-												case BASIC:
-												case GENERIC:
-													deserializeMethod.addCode(buildStatementUpgradeBasicType(
-															versionPackage,
-															nextVersionPackage.get(),
-															number,
-															key,
-															toTypeName,
-															toFamily,
-															toType,
-															toTypeBoxed
-													));
-													break;
-												case I_TYPE_ARRAY:
-													deserializeMethod.addCode(buildStatementUpgradeITypeArrayField(
-															versionPackage,
-															nextVersionPackage.get(),
-															number,
-															key,
-															toTypeName,
-															toFamily,
-															toType,
-															toTypeBoxed
-													));
-													break;
-												case NULLABLE_BASIC:
-													deserializeMethod.addCode(buildStatementUpgradeNullableBasicField(
-															versionPackage,
-															nextVersionPackage.get(),
-															number,
-															key,
-															toTypeName,
-															toFamily,
-															toType,
-															toTypeBoxed,
-															nextVersionTypeTypes.get(toTypeName.substring(1))
-													));
-													break;
-												case NULLABLE_GENERIC:
-													deserializeMethod.addCode(buildStatementUpgradeNullableGenericField(
-															versionPackage,
-															nextVersionPackage.get(),
-															number,
-															key,
-															toTypeName,
-															toFamily,
-															toType,
-															toTypeBoxed,
-															nextVersionTypeTypes.get(toTypeName.substring(1))
-													));
-													break;
-												case NULLABLE_OTHER:
-													deserializeMethod.addCode(buildStatementUpgradeNullableOtherField(
-															versionPackage,
-															nextVersionPackage.get(),
-															number,
-															key,
-															toTypeName,
-															toFamily,
-															toType,
-															toTypeBoxed
-													));
-													break;
-												default:
-													throw new IllegalStateException("Unexpected value: " + currentFamily);
+												case BASIC, GENERIC -> deserializeMethod.addCode(buildStatementUpgradeBasicType(versionPackage,
+														nextVersionPackage.get(),
+														number,
+														key,
+														toTypeName,
+														toFamily,
+														toType,
+														toTypeBoxed
+												));
+												case I_TYPE_ARRAY -> deserializeMethod.addCode(buildStatementUpgradeITypeArrayField(
+														versionPackage,
+														nextVersionPackage.get(),
+														number,
+														key,
+														toTypeName,
+														toFamily,
+														toType,
+														toTypeBoxed
+												));
+												case NULLABLE_BASIC -> deserializeMethod.addCode(buildStatementUpgradeNullableBasicField(
+														versionPackage,
+														nextVersionPackage.get(),
+														number,
+														key,
+														toTypeName,
+														toFamily,
+														toType,
+														toTypeBoxed,
+														nextVersionTypeTypes.get(toTypeName.substring(1))
+												));
+												case NULLABLE_GENERIC -> deserializeMethod.addCode(buildStatementUpgradeNullableGenericField(
+														versionPackage,
+														nextVersionPackage.get(),
+														number,
+														key,
+														toTypeName,
+														toFamily,
+														toType,
+														toTypeBoxed,
+														nextVersionTypeTypes.get(toTypeName.substring(1))
+												));
+												case NULLABLE_OTHER -> deserializeMethod.addCode(buildStatementUpgradeNullableOtherField(
+														versionPackage,
+														nextVersionPackage.get(),
+														number,
+														key,
+														toTypeName,
+														toFamily,
+														toType,
+														toTypeBoxed
+												));
+												default -> throw new IllegalStateException("Unexpected value: " + currentFamily);
 											}
 										}
 									}
@@ -2633,7 +2616,7 @@ public class SourcesGenerator {
 		return deserializeMethod;
 	}
 
-	public static record NeededTypes(
+	public record NeededTypes(
 				boolean nullableTypeNeeded,
 				boolean nextVersionNullableTypeNeeded,
 				boolean arrayTypeNeeded,
