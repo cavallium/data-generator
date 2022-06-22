@@ -1478,6 +1478,9 @@ public class SourcesGenerator {
 										String toTypeName = nextVersionFieldTypes.get(key);
 										Family toFamily = typeFamily.get(toTypeName);
 										TypeName toType = nextVersionTypeTypes.get(toTypeName);
+										Objects.requireNonNull(toType,
+												"Type " + toTypeName + " is unknown in version " + nextVersion.orElse(null)
+										);
 										TypeName toTypeBoxed = toType.isPrimitive() ? toType.box() : toType;
 										{
 											currentVarNumber.addTo(key, 1);
