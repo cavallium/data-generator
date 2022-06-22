@@ -1375,7 +1375,7 @@ public class SourcesGenerator {
 											);
 											deserializeMethod.addStatement(
 													"$$field$$" + (currentVarNumber.getInt(upgradeDataTransformation.from) + 1) + "$$"
-															+ upgradeDataTransformation.from + " ($T) " + dataUpgraderFieldName + ".upgrade(($T) $$field$$"
+															+ upgradeDataTransformation.from + " = ($T) " + dataUpgraderFieldName + ".upgrade(($T) $$field$$"
 															+ currentVarNumber.getInt(upgradeDataTransformation.from) + "$$"
 															+ upgradeDataTransformation.from + ")", toType, toTypeBoxed, fromTypeBoxed);
 											Objects.requireNonNull(currentTransformedFieldTypes.remove(
