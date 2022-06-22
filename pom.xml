@@ -249,7 +249,7 @@
 		<dependency>
 			<groupId>it.cavallium</groupId>
 			<artifactId>data-generator-runtime</artifactId>
-			<version>1.0.70</version>
+			<version>1.0.76</version>
 		</dependency>
 	</dependencies>
 </project>
