@@ -1374,12 +1374,10 @@ public class SourcesGenerator {
 													}
 											);
 											deserializeMethod.addStatement(
-													"$T upgraded = ($T) " + dataUpgraderFieldName + ".upgrade(($T) $$field$$"
+													"$$field$$" + (currentVarNumber.getInt(upgradeDataTransformation.from) + 1) + "$$"
+															+ upgradeDataTransformation.from + " ($T) " + dataUpgraderFieldName + ".upgrade(($T) $$field$$"
 															+ currentVarNumber.getInt(upgradeDataTransformation.from) + "$$"
 															+ upgradeDataTransformation.from + ")", toType, toTypeBoxed, fromTypeBoxed);
-											deserializeMethod.addStatement(
-													"$$field$$" + (currentVarNumber.getInt(upgradeDataTransformation.from) + 1) + "$$"
-															+ upgradeDataTransformation.from + " = upgraded");
 											Objects.requireNonNull(currentTransformedFieldTypes.remove(
 													upgradeDataTransformation.transformClass + "." + upgradeDataTransformation.from));
 											currentTransformedFieldTypes.put(
