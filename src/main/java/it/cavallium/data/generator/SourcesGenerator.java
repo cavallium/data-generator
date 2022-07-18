@@ -2905,20 +2905,22 @@ public class SourcesGenerator {
 
 	private void writeClass(Path outPath, String classPackage, Builder versionsClass) throws IOException {
 		var sb = new StringBuilder();
-		JavaFile.builder(classPackage, versionsClass.build()).build().writeTo(sb);
+		var typeSpec = versionsClass.build();
+		var outJavaFile = outPath.resolve(typeSpec.name + ".java");
+		JavaFile.builder(classPackage, typeSpec).build().writeTo(sb);
 		String newFile = sb.toString();
 		boolean mustWrite;
-		if (Files.isRegularFile(outPath) && Files.isReadable(outPath)) {
-			String oldFile = Files.readString(outPath, StandardCharsets.UTF_8);
+		if (Files.isRegularFile(outJavaFile) && Files.isReadable(outJavaFile)) {
+			String oldFile = Files.readString(outJavaFile, StandardCharsets.UTF_8);
 			mustWrite = !oldFile.equals(newFile);
 		} else {
 			mustWrite = true;
 		}
 		if (mustWrite) {
-			logger.debug("File {} changed", outPath);
-			Files.writeString(outPath, newFile);
+			logger.debug("File {} changed", outJavaFile);
+			Files.writeString(outJavaFile, newFile);
 		} else {
-			logger.debug("File {} is the same, unchanged", outPath);
+			logger.debug("File {} is the same, unchanged", outJavaFile);
 		}
 	}
 
