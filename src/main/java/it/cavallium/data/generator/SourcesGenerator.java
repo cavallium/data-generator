@@ -2906,6 +2906,9 @@ public class SourcesGenerator {
 	private void writeClass(Path outPath, String classPackage, Builder versionsClass) throws IOException {
 		var sb = new StringBuilder();
 		var typeSpec = versionsClass.build();
+		for (String part : classPackage.split("\\.")) {
+			outPath = outPath.resolve(part);
+		}
 		var outJavaFile = outPath.resolve(typeSpec.name + ".java");
 		JavaFile.builder(classPackage, typeSpec).build().writeTo(sb);
 		String newFile = sb.toString();
