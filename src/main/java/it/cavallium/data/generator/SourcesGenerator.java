@@ -36,6 +36,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.Serializable;
 import java.lang.reflect.Array;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -2903,7 +2904,22 @@ public class SourcesGenerator {
 	}
 
 	private void writeClass(Path outPath, String classPackage, Builder versionsClass) throws IOException {
-		JavaFile.builder(classPackage, versionsClass.build()).build().writeTo(outPath);
+		var sb = new StringBuilder();
+		JavaFile.builder(classPackage, versionsClass.build()).build().writeTo(sb);
+		String newFile = sb.toString();
+		boolean mustWrite;
+		if (Files.isRegularFile(outPath) && Files.isReadable(outPath)) {
+			String oldFile = Files.readString(outPath, StandardCharsets.UTF_8);
+			mustWrite = !oldFile.equals(newFile);
+		} else {
+			mustWrite = true;
+		}
+		if (mustWrite) {
+			logger.debug("File {} changed", outPath);
+			Files.writeString(outPath, newFile);
+		} else {
+			logger.debug("File {} is the same, unchanged", outPath);
+		}
 	}
 
 	private String getVersionVarName(String version) {
