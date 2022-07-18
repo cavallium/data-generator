@@ -2912,6 +2912,9 @@ public class SourcesGenerator {
 		for (String part : classPackage.split("\\.")) {
 			outPath = outPath.resolve(part);
 		}
+		if (Files.notExists(outPath)) {
+			Files.createDirectories(outPath);
+		}
 		var outJavaFile = outPath.resolve(typeSpec.name + ".java");
 		JavaFile.builder(classPackage, typeSpec).build().writeTo(sb);
 		String newFile = sb.toString();
