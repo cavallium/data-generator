@@ -1,5 +1,7 @@
 package it.cavallium.data.generator;
 
+import static java.nio.file.StandardOpenOption.*;
+
 import com.squareup.javapoet.ArrayTypeName;
 import com.squareup.javapoet.ClassName;
 import com.squareup.javapoet.CodeBlock;
@@ -39,6 +41,7 @@ import java.lang.reflect.Array;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -2921,7 +2924,7 @@ public class SourcesGenerator {
 		}
 		if (mustWrite) {
 			logger.debug("File {} changed", outJavaFile);
-			Files.writeString(outJavaFile, newFile);
+			Files.writeString(outJavaFile, newFile, TRUNCATE_EXISTING, CREATE, WRITE);
 		} else {
 			logger.debug("File {} is the same, unchanged", outJavaFile);
 		}
