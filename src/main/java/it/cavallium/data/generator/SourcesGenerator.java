@@ -120,7 +120,7 @@ public class SourcesGenerator {
 
 		// Update the hash
 		Files.writeString(hashPath, basePackageName + '\n' + useRecordBuilders + '\n' + curHash + '\n',
-				TRUNCATE_EXISTING, WRITE, CREATE);
+				StandardCharsets.UTF_8, TRUNCATE_EXISTING, WRITE, CREATE);
 
 		// Fix the configuration
 		for (Entry<String, InterfaceDataConfiguration> interfacesDatum : configuration.interfacesData.entrySet()) {
@@ -2951,7 +2951,7 @@ public class SourcesGenerator {
 		}
 		if (mustWrite) {
 			logger.debug("File {} changed", outJavaFile);
-			Files.writeString(outJavaFile, newFile, TRUNCATE_EXISTING, CREATE, WRITE);
+			Files.writeString(outJavaFile, newFile, StandardCharsets.UTF_8, TRUNCATE_EXISTING, CREATE, WRITE);
 		} else {
 			logger.debug("File {} is the same, unchanged", outJavaFile);
 		}
