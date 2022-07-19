@@ -2,6 +2,7 @@ package it.cavallium.data.generator;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 public class SourcesGeneratorConfigurationRefs {
@@ -9,4 +10,22 @@ public class SourcesGeneratorConfigurationRefs {
 	public Map<String, Map<String, CustomTypesConfiguration>> customTypes;
 	public Map<String, Map<String, ClassConfiguration>> classes;
 	public Map<String, List<VersionTransformation>> transformations;
+
+	@Override
+	public boolean equals(Object o) {
+		if (this == o) {
+			return true;
+		}
+		if (o == null || getClass() != o.getClass()) {
+			return false;
+		}
+		SourcesGeneratorConfigurationRefs that = (SourcesGeneratorConfigurationRefs) o;
+		return Objects.equals(superTypes, that.superTypes) && Objects.equals(customTypes, that.customTypes)
+				&& Objects.equals(classes, that.classes) && Objects.equals(transformations, that.transformations);
+	}
+
+	@Override
+	public int hashCode() {
+		return Objects.hash(superTypes, customTypes, classes, transformations);
+	}
 }

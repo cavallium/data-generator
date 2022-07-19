@@ -101,6 +101,26 @@ public class SourcesGenerator {
 	 * @param useRecordBuilders if true, the data will have @RecordBuilder annotation
 	 */
 	public void generateSources(String basePackageName, Path outPath, boolean useRecordBuilders) throws IOException {
+		var hashPath = outPath.resolve(".hash");
+		var curHash = computeHash(this.configuration);
+		if (Files.isRegularFile(outPath) && Files.isReadable(outPath)) {
+			var lines = Files.readAllLines(hashPath, StandardCharsets.UTF_8);
+			if (lines.size() >= 3) {
+				var prevBasePackageName = lines.get(0);
+				var prevRecordBuilders = lines.get(1);
+				var prevHash = lines.get(2);
+
+				if (prevBasePackageName.equals(basePackageName) && (prevRecordBuilders.equalsIgnoreCase("true") == useRecordBuilders)
+				 && prevHash.equals(curHash)) {
+					logger.info("Skipped sources generation because it didn't change");
+					return;
+				}
+			}
+		}
+
+		// Update the hash
+		Files.writeString(hashPath, basePackageName + '\n' + useRecordBuilders + '\n' + curHash + '\n',
+				TRUNCATE_EXISTING, WRITE, CREATE);
 
 		// Fix the configuration
 		for (Entry<String, InterfaceDataConfiguration> interfacesDatum : configuration.interfacesData.entrySet()) {
@@ -2332,6 +2352,10 @@ public class SourcesGenerator {
 			// Create an upgrader
 
 		}
+	}
+
+	private String computeHash(SourcesGeneratorConfiguration configuration) {
+		return Long.toString(configuration.hashCode());
 	}
 
 	private TypeName getImmutableArrayType(HashMap<String, TypeName> typeTypes, String typeString) {

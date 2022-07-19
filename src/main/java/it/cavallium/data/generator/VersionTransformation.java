@@ -1,5 +1,7 @@
 package it.cavallium.data.generator;
 
+import java.util.Objects;
+
 public class VersionTransformation {
 
 	public MoveDataConfiguration moveData = null;
@@ -58,5 +60,25 @@ public class VersionTransformation {
 			return newData;
 		}
 		throw new IllegalStateException();
+	}
+
+	@Override
+	public boolean equals(Object o) {
+		if (this == o) {
+			return true;
+		}
+		if (o == null || getClass() != o.getClass()) {
+			return false;
+		}
+		VersionTransformation that = (VersionTransformation) o;
+		return Objects.equals(moveData, that.moveData) && Objects.equals(removeData, that.removeData) && Objects.equals(
+				upgradeData,
+				that.upgradeData
+		) && Objects.equals(newData, that.newData);
+	}
+
+	@Override
+	public int hashCode() {
+		return Objects.hash(moveData, removeData, upgradeData, newData);
 	}
 }

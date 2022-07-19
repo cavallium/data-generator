@@ -3,6 +3,7 @@ package it.cavallium.data.generator;
 import com.squareup.javapoet.ClassName;
 import com.squareup.javapoet.ParameterizedTypeName;
 import com.squareup.javapoet.TypeName;
+import java.util.Objects;
 
 public class CustomTypesConfiguration {
 
@@ -28,5 +29,22 @@ public class CustomTypesConfiguration {
 			var base = ClassName.bestGuess(javaClass.substring(0, indexOfGeneric).trim());
 			return ParameterizedTypeName.get(base, genericsResult);
 		}
+	}
+
+	@Override
+	public boolean equals(Object o) {
+		if (this == o) {
+			return true;
+		}
+		if (o == null || getClass() != o.getClass()) {
+			return false;
+		}
+		CustomTypesConfiguration that = (CustomTypesConfiguration) o;
+		return Objects.equals(javaClass, that.javaClass) && Objects.equals(serializer, that.serializer);
+	}
+
+	@Override
+	public int hashCode() {
+		return Objects.hash(javaClass, serializer);
 	}
 }

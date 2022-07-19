@@ -1,5 +1,7 @@
 package it.cavallium.data.generator;
 
+import java.util.Objects;
+
 public class UpgradeDataConfiguration implements TransformationConfiguration {
 
 	public String transformClass;
@@ -14,5 +16,25 @@ public class UpgradeDataConfiguration implements TransformationConfiguration {
 	@Override
 	public String getTransformName() {
 		return "upgrade-data";
+	}
+
+	@Override
+	public boolean equals(Object o) {
+		if (this == o) {
+			return true;
+		}
+		if (o == null || getClass() != o.getClass()) {
+			return false;
+		}
+		UpgradeDataConfiguration that = (UpgradeDataConfiguration) o;
+		return Objects.equals(transformClass, that.transformClass) && Objects.equals(from, that.from) && Objects.equals(
+				upgrader,
+				that.upgrader
+		);
+	}
+
+	@Override
+	public int hashCode() {
+		return Objects.hash(transformClass, from, upgrader);
 	}
 }
