@@ -102,7 +102,14 @@ public class SourcesGenerator {
 	 * @param useRecordBuilders if true, the data will have @RecordBuilder annotation
 	 */
 	public void generateSources(String basePackageName, Path outPath, boolean useRecordBuilders) throws IOException {
-		var basePackageNamePath = outPath.resolve(Paths.get(basePackageName.replace("\\.", File.separator)));
+		Path basePackageNamePath;
+		{
+			Path basePackageNamePathPartial = outPath;
+			for (String part : basePackageName.split("\\.")) {
+				basePackageNamePathPartial = basePackageNamePathPartial.resolve(part);
+			}
+			basePackageNamePath = basePackageNamePathPartial;
+		}
 		var hashPath = basePackageNamePath.resolve(".hash");
 		var curHash = computeHash(this.configuration);
 		if (Files.isRegularFile(hashPath) && Files.isReadable(hashPath)) {
