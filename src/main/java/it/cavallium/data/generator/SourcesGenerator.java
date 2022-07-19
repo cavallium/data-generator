@@ -41,11 +41,11 @@ import java.lang.reflect.Array;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -103,7 +103,7 @@ public class SourcesGenerator {
 	public void generateSources(String basePackageName, Path outPath, boolean useRecordBuilders) throws IOException {
 		var hashPath = outPath.resolve(".hash");
 		var curHash = computeHash(this.configuration);
-		if (Files.isRegularFile(outPath) && Files.isReadable(outPath)) {
+		if (Files.isRegularFile(hashPath) && Files.isReadable(hashPath)) {
 			var lines = Files.readAllLines(hashPath, StandardCharsets.UTF_8);
 			if (lines.size() >= 3) {
 				var prevBasePackageName = lines.get(0);
@@ -118,9 +118,22 @@ public class SourcesGenerator {
 			}
 		}
 
+		// Create the base dir
+		if (Files.notExists(outPath)) {
+			Files.createDirectories(outPath);
+		}
+
+		// Get the files list
+		var generatedFilesToDelete = Files
+				.walk(outPath)
+				.filter(Files::isRegularFile)
+				.map(outPath::relativize)
+				.collect(Collectors.toCollection(HashSet::new));
+
 		// Update the hash
 		Files.writeString(hashPath, basePackageName + '\n' + useRecordBuilders + '\n' + curHash + '\n',
 				StandardCharsets.UTF_8, TRUNCATE_EXISTING, WRITE, CREATE);
+		markFileAsCreated(generatedFilesToDelete, outPath, hashPath);
 
 		// Fix the configuration
 		for (Entry<String, InterfaceDataConfiguration> interfacesDatum : configuration.interfacesData.entrySet()) {
@@ -181,7 +194,7 @@ public class SourcesGenerator {
 				.build());
 		versionsClass.addField(versionsInstances.build());
 		// Save the resulting class in the main package
-		writeClass(outPath, joinPackage(basePackageName, ""), versionsClass);
+		writeClass(generatedFilesToDelete, outPath, joinPackage(basePackageName, ""), versionsClass);
 
 		// Create the BasicType class
 		{
@@ -197,7 +210,7 @@ public class SourcesGenerator {
 				}
 			}
 			// Save the resulting class in the main package
-			writeClass(outPath, joinPackage(basePackageName, ""), basicTypeClass);
+			writeClass(generatedFilesToDelete, outPath, joinPackage(basePackageName, ""), basicTypeClass);
 		}
 
 		// Create the GenericType class
@@ -214,7 +227,7 @@ public class SourcesGenerator {
 				}
 			}
 			// Save the resulting class in the main package
-			writeClass(outPath, joinPackage(basePackageName, ""), genericTypeClass);
+			writeClass(generatedFilesToDelete, outPath, joinPackage(basePackageName, ""), genericTypeClass);
 		}
 
 		// Create the IVersion class
@@ -267,7 +280,7 @@ public class SourcesGenerator {
 			}
 
 			// Save the resulting class in the main package
-			writeClass(outPath, joinPackage(basePackageName, ""), iVersionClass);
+			writeClass(generatedFilesToDelete, outPath, joinPackage(basePackageName, ""), iVersionClass);
 		}
 
 		// Create the CurrentVersion class
@@ -444,7 +457,7 @@ public class SourcesGenerator {
 				currentVersionClass.addMethod(upgradeDataToLatestVersion2Method);
 			}
 			// Save the resulting class in the main package
-			writeClass(outPath, joinPackage(basePackageName, "current"), currentVersionClass);
+			writeClass(generatedFilesToDelete, outPath, joinPackage(basePackageName, "current"), currentVersionClass);
 		}
 
 		for (Entry<String, VersionConfiguration> mapEntry : configuration.versions.entrySet()) {
@@ -871,7 +884,8 @@ public class SourcesGenerator {
 								}
 								// Save the resulting class in the main package
 								try {
-									writeClass(outPath, joinPackage(versionPackage, "serializers"), nullableSerializerClass);
+									writeClass(generatedFilesToDelete,
+											outPath, joinPackage(versionPackage, "serializers"), nullableSerializerClass);
 								} catch (IOException e) {
 									throw new IOError(e);
 								}
@@ -1076,7 +1090,8 @@ public class SourcesGenerator {
 								}
 
 								try {
-									writeClass(outPath, joinPackage(versionPackage, "data.nullables"), nullableTypeClass);
+									writeClass(generatedFilesToDelete,
+											outPath, joinPackage(versionPackage, "data.nullables"), nullableTypeClass);
 								} catch (IOException e) {
 									throw new IOError(e);
 								}
@@ -1144,7 +1159,8 @@ public class SourcesGenerator {
 								}
 								// Save the resulting class in the main package
 								try {
-									writeClass(outPath, joinPackage(versionPackage, "serializers"), arraySerializerClass);
+									writeClass(generatedFilesToDelete,
+											outPath, joinPackage(versionPackage, "serializers"), arraySerializerClass);
 								} catch (IOException e) {
 									throw new IOError(e);
 								}
@@ -1215,7 +1231,7 @@ public class SourcesGenerator {
 						}
 						// Save the resulting class in the main package
 						try {
-							writeClass(outPath, joinPackage(versionPackage, "serializers"), serializerClass);
+							writeClass(generatedFilesToDelete, outPath, joinPackage(versionPackage, "serializers"), serializerClass);
 						} catch (IOException e) {
 							throw new IOError(e);
 						}
@@ -1590,7 +1606,7 @@ public class SourcesGenerator {
 							}
 							// Save the resulting class in the main package
 							try {
-								writeClass(outPath, joinPackage(versionPackage, "upgraders"), upgraderClass);
+								writeClass(generatedFilesToDelete, outPath, joinPackage(versionPackage, "upgraders"), upgraderClass);
 							} catch (IOException e) {
 								throw new IOError(e);
 							}
@@ -1699,7 +1715,7 @@ public class SourcesGenerator {
 						}
 						// Save the resulting class in the main package
 						try {
-							writeClass(outPath, joinPackage(versionPackage, "serializers"), serializerClass);
+							writeClass(generatedFilesToDelete, outPath, joinPackage(versionPackage, "serializers"), serializerClass);
 						} catch (IOException e) {
 							throw new IOError(e);
 						}
@@ -2001,7 +2017,7 @@ public class SourcesGenerator {
 				}
 				// Save the resulting class in the main package
 				try {
-					writeClass(outPath, joinPackage(versionPackage, ""), versionClass);
+					writeClass(generatedFilesToDelete, outPath, joinPackage(versionPackage, ""), versionClass);
 				} catch (IOException e) {
 					throw new IOError(e);
 				}
@@ -2014,7 +2030,7 @@ public class SourcesGenerator {
 				iTypeInterface.addModifiers(Modifier.PUBLIC);
 				iTypeInterface.addSuperinterface(ClassName.get(Serializable.class));
 				try {
-					writeClass(outPath, joinPackage(versionPackage, "data"), iTypeInterface);
+					writeClass(generatedFilesToDelete, outPath, joinPackage(versionPackage, "data"), iTypeInterface);
 				} catch (IOException e) {
 					throw new IOError(e);
 				}
@@ -2037,7 +2053,7 @@ public class SourcesGenerator {
 					ibasicTypeInterface.addMethod(getBasicTypeMethod.build());
 				}
 				try {
-					writeClass(outPath, joinPackage(versionPackage, "data"), ibasicTypeInterface);
+					writeClass(generatedFilesToDelete, outPath, joinPackage(versionPackage, "data"), ibasicTypeInterface);
 				} catch (IOException e) {
 					throw new IOError(e);
 				}
@@ -2051,7 +2067,8 @@ public class SourcesGenerator {
 				inullableITypeInterface.addSuperinterface(iTypeInterfaceType);
 				inullableITypeInterface.addSuperinterface(IGenericNullable.class);
 				try {
-					writeClass(outPath, joinPackage(versionPackage, "data.nullables"), inullableITypeInterface);
+					writeClass(generatedFilesToDelete,
+							outPath, joinPackage(versionPackage, "data.nullables"), inullableITypeInterface);
 				} catch (IOException e) {
 					throw new IOError(e);
 				}
@@ -2070,7 +2087,8 @@ public class SourcesGenerator {
 						.returns(ClassName.get(joinPackage(basePackageName, ""), "BasicType"));
 				inullableBasicTypeInterface.addMethod(getBasicTypeMethod.build());
 				try {
-					writeClass(outPath, joinPackage(versionPackage, "data.nullables"), inullableBasicTypeInterface);
+					writeClass(generatedFilesToDelete,
+							outPath, joinPackage(versionPackage, "data.nullables"), inullableBasicTypeInterface);
 				} catch (IOException e) {
 					throw new IOError(e);
 				}
@@ -2089,7 +2107,8 @@ public class SourcesGenerator {
 						.returns(ClassName.get(joinPackage(basePackageName, ""), "GenericType"));
 				inullablegenericTypeInterface.addMethod(getBasicTypeMethod.build());
 				try {
-					writeClass(outPath, joinPackage(versionPackage, "data.nullables"), inullablegenericTypeInterface);
+					writeClass(generatedFilesToDelete,
+							outPath, joinPackage(versionPackage, "data.nullables"), inullablegenericTypeInterface);
 				} catch (IOException e) {
 					throw new IOError(e);
 				}
@@ -2175,7 +2194,7 @@ public class SourcesGenerator {
 					}
 
 					try {
-						writeClass(outPath, joinPackage(versionPackage, "data"), typeInterface);
+						writeClass(generatedFilesToDelete, outPath, joinPackage(versionPackage, "data"), typeInterface);
 					} catch (IOException e) {
 						throw new IOError(e);
 					}
@@ -2342,16 +2361,22 @@ public class SourcesGenerator {
 					typeClass.addMethod(ofConstructor.build());
 
 					try {
-						writeClass(outPath, joinPackage(versionPackage, "data"), typeClass);
+						writeClass(generatedFilesToDelete, outPath, joinPackage(versionPackage, "data"), typeClass);
 					} catch (IOException e) {
 						throw new IOError(e);
 					}
 				}
 			}
 
-			// Create an upgrader
-
+			for (Path pathToDelete : generatedFilesToDelete) {
+				Files.delete(outPath.resolve(pathToDelete));
+				logger.info("Deleting unused file: {}", pathToDelete);
+			}
 		}
+	}
+
+	private void markFileAsCreated(Set<Path> generatedFilesToDelete, Path basePath, Path filePath) {
+		generatedFilesToDelete.remove(basePath.relativize(filePath));
 	}
 
 	private String computeHash(SourcesGeneratorConfiguration configuration) {
@@ -2930,7 +2955,10 @@ public class SourcesGenerator {
 		}
 	}
 
-	private void writeClass(Path outPath, String classPackage, Builder versionsClass) throws IOException {
+	private void writeClass(HashSet<Path> generatedFilesToDelete,
+			Path outPath,
+			String classPackage,
+			Builder versionsClass) throws IOException {
 		var sb = new StringBuilder();
 		var typeSpec = versionsClass.build();
 		for (String part : classPackage.split("\\.")) {
@@ -2955,6 +2983,7 @@ public class SourcesGenerator {
 		} else {
 			logger.debug("File {} is the same, unchanged", outJavaFile);
 		}
+		markFileAsCreated(generatedFilesToDelete, outPath, outJavaFile);
 	}
 
 	private String getVersionVarName(String version) {

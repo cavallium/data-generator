@@ -37,7 +37,6 @@ public class MavenPlugin extends AbstractMojo {
 		try {
 			SourcesGenerator sourcesGenerator = SourcesGenerator.load(configPath.toPath());
 			Path genRecordsPath = project.getBasedir().getAbsoluteFile().toPath().resolve("target").resolve("generated-sources").resolve("database-classes");
-			FileUtils.deleteDirectory(genRecordsPath.resolve(Path.of(basePackageName.replace('.', File.separatorChar))).toFile());
 
 			Path outPath = genRecordsPath.resolve("java");
 			this.project.addCompileSourceRoot(outPath.toString());
