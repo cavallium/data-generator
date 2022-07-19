@@ -2384,8 +2384,10 @@ public class SourcesGenerator {
 			}
 
 			for (Path pathToDelete : generatedFilesToDelete) {
-				Files.delete(outPath.resolve(pathToDelete));
-				logger.info("Deleting unused file: {}", pathToDelete);
+				if (Files.exists(pathToDelete)) {
+					Files.delete(outPath.resolve(pathToDelete));
+					logger.info("Deleting unused file: {}", pathToDelete);
+				}
 			}
 		}
 	}
