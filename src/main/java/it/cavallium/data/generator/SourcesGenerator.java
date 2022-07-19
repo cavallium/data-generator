@@ -124,10 +124,10 @@ public class SourcesGenerator {
 		}
 
 		// Get the files list
-		var generatedFilesToDelete = Files
-				.find(outPath, Integer.MAX_VALUE, (filePath, fileAttr) -> fileAttr.isRegularFile())
-				.map(outPath::relativize)
-				.collect(Collectors.toCollection(HashSet::new));
+		HashSet<Path> generatedFilesToDelete;
+		try (var stream = Files.find(outPath, Integer.MAX_VALUE, (filePath, fileAttr) -> fileAttr.isRegularFile())) {
+			generatedFilesToDelete = stream.map(outPath::relativize).collect(Collectors.toCollection(HashSet::new));
+		}
 
 		// Update the hash
 		Files.writeString(hashPath, basePackageName + '\n' + useRecordBuilders + '\n' + curHash + '\n',
