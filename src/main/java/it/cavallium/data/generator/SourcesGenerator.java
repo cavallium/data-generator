@@ -125,8 +125,7 @@ public class SourcesGenerator {
 
 		// Get the files list
 		var generatedFilesToDelete = Files
-				.walk(outPath)
-				.filter(Files::isRegularFile)
+				.find(outPath, Integer.MAX_VALUE, (filePath, fileAttr) -> fileAttr.isRegularFile())
 				.map(outPath::relativize)
 				.collect(Collectors.toCollection(HashSet::new));
 
