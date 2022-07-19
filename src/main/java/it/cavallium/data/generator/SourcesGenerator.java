@@ -2379,7 +2379,7 @@ public class SourcesGenerator {
 	}
 
 	private String computeHash(SourcesGeneratorConfiguration configuration) {
-		return Long.toString(configuration.hashCode());
+		return Integer.toString(configuration.hashCode());
 	}
 
 	private TypeName getImmutableArrayType(HashMap<String, TypeName> typeTypes, String typeString) {
@@ -2960,13 +2960,14 @@ public class SourcesGenerator {
 			Builder versionsClass) throws IOException {
 		var sb = new StringBuilder();
 		var typeSpec = versionsClass.build();
+		var outJavaFile = outPath;
 		for (String part : classPackage.split("\\.")) {
-			outPath = outPath.resolve(part);
+			outJavaFile = outJavaFile.resolve(part);
 		}
-		if (Files.notExists(outPath)) {
-			Files.createDirectories(outPath);
+		if (Files.notExists(outJavaFile)) {
+			Files.createDirectories(outJavaFile);
 		}
-		var outJavaFile = outPath.resolve(typeSpec.name + ".java");
+		outJavaFile = outJavaFile.resolve(typeSpec.name + ".java");
 		JavaFile.builder(classPackage, typeSpec).build().writeTo(sb);
 		String newFile = sb.toString();
 		boolean mustWrite;
