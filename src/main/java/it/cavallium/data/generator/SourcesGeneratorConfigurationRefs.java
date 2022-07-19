@@ -26,6 +26,11 @@ public class SourcesGeneratorConfigurationRefs {
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(superTypes, customTypes, classes, transformations);
+		int hash = 0;
+		hash += ConfigUtils.hashCode(superTypes);
+		hash += ConfigUtils.hashCode(customTypes);
+		hash += ConfigUtils.hashCode(classes);
+		hash += ConfigUtils.hashCode(transformations);
+		return hash;
 	}
 }

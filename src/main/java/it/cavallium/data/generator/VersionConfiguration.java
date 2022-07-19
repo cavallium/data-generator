@@ -30,6 +30,12 @@ public class VersionConfiguration {
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(details, superTypes, customTypes, classes, transformations);
+		int hash = 0;
+		hash += ConfigUtils.hashCode(details);
+		hash += ConfigUtils.hashCode(superTypes);
+		hash += ConfigUtils.hashCode(customTypes);
+		hash += ConfigUtils.hashCode(classes);
+		hash += ConfigUtils.hashCode(transformations);
+		return hash;
 	}
 }

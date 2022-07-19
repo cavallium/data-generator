@@ -35,6 +35,10 @@ public class UpgradeDataConfiguration implements TransformationConfiguration {
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(transformClass, from, upgrader);
+		int hash = 0;
+		hash += ConfigUtils.hashCode(transformClass);
+		hash += ConfigUtils.hashCode(from);
+		hash += ConfigUtils.hashCode(upgrader);
+		return hash;
 	}
 }

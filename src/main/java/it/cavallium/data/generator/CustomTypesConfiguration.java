@@ -45,6 +45,9 @@ public class CustomTypesConfiguration {
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(javaClass, serializer);
+		int hash = 0;
+		hash += ConfigUtils.hashCode(javaClass);
+		hash += ConfigUtils.hashCode(serializer);
+		return hash;
 	}
 }

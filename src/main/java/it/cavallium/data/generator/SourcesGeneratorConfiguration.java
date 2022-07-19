@@ -24,6 +24,11 @@ public class SourcesGeneratorConfiguration {
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(currentVersion, interfacesData, versions, refs);
+		int hash = 0;
+		hash += ConfigUtils.hashCode(currentVersion);
+		hash += ConfigUtils.hashCode(interfacesData);
+		hash += ConfigUtils.hashCode(versions);
+		hash += ConfigUtils.hashCode(refs);
+		return hash;
 	}
 }

@@ -31,6 +31,9 @@ public class RemoveDataConfiguration implements TransformationConfiguration {
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(transformClass, from);
+		int hash = 0;
+		hash += ConfigUtils.hashCode(transformClass);
+		hash += ConfigUtils.hashCode(from);
+		return hash;
 	}
 }

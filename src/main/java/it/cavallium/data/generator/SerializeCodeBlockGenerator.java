@@ -36,7 +36,10 @@ public class SerializeCodeBlockGenerator {
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(before, after);
+		int hash = 0;
+		hash += ConfigUtils.hashCode(before);
+		hash += ConfigUtils.hashCode(after);
+		return hash;
 	}
 
 

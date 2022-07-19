@@ -34,6 +34,10 @@ public class MoveDataConfiguration implements TransformationConfiguration {
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(transformClass, from, to);
+		int hash = 0;
+		hash += ConfigUtils.hashCode(transformClass);
+		hash += ConfigUtils.hashCode(from);
+		hash += ConfigUtils.hashCode(to);
+		return hash;
 	}
 }

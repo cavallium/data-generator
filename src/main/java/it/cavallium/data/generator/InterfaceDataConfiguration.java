@@ -27,6 +27,10 @@ public class InterfaceDataConfiguration {
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(extendInterfaces, commonData, commonGetters);
+		int hash = 0;
+		hash += ConfigUtils.hashCode(extendInterfaces);
+		hash += ConfigUtils.hashCode(commonData);
+		hash += ConfigUtils.hashCode(commonGetters);
+		return hash;
 	}
 }

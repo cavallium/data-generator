@@ -79,6 +79,11 @@ public class VersionTransformation {
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(moveData, removeData, upgradeData, newData);
+		int hash = 0;
+		hash += ConfigUtils.hashCode(moveData);
+		hash += ConfigUtils.hashCode(removeData);
+		hash += ConfigUtils.hashCode(upgradeData);
+		hash += ConfigUtils.hashCode(newData);
+		return hash;
 	}
 }

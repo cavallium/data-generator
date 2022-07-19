@@ -20,6 +20,8 @@ public class DetailsConfiguration {
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(changelog);
+		int hash = 0;
+		hash += ConfigUtils.hashCode(changelog);
+		return hash;
 	}
 }

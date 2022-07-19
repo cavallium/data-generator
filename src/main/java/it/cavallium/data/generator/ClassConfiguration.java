@@ -31,6 +31,9 @@ public class ClassConfiguration {
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(stringRepresenter, data);
+		int hash = 0;
+		hash += ConfigUtils.hashCode(stringRepresenter);
+		hash += ConfigUtils.hashCode(data);
+		return hash;
 	}
 }

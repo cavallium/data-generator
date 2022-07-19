@@ -35,6 +35,10 @@ public class NewDataConfiguration implements TransformationConfiguration {
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(transformClass, to, initializer);
+		int hash = 0;
+		hash += ConfigUtils.hashCode(transformClass);
+		hash += ConfigUtils.hashCode(to);
+		hash += ConfigUtils.hashCode(initializer);
+		return hash;
 	}
 }
