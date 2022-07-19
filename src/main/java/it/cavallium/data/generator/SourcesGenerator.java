@@ -41,6 +41,7 @@ import java.lang.reflect.Array;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -101,7 +102,8 @@ public class SourcesGenerator {
 	 * @param useRecordBuilders if true, the data will have @RecordBuilder annotation
 	 */
 	public void generateSources(String basePackageName, Path outPath, boolean useRecordBuilders) throws IOException {
-		var hashPath = outPath.resolve(".hash");
+		var basePackageNamePath = outPath.resolve(Paths.get(basePackageName.replace("\\.", File.separator)));
+		var hashPath = basePackageNamePath.resolve(".hash");
 		var curHash = computeHash(this.configuration);
 		if (Files.isRegularFile(hashPath) && Files.isReadable(hashPath)) {
 			var lines = Files.readAllLines(hashPath, StandardCharsets.UTF_8);
@@ -122,11 +124,18 @@ public class SourcesGenerator {
 		if (Files.notExists(outPath)) {
 			Files.createDirectories(outPath);
 		}
+		if (Files.notExists(basePackageNamePath)) {
+			Files.createDirectories(basePackageNamePath);
+		}
 
 		// Get the files list
 		HashSet<Path> generatedFilesToDelete;
 		try (var stream = Files.find(outPath, Integer.MAX_VALUE, (filePath, fileAttr) -> fileAttr.isRegularFile())) {
-			generatedFilesToDelete = stream.map(outPath::relativize).collect(Collectors.toCollection(HashSet::new));
+			var relativeBasePackageNamePath = outPath.relativize(basePackageNamePath);
+			generatedFilesToDelete = stream
+					.map(outPath::relativize)
+					.filter(path -> path.startsWith(relativeBasePackageNamePath))
+					.collect(Collectors.toCollection(HashSet::new));
 		}
 
 		// Update the hash
