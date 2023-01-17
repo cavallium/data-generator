@@ -43,8 +43,8 @@
 		</snapshotRepository>
 	</distributionManagement>
 	<scm>
-		<connection>scm:git:https://git.ignuranza.net/andreacavalli/data-generator-runtime.git</connection>
-		<developerConnection>scm:git:https://git.ignuranza.net/andreacavalli/data-generator-runtime.git
+		<connection>scm:git:https://git.ignuranza.net/andreacavalli/data-generator.git</connection>
+		<developerConnection>scm:git:https://git.ignuranza.net/andreacavalli/data-generator.git
 		</developerConnection>
 		<tag>HEAD</tag>
 	</scm>

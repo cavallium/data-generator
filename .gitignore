@@ -8,3 +8,4 @@
 /.settings/
 
 .flattened-pom.xml
+/.idea/

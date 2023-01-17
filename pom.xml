@@ -14,6 +14,24 @@
 		<module>data-generator-runtime</module>
 	</modules>
 
+	<distributionManagement>
+		<repository>
+			<id>mchv-release-distribution</id>
+			<name>MCHV Release Apache Maven Packages Distribution</name>
+			<url>https://mvn.mchv.eu/repository/mchv</url>
+		</repository>
+		<snapshotRepository>
+			<id>mchv-snapshot-distribution</id>
+			<name>MCHV Snapshot Apache Maven Packages Distribution</name>
+			<url>https://mvn.mchv.eu/repository/mchv-snapshot</url>
+		</snapshotRepository>
+	</distributionManagement>
+	<scm>
+		<connection>scm:git:https://git.ignuranza.net/andreacavalli/data-generator.git</connection>
+		<developerConnection>scm:git:https://git.ignuranza.net/andreacavalli/data-generator.git</developerConnection>
+		<tag>HEAD</tag>
+	</scm>
+
 	<build>
 		<plugins>
 			<plugin>
