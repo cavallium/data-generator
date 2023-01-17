@@ -24,7 +24,7 @@ jobs:
         shell: bash
         run: |
           # ====== Variables
-          export REVISION=1.0.${{ github.run_number }}
+          export REVISION=${{ github.run_number }}
 
           echo "REVISION=$REVISION" >> $GITHUB_ENV
       - name: Set up JDK 17
