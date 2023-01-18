@@ -1,12 +1,9 @@
-package it.cavallium.data.generator;
+package it.cavallium.data.generator.plugin;
 
 import static java.util.Objects.requireNonNull;
 
-import com.google.common.collect.Lists;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
-import it.unimi.dsi.fastutil.ints.IntArrayList;
-import it.unimi.dsi.fastutil.ints.IntList;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectCollection;
@@ -20,7 +17,6 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collector;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.jetbrains.annotations.Nullable;
 
@@ -98,7 +94,6 @@ public class DataModel {
 		// Build versions sequence
 		List<String> rawVersionsSequence = new ArrayList<>();
 		int versionsCount = 0;
-		IntList versionsSequence = IntStream.range(0, versionsCount).boxed().collect(Collectors.toCollection(IntArrayList::new));
 		Int2ObjectMap<String> versionToName = new Int2ObjectOpenHashMap<>();
 		Object2IntMap<String> nameToVersion = new Object2IntOpenHashMap<>();
 		{
@@ -148,12 +143,6 @@ public class DataModel {
 		// Compute the numeric versions map
 		Int2ObjectMap<ParsedVersion> versions = new Int2ObjectOpenHashMap<>();
 		rawVersions.forEach((k, v) -> versions.put(nameToVersion.getInt(k), new ParsedVersion(v)));
-
-		// Compute the cartesian product of version * base type
-		record VersionAndType(int version, String type) {}
-		List<VersionAndType> versionAndBaseType = Lists.<Object>cartesianProduct(versionsSequence, baseTypes).stream()
-				.map(tuple -> new VersionAndType((Integer) tuple.get(0), (String) tuple.get(1)))
-				.toList();
 
 		Int2ObjectMap<Map<String, ParsedClass>> computedClassConfig = new Int2ObjectOpenHashMap<>();
 		for (int versionIndex = 0; versionIndex < versionsCount; versionIndex++) {
@@ -246,7 +235,7 @@ public class DataModel {
 							}
 						}
 						default -> throw new IllegalArgumentException("Unknown transform name: "+ transformName);
-					};
+					}
 				}
 
 				computedClassConfig.put(versionIndex, newVersionConfiguration);

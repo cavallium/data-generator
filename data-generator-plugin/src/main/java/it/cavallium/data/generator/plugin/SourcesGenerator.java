@@ -1,4 +1,4 @@
-package it.cavallium.data.generator;
+package it.cavallium.data.generator.plugin;
 
 import static java.nio.file.StandardOpenOption.*;
 
@@ -16,6 +16,10 @@ import com.squareup.javapoet.TypeSpec.Builder;
 import com.squareup.javapoet.TypeVariableName;
 import com.squareup.javapoet.WildcardTypeName;
 import io.soabase.recordbuilder.core.RecordBuilder;
+import it.cavallium.data.generator.CommonField;
+import it.cavallium.data.generator.DataInitializer;
+import it.cavallium.data.generator.DataSerializer;
+import it.cavallium.data.generator.DataUpgrader;
 import it.cavallium.data.generator.nativedata.IGenericNullable;
 import it.cavallium.data.generator.nativedata.Int52Serializer;
 import it.cavallium.data.generator.nativedata.StringSerializer;
@@ -41,7 +45,6 @@ import java.lang.reflect.Array;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -56,7 +59,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;

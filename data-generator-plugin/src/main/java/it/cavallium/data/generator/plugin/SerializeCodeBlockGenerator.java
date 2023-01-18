@@ -1,4 +1,4 @@
-package it.cavallium.data.generator;
+package it.cavallium.data.generator.plugin;
 
 import com.squareup.javapoet.CodeBlock;
 import java.util.List;

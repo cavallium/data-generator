@@ -1,6 +1,6 @@
-package it.cavallium.data.generator;
+package it.cavallium.data.generator.plugin;
 
-import static it.cavallium.data.generator.DataModel.fixType;
+import static it.cavallium.data.generator.plugin.DataModel.fixType;
 
 import java.util.LinkedHashMap;
 import java.util.Map;

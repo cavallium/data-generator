@@ -1,9 +1,9 @@
 package it.cavallium.data.generator;
 
+import it.cavallium.data.generator.plugin.SourcesGenerator;
 import java.io.IOException;
 import java.nio.file.Files;
 import org.apache.commons.io.FileUtils;
-import org.junit.jupiter.api.Test;
 
 public class TestGenerator {
 

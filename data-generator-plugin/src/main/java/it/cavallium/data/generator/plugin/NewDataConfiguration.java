@@ -1,12 +1,13 @@
-package it.cavallium.data.generator;
+package it.cavallium.data.generator.plugin;
 
 import java.util.Objects;
 
-public final class MoveDataConfiguration implements TransformationConfiguration {
+public class NewDataConfiguration implements TransformationConfiguration {
 
 	public String transformClass;
-	public String from;
 	public String to;
+	public String type;
+	public String initializer;
 
 	@Override
 	public String getTransformClass() {
@@ -15,7 +16,7 @@ public final class MoveDataConfiguration implements TransformationConfiguration 
 
 	@Override
 	public String getTransformName() {
-		return "move-data";
+		return "new-data";
 	}
 
 	@Override
@@ -26,28 +27,29 @@ public final class MoveDataConfiguration implements TransformationConfiguration 
 		if (o == null || getClass() != o.getClass()) {
 			return false;
 		}
-		MoveDataConfiguration that = (MoveDataConfiguration) o;
-		return Objects.equals(transformClass, that.transformClass) && Objects.equals(from, that.from) && Objects.equals(to,
-				that.to
-		);
+		NewDataConfiguration that = (NewDataConfiguration) o;
+		return Objects.equals(transformClass, that.transformClass) && Objects.equals(to, that.to)
+				&& Objects.equals(type, that.type) && Objects.equals(initializer, that.initializer);
 	}
 
 	@Override
 	public int hashCode() {
 		int hash = 0;
 		hash += ConfigUtils.hashCode(transformClass);
-		hash += ConfigUtils.hashCode(from);
 		hash += ConfigUtils.hashCode(to);
+		hash += ConfigUtils.hashCode(type);
+		hash += ConfigUtils.hashCode(initializer);
 		return hash;
 	}
 
 	@SuppressWarnings("MethodDoesntCallSuperMethod")
 	@Override
-	public MoveDataConfiguration clone() {
-		var c = new MoveDataConfiguration();
+	public NewDataConfiguration clone() {
+		var c = new NewDataConfiguration();
 		if (this.transformClass != null) c.transformClass = this.transformClass;
-		if (this.from != null) c.from = this.from;
+		if (this.initializer != null) c.initializer = this.initializer;
 		if (this.to != null) c.to = this.to;
+		if (this.type != null) c.type = this.type;
 		return c;
 	}
 }

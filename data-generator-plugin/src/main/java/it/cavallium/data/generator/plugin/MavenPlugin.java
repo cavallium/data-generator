@@ -1,9 +1,8 @@
-package it.cavallium.data.generator;
+package it.cavallium.data.generator.plugin;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
-import org.apache.commons.io.FileUtils;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;

@@ -1,8 +1,6 @@
-package it.cavallium.data.generator;
+package it.cavallium.data.generator.plugin;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 
 public class ParsedVersion {

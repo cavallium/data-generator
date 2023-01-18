@@ -1,4 +1,4 @@
-package it.cavallium.data.generator;
+package it.cavallium.data.generator.plugin;
 
 import java.util.Collection;
 import java.util.Map;

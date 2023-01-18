@@ -1,13 +1,13 @@
-package it.cavallium.data.generator;
+package it.cavallium.data.generator.plugin;
 
 import java.util.Objects;
 
-public class NewDataConfiguration implements TransformationConfiguration {
+public class UpgradeDataConfiguration implements TransformationConfiguration {
 
 	public String transformClass;
-	public String to;
+	public String from;
 	public String type;
-	public String initializer;
+	public String upgrader;
 
 	@Override
 	public String getTransformClass() {
@@ -16,7 +16,7 @@ public class NewDataConfiguration implements TransformationConfiguration {
 
 	@Override
 	public String getTransformName() {
-		return "new-data";
+		return "upgrade-data";
 	}
 
 	@Override
@@ -27,29 +27,29 @@ public class NewDataConfiguration implements TransformationConfiguration {
 		if (o == null || getClass() != o.getClass()) {
 			return false;
 		}
-		NewDataConfiguration that = (NewDataConfiguration) o;
-		return Objects.equals(transformClass, that.transformClass) && Objects.equals(to, that.to)
-				&& Objects.equals(type, that.type) && Objects.equals(initializer, that.initializer);
+		UpgradeDataConfiguration that = (UpgradeDataConfiguration) o;
+		return Objects.equals(transformClass, that.transformClass) && Objects.equals(from, that.from)
+				&& Objects.equals(type, that.type) && Objects.equals(upgrader, that.upgrader);
 	}
 
 	@Override
 	public int hashCode() {
 		int hash = 0;
 		hash += ConfigUtils.hashCode(transformClass);
-		hash += ConfigUtils.hashCode(to);
+		hash += ConfigUtils.hashCode(from);
 		hash += ConfigUtils.hashCode(type);
-		hash += ConfigUtils.hashCode(initializer);
+		hash += ConfigUtils.hashCode(upgrader);
 		return hash;
 	}
 
 	@SuppressWarnings("MethodDoesntCallSuperMethod")
 	@Override
-	public NewDataConfiguration clone() {
-		var c = new NewDataConfiguration();
+	public UpgradeDataConfiguration clone() {
+		var c = new UpgradeDataConfiguration();
 		if (this.transformClass != null) c.transformClass = this.transformClass;
-		if (this.initializer != null) c.initializer = this.initializer;
-		if (this.to != null) c.to = this.to;
+		if (this.from != null) c.from = this.from;
 		if (this.type != null) c.type = this.type;
+		if (this.upgrader != null) c.upgrader = this.upgrader;
 		return c;
 	}
 }

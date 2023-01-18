@@ -1,13 +1,12 @@
-package it.cavallium.data.generator;
+package it.cavallium.data.generator.plugin;
 
 import java.util.Objects;
 
-public class UpgradeDataConfiguration implements TransformationConfiguration {
+public final class MoveDataConfiguration implements TransformationConfiguration {
 
 	public String transformClass;
 	public String from;
-	public String type;
-	public String upgrader;
+	public String to;
 
 	@Override
 	public String getTransformClass() {
@@ -16,7 +15,7 @@ public class UpgradeDataConfiguration implements TransformationConfiguration {
 
 	@Override
 	public String getTransformName() {
-		return "upgrade-data";
+		return "move-data";
 	}
 
 	@Override
@@ -27,9 +26,10 @@ public class UpgradeDataConfiguration implements TransformationConfiguration {
 		if (o == null || getClass() != o.getClass()) {
 			return false;
 		}
-		UpgradeDataConfiguration that = (UpgradeDataConfiguration) o;
-		return Objects.equals(transformClass, that.transformClass) && Objects.equals(from, that.from)
-				&& Objects.equals(type, that.type) && Objects.equals(upgrader, that.upgrader);
+		MoveDataConfiguration that = (MoveDataConfiguration) o;
+		return Objects.equals(transformClass, that.transformClass) && Objects.equals(from, that.from) && Objects.equals(to,
+				that.to
+		);
 	}
 
 	@Override
@@ -37,19 +37,17 @@ public class UpgradeDataConfiguration implements TransformationConfiguration {
 		int hash = 0;
 		hash += ConfigUtils.hashCode(transformClass);
 		hash += ConfigUtils.hashCode(from);
-		hash += ConfigUtils.hashCode(type);
-		hash += ConfigUtils.hashCode(upgrader);
+		hash += ConfigUtils.hashCode(to);
 		return hash;
 	}
 
 	@SuppressWarnings("MethodDoesntCallSuperMethod")
 	@Override
-	public UpgradeDataConfiguration clone() {
-		var c = new UpgradeDataConfiguration();
+	public MoveDataConfiguration clone() {
+		var c = new MoveDataConfiguration();
 		if (this.transformClass != null) c.transformClass = this.transformClass;
 		if (this.from != null) c.from = this.from;
-		if (this.type != null) c.type = this.type;
-		if (this.upgrader != null) c.upgrader = this.upgrader;
+		if (this.to != null) c.to = this.to;
 		return c;
 	}
 }
