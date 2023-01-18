@@ -9,6 +9,6 @@ module data.generator.plugin {
 	requires java.compiler;
 	requires org.slf4j;
 	requires org.yaml.snakeyaml;
-	requires it.unimi.dsi.fastutil.core;
+	requires it.unimi.dsi.fastutil;
 	exports it.cavallium.data.generator.plugin;
 }
