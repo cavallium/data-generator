@@ -1,6 +1,7 @@
 package it.cavallium.data.generator.plugin;
 
 import java.util.Objects;
+import org.jetbrains.annotations.Nullable;
 
 public class NewDataConfiguration implements TransformationConfiguration {
 
@@ -8,6 +9,8 @@ public class NewDataConfiguration implements TransformationConfiguration {
 	public String to;
 	public String type;
 	public String initializer;
+	@Nullable
+	public Integer index;
 
 	@Override
 	public String getTransformClass() {
@@ -29,7 +32,8 @@ public class NewDataConfiguration implements TransformationConfiguration {
 		}
 		NewDataConfiguration that = (NewDataConfiguration) o;
 		return Objects.equals(transformClass, that.transformClass) && Objects.equals(to, that.to)
-				&& Objects.equals(type, that.type) && Objects.equals(initializer, that.initializer);
+				&& Objects.equals(type, that.type) && Objects.equals(initializer, that.initializer)
+				&& Objects.equals(index, that.index);
 	}
 
 	@Override
@@ -39,6 +43,7 @@ public class NewDataConfiguration implements TransformationConfiguration {
 		hash += ConfigUtils.hashCode(to);
 		hash += ConfigUtils.hashCode(type);
 		hash += ConfigUtils.hashCode(initializer);
+		hash += ConfigUtils.hashCode(index);
 		return hash;
 	}
 
@@ -50,6 +55,7 @@ public class NewDataConfiguration implements TransformationConfiguration {
 		if (this.initializer != null) c.initializer = this.initializer;
 		if (this.to != null) c.to = this.to;
 		if (this.type != null) c.type = this.type;
+		if (this.index != null) c.index = this.index;
 		return c;
 	}
 }

@@ -8,6 +8,7 @@ import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectCollection;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -178,15 +179,19 @@ public class DataModel {
 								throw new IllegalArgumentException(transformCoordinate + " refers to an unknown type: "
 										+ t.transformClass);
 							}
-							String definition = transformClass.data.remove(t.from);
-							if (definition == null) {
+							var definition = removeAndGetIndex(transformClass.data, t.from);
+							if (definition.isEmpty()) {
 								throw new IllegalArgumentException(transformCoordinate + " refers to an unknown field: " + t.from);
 							}
-							var prevDef = transformClass.data.put(t.to, definition);
+							var prevDef = tryInsertAtIndex(transformClass.data,
+									t.to,
+									definition.get().getValue(),
+									definition.get().getKey()
+							);
 							if (prevDef != null) {
 								throw new IllegalArgumentException(
 										transformCoordinate + " tries to overwrite the existing field \"" + t.to + "\" of value \""
-												+ prevDef + "\" with the field \"" + t.from + "\" of type \"" + definition + "\"");
+												+ prevDef + "\" with the field \"" + t.from + "\" of type \"" + definition.orElse(null) + "\"");
 							}
 						}
 						case "new-data" -> {
@@ -199,7 +204,12 @@ public class DataModel {
 							if (!allTypes.contains(extractTypeName(t.type))) {
 								throw new IllegalArgumentException(transformCoordinate + " refers to an unknown type: " + t.type);
 							}
-							var prevDef = transformClass.data.put(t.to, fixType(t.type));
+							String prevDef;
+							if (t.index != null) {
+								prevDef = tryInsertAtIndex(transformClass.data, t.to, fixType(t.type), t.index);
+							} else {
+								prevDef = transformClass.data.putIfAbsent(t.to, fixType(t.type));
+							}
 							if (prevDef != null) {
 								throw new IllegalArgumentException(transformCoordinate + " tries to overwrite the existing field \""
 										+ t.to + "\" of value \"" + prevDef
@@ -229,7 +239,7 @@ public class DataModel {
 							if (!allTypes.contains(extractTypeName(t.type))) {
 								throw new IllegalArgumentException(transformCoordinate + " refers to an unknown type: " + t.type);
 							}
-							String prevDefinition = transformClass.data.put(t.from, fixType(t.type));
+							String prevDefinition = transformClass.data.replace(t.from, fixType(t.type));
 							if (prevDefinition == null) {
 								throw new IllegalArgumentException(transformCoordinate + " refers to an unknown field: " + t.from);
 							}
@@ -264,6 +274,40 @@ public class DataModel {
 		this.currentVersion = versionsCount - 1;
 		this.superTypes = superTypesData;
 		this.customTypes = customTypesData;
+	}
+
+	private String tryInsertAtIndex(LinkedHashMap<String, String> data, String key, String value, int index) {
+		var before = new LinkedHashMap<String, String>();
+		var after = new LinkedHashMap<String, String>();
+		int i = 0;
+		for (Entry<String, String> entry : data.entrySet()) {
+			if (i < index) {
+				before.put(entry.getKey(), entry.getValue());
+			} else {
+				after.put(entry.getKey(), entry.getValue());
+			}
+			i++;
+		}
+		data.clear();
+		data.putAll(before);
+		var prev = data.putIfAbsent(key, value);
+		data.putAll(after);
+		return prev;
+	}
+
+	private Optional<Entry<Integer, String>> removeAndGetIndex(LinkedHashMap<String, String> data, String find) {
+		int foundIndex = -1;
+		{
+			int i = 0;
+			for (Entry<String, String> entry : data.entrySet()) {
+				if (entry.getKey().equals(find)) {
+					foundIndex = i;
+				}
+				i++;
+			}
+		}
+		if (foundIndex == -1) return Optional.empty();
+		return Optional.of(Map.entry(foundIndex, requireNonNull(data.remove(find))));
 	}
 
 	@Nullable

@@ -1,4 +1,4 @@
-package it.cavallium.data.generator;
+package it.cavallium.data.generator.plugin;
 
 import it.cavallium.data.generator.plugin.SourcesGenerator;
 import java.io.IOException;
