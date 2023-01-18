@@ -73,11 +73,12 @@ public class SourcesGenerator {
 	private static final Logger logger = LoggerFactory.getLogger(SourcesGenerator.class);
 	private static final boolean OVERRIDE_ALL_NULLABLE_METHODS = false;
 
-	private final SourcesGeneratorConfiguration configuration;
+	private final DataModel dataModel;
 
 	private SourcesGenerator(InputStream yamlDataStream) {
 		Yaml yaml = new Yaml();
-		this.configuration = yaml.loadAs(yamlDataStream, SourcesGeneratorConfiguration.class);
+		var configuration = yaml.loadAs(yamlDataStream, SourcesGeneratorConfiguration.class);
+		this.dataModel = configuration.buildDataModel();
 	}
 
 	public static SourcesGenerator load(InputStream yamlData) {
@@ -111,7 +112,7 @@ public class SourcesGenerator {
 			basePackageNamePath = basePackageNamePathPartial;
 		}
 		var hashPath = basePackageNamePath.resolve(".hash");
-		var curHash = computeHash(this.configuration);
+		var curHash = dataModel.computeHash();
 		if (Files.isRegularFile(hashPath) && Files.isReadable(hashPath)) {
 			var lines = Files.readAllLines(hashPath, StandardCharsets.UTF_8);
 			if (lines.size() >= 3) {
@@ -150,27 +151,6 @@ public class SourcesGenerator {
 				StandardCharsets.UTF_8, TRUNCATE_EXISTING, WRITE, CREATE);
 		markFileAsCreated(generatedFilesToDelete, outPath, hashPath);
 
-		// Fix the configuration
-		for (Entry<String, InterfaceDataConfiguration> interfacesDatum : configuration.interfacesData.entrySet()) {
-			String k = interfacesDatum.getKey();
-			InterfaceDataConfiguration value = interfacesDatum.getValue();
-			value.commonData.replaceAll((field, fieldType) -> fixType(fieldType));
-		}
-		for (Entry<String, InterfaceDataConfiguration> interfacesDatum : configuration.interfacesData.entrySet()) {
-			String name = interfacesDatum.getKey();
-			InterfaceDataConfiguration value = interfacesDatum.getValue();
-			value.commonGetters.replaceAll((field, fieldType) -> fixType(fieldType));
-		}
-		for (Entry<String, VersionConfiguration> stringVersionConfigurationEntry : configuration.versions.entrySet()) {
-			String k = stringVersionConfigurationEntry.getKey();
-			VersionConfiguration config = stringVersionConfigurationEntry.getValue();
-			for (Entry<String, ClassConfiguration> entry : config.classes.entrySet()) {
-				String clazz = entry.getKey();
-				ClassConfiguration classConfiguration = entry.getValue();
-				classConfiguration.getData().replaceAll((field, fieldType) -> fixType(fieldType));
-			}
-		}
-
 		// Create the Versions class
 		var versionsClass = TypeSpec.classBuilder("Versions");
 		versionsClass.addModifiers(Modifier.PUBLIC);
@@ -182,21 +162,19 @@ public class SourcesGenerator {
 				Modifier.FINAL
 		);
 		List<CodeBlock> versionsInstancesValue = new ArrayList<>();
-		for (Entry<String, VersionConfiguration> stringVersionConfigurationEntry : configuration.versions.entrySet()) {
-			String version = stringVersionConfigurationEntry.getKey();
-			VersionConfiguration value = stringVersionConfigurationEntry.getValue();
+		for (ComputedVersion value : dataModel.getVersionsSet()) {
 			// Add a static variable for this version, containing the normalized version number
 			var versionNumberField = FieldSpec
-					.builder(TypeName.INT, getVersionVarName(version))
+					.builder(TypeName.INT, getVersionVarName(value))
 					.addModifiers(Modifier.PUBLIC)
 					.addModifiers(Modifier.STATIC)
 					.addModifiers(Modifier.FINAL)
-					.initializer(getVersionShortInt(version))
+					.initializer(getVersionShortInt(value))
 					.build();
 			// Add the fields to the class
 			versionsClass.addField(versionNumberField);
 
-			var versionPackage = getVersionPackage(configuration.currentVersion, basePackageName, version);
+			var versionPackage = value.getPackage(basePackageName);
 			var versionClassType = ClassName.get(joinPackage(versionPackage, ""), "Version");
 
 			versionsInstancesValue.add(CodeBlock.builder().add("$T.INSTANCE", versionClassType).build());
@@ -215,10 +193,8 @@ public class SourcesGenerator {
 		{
 			var basicTypeClass = TypeSpec.enumBuilder("BasicType");
 			basicTypeClass.addModifiers(Modifier.PUBLIC);
-			for (Entry<String, VersionConfiguration> stringVersionConfigurationEntry : configuration.versions.entrySet()) {
-				String k = stringVersionConfigurationEntry.getKey();
-				VersionConfiguration value = stringVersionConfigurationEntry.getValue();
-				for (String basicTypeName : value.classes.keySet()) {
+			for (var value : dataModel.getVersionsSet()) {
+				for (String basicTypeName : value.getClassMap().keySet()) {
 					if (!basicTypeClass.enumConstants.containsKey(basicTypeName)) {
 						basicTypeClass.addEnumConstant(basicTypeName);
 					}
@@ -232,10 +208,8 @@ public class SourcesGenerator {
 		{
 			var genericTypeClass = TypeSpec.enumBuilder("GenericType");
 			genericTypeClass.addModifiers(Modifier.PUBLIC);
-			for (Entry<String, VersionConfiguration> stringVersionConfigurationEntry : configuration.versions.entrySet()) {
-				String k = stringVersionConfigurationEntry.getKey();
-				VersionConfiguration value = stringVersionConfigurationEntry.getValue();
-				for (String superTypeName : value.superTypes.keySet()) {
+			for (var value : dataModel.getVersionsSet()) {
+				for (String superTypeName : dataModel.getSuperTypes().keySet()) {
 					if (!genericTypeClass.enumConstants.containsKey(superTypeName)) {
 						genericTypeClass.addEnumConstant(superTypeName);
 					}
@@ -298,6 +272,8 @@ public class SourcesGenerator {
 			writeClass(generatedFilesToDelete, outPath, joinPackage(basePackageName, ""), iVersionClass);
 		}
 
+		var currentVersionPackage = dataModel.getCurrentVersion().getPackage(basePackageName);
+
 		// Create the CurrentVersion class
 		{
 			var currentVersionClass = TypeSpec.classBuilder("CurrentVersion");
@@ -306,11 +282,10 @@ public class SourcesGenerator {
 			// Add a static variable for the current version
 			{
 				var versionNumberField = FieldSpec.builder(ClassName
-						.get(getVersionPackage(configuration.currentVersion, basePackageName, configuration.currentVersion),
+						.get(dataModel.getCurrentVersion().getPackage(basePackageName),
 								"Version"), "VERSION").addModifiers(Modifier.PUBLIC).addModifiers(Modifier.STATIC)
-						.addModifiers(Modifier.FINAL).initializer(
-								"new " + getVersionPackage(configuration.currentVersion, basePackageName, configuration.currentVersion)
-										+ ".Version()").build();
+						.addModifiers(Modifier.FINAL).initializer("new " + dataModel.getCurrentVersion().getPackage(basePackageName)
+								+ ".Version()").build();
 				currentVersionClass.addField(versionNumberField);
 			}
 			// Check latest version method
@@ -327,21 +302,18 @@ public class SourcesGenerator {
 						.addModifiers(Modifier.FINAL).addModifiers(Modifier.STATIC).returns(ParameterizedTypeName.get(
 								ClassName.get(Set.class), ParameterizedTypeName.get(
 										ClassName.get(Class.class), WildcardTypeName.subtypeOf(ClassName
-												.get(joinPackage(getVersionPackage(configuration.currentVersion, basePackageName, configuration.currentVersion), "data"),
+												.get(joinPackage(currentVersionPackage, "data"),
 														"IType")))))
 						.addCode("return $T.of(\n", Set.class);
 				AtomicBoolean isFirst = new AtomicBoolean(true);
-				for (Entry<String, Set<String>> entry : configuration.versions.get(configuration.currentVersion).superTypes.entrySet()) {
+				for (Entry<String, Set<String>> entry : dataModel.getSuperTypes().entrySet()) {
 					String superTypeName = entry.getKey();
 					Set<String> superTypeConfig = entry.getValue();
 					if (!isFirst.getAndSet(false)) {
 						getSuperTypeClasses.addCode(",\n");
 					}
 					getSuperTypeClasses.addCode("$T.class",
-							ClassName.get(joinPackage(getVersionPackage(configuration.currentVersion,
-									basePackageName,
-									configuration.currentVersion
-							), "data"), superTypeName)
+							ClassName.get(joinPackage(currentVersionPackage, "data"), superTypeName)
 					);
 				}
 				getSuperTypeClasses.addCode("\n);");
@@ -353,20 +325,17 @@ public class SourcesGenerator {
 						.addModifiers(Modifier.FINAL).addModifiers(Modifier.STATIC).returns(ParameterizedTypeName.get(
 								ClassName.get(Set.class), ParameterizedTypeName.get(
 										ClassName.get(Class.class), WildcardTypeName.subtypeOf(ClassName
-												.get(joinPackage(getVersionPackage(configuration.currentVersion, basePackageName, configuration.currentVersion), "data"),
+												.get(joinPackage(currentVersionPackage, "data"),
 														"IBasicType")))));
 				getSuperTypeSubtypesClasses.addParameter(ParameterSpec.builder(ParameterizedTypeName.get(ClassName.get(Class.class), WildcardTypeName.subtypeOf(ClassName
-						.get(joinPackage(getVersionPackage(configuration.currentVersion, basePackageName, configuration.currentVersion), "data"),
+						.get(joinPackage(currentVersionPackage, "data"),
 								"IType"))), "superTypeClass").build());
 				getSuperTypeSubtypesClasses.beginControlFlow("switch (superTypeClass.getCanonicalName())");
-				for (Entry<String, Set<String>> entry : configuration.versions.get(configuration.currentVersion).superTypes.entrySet()) {
+				for (Entry<String, Set<String>> entry : dataModel.getSuperTypes().entrySet()) {
 					String superTypeName = entry.getKey();
 					Set<String> subTypes = entry.getValue();
 					getSuperTypeSubtypesClasses.beginControlFlow("case \"" + ClassName
-							.get(joinPackage(getVersionPackage(configuration.currentVersion,
-									basePackageName,
-									configuration.currentVersion
-							), "data"), superTypeName)
+							.get(joinPackage(currentVersionPackage, "data"), superTypeName)
 							.canonicalName() + "\":");
 					getSuperTypeSubtypesClasses.addCode("return $T.of(\n", Set.class);
 					AtomicBoolean isFirst = new AtomicBoolean(true);
@@ -375,10 +344,7 @@ public class SourcesGenerator {
 							getSuperTypeSubtypesClasses.addCode(",\n");
 						}
 						getSuperTypeSubtypesClasses.addCode("$T.class",
-								ClassName.get(joinPackage(getVersionPackage(configuration.currentVersion,
-										basePackageName,
-										configuration.currentVersion
-								), "data"), subTypeName)
+								ClassName.get(joinPackage(currentVersionPackage, "data"), subTypeName)
 						);
 					}
 					getSuperTypeSubtypesClasses.addCode("\n);\n");
@@ -393,7 +359,7 @@ public class SourcesGenerator {
 			// UpgradeDataToLatestVersion1 Method
 			{
 				var upgradeDataToLatestVersion1MethodBuilder = MethodSpec.methodBuilder("upgradeDataToLatestVersion").addTypeVariable(TypeVariableName.get("U", ClassName
-						.get(joinPackage(getVersionPackage(configuration.currentVersion, basePackageName, configuration.currentVersion), "data"),
+						.get(joinPackage(currentVersionPackage, "data"),
 								"IBasicType")))
 						.addModifiers(Modifier.PUBLIC).addModifiers(Modifier.STATIC).addModifiers(Modifier.FINAL).returns(TypeVariableName.get("U"))
 						.addParameter(ParameterSpec.builder(TypeName.INT, "oldVersion").build()).addParameter(
@@ -401,20 +367,16 @@ public class SourcesGenerator {
 						.addParameter(ParameterSpec.builder(DataInput.class, "oldDataInput").build())
 						.addException(IOException.class).beginControlFlow("switch (oldVersion)");
 				AtomicInteger seqNumber = new AtomicInteger(0);
-				for (Entry<String, VersionConfiguration> entry : configuration.versions.entrySet()) {
-					String version = entry.getKey();
-					VersionConfiguration versionConfiguration = entry.getValue();
+				for (var versionConfiguration : dataModel.getVersionsSet()) {
 // Add a case in which the data version deserializes the serialized data and upgrades it
-					upgradeDataToLatestVersion1MethodBuilder.beginControlFlow("case $T." + getVersionVarName(version) + ":",
+					upgradeDataToLatestVersion1MethodBuilder.beginControlFlow("case $T." + versionConfiguration.getVersionVarName() + ":",
 							ClassName.get(joinPackage(basePackageName, ""), "Versions")
 					);
+					upgradeDataToLatestVersion1MethodBuilder.addStatement("var deserialized" + seqNumber.incrementAndGet() + " = "
+							+ versionConfiguration.getPackage(basePackageName)
+							+ ".Version.INSTANCE.getSerializer(type).deserialize(oldDataInput)");
 					upgradeDataToLatestVersion1MethodBuilder.addStatement(
-							"var deserialized" + seqNumber.incrementAndGet() + " = " + getVersionPackage(configuration.currentVersion,
-									basePackageName,
-									version
-							) + ".Version.INSTANCE.getSerializer(type).deserialize(oldDataInput)");
-					upgradeDataToLatestVersion1MethodBuilder.addStatement(
-							"return upgradeDataToLatestVersion(Versions." + getVersionVarName(version) + ", deserialized"
+							"return upgradeDataToLatestVersion(Versions." + versionConfiguration.getVersionVarName() + ", deserialized"
 									+ seqNumber.get() + ")");
 					upgradeDataToLatestVersion1MethodBuilder.endControlFlow();
 				}
@@ -429,7 +391,7 @@ public class SourcesGenerator {
 				var upgradeDataToLatestVersion2MethodBuilder = MethodSpec.methodBuilder("upgradeDataToLatestVersion")
 						.addModifiers(Modifier.PUBLIC).addModifiers(Modifier.STATIC).addModifiers(Modifier.FINAL).addTypeVariable(TypeVariableName.get("T"))
 						.addTypeVariable(TypeVariableName.get("U", ClassName
-								.get(joinPackage(getVersionPackage(configuration.currentVersion, basePackageName, configuration.currentVersion), "data"),
+								.get(joinPackage(currentVersionPackage, "data"),
 										"IBasicType"))).returns(TypeVariableName.get("U"))
 						.addParameter(ParameterSpec.builder(TypeName.INT, "oldVersion").build())
 						.addParameter(ParameterSpec.builder(TypeVariableName.get("T"), "oldData").build())
@@ -438,28 +400,26 @@ public class SourcesGenerator {
 						.addStatement("$T intermediateData = oldData", Object.class)
 						.beginControlFlow("while (true)")
 						.beginControlFlow("switch (intermediateVersion)");
-				for (Entry<String, VersionConfiguration> entry : configuration.versions.entrySet()) {
-					String version = entry.getKey();
-					VersionConfiguration versionConfiguration = entry.getValue();
+				for (var versionConfiguration : dataModel.getVersionsSet()) {
 // Add a case in which the data version deserializes the serialized data and upgrades it
-					upgradeDataToLatestVersion2MethodBuilder.beginControlFlow("case $T." + getVersionVarName(version) + ":",
+					upgradeDataToLatestVersion2MethodBuilder.beginControlFlow("case $T." + versionConfiguration.getVersionVarName() + ":",
 							versionsClassName
 					);
-					if (version.equalsIgnoreCase(configuration.currentVersion)) {
+					if (versionConfiguration.isCurrent()) {
 						// This is the latest version, don't upgrade.
 						upgradeDataToLatestVersion2MethodBuilder.addStatement("return ($T) intermediateData", TypeVariableName.get("U"));
 					} else {
 						// Upgrade
 						upgradeDataToLatestVersion2MethodBuilder
 								.addStatement(
-										"intermediateData = " + getVersionPackage(configuration.currentVersion, basePackageName, version)
+										"intermediateData = " + versionConfiguration.getPackage(basePackageName)
 												+ ".Version.upgradeToNextVersion(($T) intermediateData)",
-										ClassName.get(joinPackage(getVersionPackage(configuration.currentVersion, basePackageName, version),
+										ClassName.get(joinPackage(versionConfiguration.getPackage (basePackageName),
 												"data"
 										), "IBasicType")
 								)
 								.addStatement("intermediateVersion = $T."
-										+ getVersionVarName(findNextVersion(configuration, version).orElseThrow()), versionsClassName)
+										+ getVersionVarName(dataModel.getNextVersionOrThrow(versionConfiguration)), versionsClassName)
 								.addStatement("break");
 					}
 					upgradeDataToLatestVersion2MethodBuilder.endControlFlow();
@@ -475,21 +435,16 @@ public class SourcesGenerator {
 			writeClass(generatedFilesToDelete, outPath, joinPackage(basePackageName, "current"), currentVersionClass);
 		}
 
-		for (Entry<String, VersionConfiguration> mapEntry : configuration.versions.entrySet()) {
-			String version = mapEntry.getKey();
-			VersionConfiguration versionConfiguration = mapEntry.getValue();
-			var versionPackage = getVersionPackage(configuration.currentVersion, basePackageName, version);
+		for (var versionConfiguration : dataModel.getVersionsSet()) {
+			var versionPackage = versionConfiguration.getPackage(basePackageName);
 			var versionClassType = ClassName.get(joinPackage(versionPackage, ""), "Version");
-			var nextVersion = findNextVersion(configuration, version);
-			var nextVersionPackage = nextVersion.map((nextVersionValue) -> getVersionPackage(configuration.currentVersion,
-					basePackageName,
-					nextVersionValue
-			));
+			var nextVersion = dataModel.getNextVersion(versionConfiguration);
+			var nextVersionPackage = nextVersion.map((nextVersionValue) -> nextVersionValue.getPackage(basePackageName));
 
-			logger.info(
-					"Found version configuration:\n{\n\tversion: \"" + version + "\",\n\tversionPackage: \"" + versionPackage
-							+ "\",\n\tnextVersion: \"" + nextVersion.orElse("unknown") + "\",\n\tnextVersionPackage: \""
-							+ nextVersionPackage.orElse("unknown") + "\"\n}");
+			logger.info("Found version configuration:\n{\n\tversion: \"" + versionConfiguration.getName()
+					+ "\",\n\tversionPackage: \"" + versionPackage + "\",\n\tnextVersion: \"" + nextVersion
+					.map(ComputedVersion::getName)
+					.orElse("unknown") + "\",\n\tnextVersionPackage: \"" + nextVersionPackage.orElse("unknown") + "\"\n}");
 
 			HashMap<String, TypeName> typeOptionalSerializers = new LinkedHashMap<>();
 			HashMap<String, TypeName> typeOptionalUpgraders = new LinkedHashMap<>();
@@ -702,7 +657,7 @@ public class SourcesGenerator {
 				}
 
 				// Setup only the basic types upgraders variables
-				for (String s : versionConfiguration.classes.keySet()) {
+				for (String s : versionConfiguration.getClassMap().keySet()) {
 					if (nextVersion.isPresent()) {
 						typeOptionalUpgraders.put(s, ClassName.get(joinPackage(versionPackage, "upgraders"), s + "Upgrader"));
 					}
@@ -710,9 +665,9 @@ public class SourcesGenerator {
 
 				// Generate the basic and super types
 				Stream
-						.concat(versionConfiguration.classes.keySet().stream(), versionConfiguration.superTypes.keySet().stream())
+						.concat(versionConfiguration.getClassMap().keySet().stream(), dataModel.getSuperTypes().keySet().stream())
 						.forEach((type) -> {
-							boolean isBasic = versionConfiguration.classes.containsKey(type);
+							boolean isBasic = versionConfiguration.getClassMap().containsKey(type);
 							typeOptionalSerializers.put(type,
 									ClassName.get(joinPackage(versionPackage, "serializers"), type + "Serializer")
 							);
@@ -757,11 +712,11 @@ public class SourcesGenerator {
 						});
 
 				// Generate the special types
-				for (Entry<String, CustomTypesConfiguration> entry : versionConfiguration.customTypes.entrySet()) {
+				for (Entry<String, CustomTypesConfiguration> entry : dataModel.getCustomTypes().entrySet()) {
 					String key = entry.getKey();
 					CustomTypesConfiguration customTypeConfiguration = entry.getValue();
 					Optional<CustomTypesConfiguration> nextVersionCustomTypeConfiguration = nextVersion
-							.map(s -> Objects.requireNonNull(configuration.versions.get(s).customTypes.get(key),
+							.map(s -> Objects.requireNonNull(dataModel.getCustomTypes().get(key),
 									() -> "Custom type " + key + " not found in version " + s
 							));
 					typeOptionalSerializers.put(key, ClassName.bestGuess(customTypeConfiguration.serializer));
@@ -825,16 +780,16 @@ public class SourcesGenerator {
 
 			// Check if all types exist
 			{
-				for (Entry<String, ClassConfiguration> e : versionConfiguration.classes.entrySet()) {
+				for (Entry<String, ParsedClass> e : versionConfiguration.getClassMap().entrySet()) {
 					String type = e.getKey();
-					ClassConfiguration typeConfig = e.getValue();
+					ParsedClass typeConfig = e.getValue();
 					for (Entry<String, String> entry : typeConfig.data.entrySet()) {
 						String field = entry.getKey();
 						String fieldType = entry.getValue();
 						if (!typeTypes.containsKey(fieldType)) {
 							throw new UnsupportedOperationException(
 									"Unknown type '" + fieldType + "' of field '" + field + "' in class '" + type + "' in version '"
-											+ version + "'");
+											+ versionConfiguration.getName() + "'");
 						}
 					}
 				}
@@ -1187,9 +1142,9 @@ public class SourcesGenerator {
 
 			// Generate the basic types serializers
 			{
-				for (Entry<String, ClassConfiguration> classConfigurationEntry : versionConfiguration.classes.entrySet()) {
+				for (Entry<String, ParsedClass> classConfigurationEntry : versionConfiguration.getClassMap().entrySet()) {
 					String type = classConfigurationEntry.getKey();
-					ClassConfiguration basicTypeConfiguration = classConfigurationEntry.getValue();
+					ParsedClass basicTypeConfiguration = classConfigurationEntry.getValue();
 					var classType = ClassName.get(joinPackage(versionPackage, "data"), type);
 
 					// Create the basic X serializer class
@@ -1313,7 +1268,7 @@ public class SourcesGenerator {
 								}
 
 								List<VersionTransformation> list = new ArrayList<>();
-								for (VersionTransformation versionTransformation : configuration.versions.get(nextVersion.get()).transformations) {
+								for (VersionTransformation versionTransformation : nextVersion.get().transformations) {
 									if (versionTransformation.isForClass(type)) {
 										list.add(versionTransformation);
 									}
@@ -1321,9 +1276,9 @@ public class SourcesGenerator {
 								var transformations = Collections.unmodifiableList(list);
 								AtomicInteger transformationNumber = new AtomicInteger(0);
 								HashMap<String, TypeName> currentTransformedFieldTypes = new HashMap<>();
-								for (Entry<String, ClassConfiguration> stringClassConfigurationEntry : versionConfiguration.classes.entrySet()) {
+								for (Entry<String, ParsedClass> stringClassConfigurationEntry : versionConfiguration.getClassMap().entrySet()) {
 									String className = stringClassConfigurationEntry.getKey();
-									ClassConfiguration classConfiguration = stringClassConfigurationEntry.getValue();
+									ParsedClass classConfiguration = stringClassConfigurationEntry.getValue();
 									for (Entry<String, String> entry : classConfiguration.getData().entrySet()) {
 										String fieldName = entry.getKey();
 										String fieldType = entry.getValue();
@@ -1400,11 +1355,17 @@ public class SourcesGenerator {
 											TypeName fromType = currentTransformedFieldTypes.get(
 													upgradeDataTransformation.transformClass + "." + upgradeDataTransformation.from);
 											TypeName fromTypeBoxed = fromType.isPrimitive() ? fromType.box() : fromType;
-											String toTypeName = configuration.versions.get(nextVersion.get()).classes
+											String toTypeName = nextVersion.get().getClassMap()
 													.get(upgradeDataTransformation.transformClass)
 													.getData()
 													.get(upgradeDataTransformation.from);
 											TypeName toType = nextVersionTypeTypes.get(toTypeName);
+											if (toType == null) {
+												throw new IllegalArgumentException(
+														"Type " + toTypeName + " does not exist in version " + nextVersion
+																.map(ComputedVersion::getName)
+																.orElse("---"));
+											}
 											TypeName toTypeBoxed = toType.isPrimitive() ? toType.box() : toType;
 											deserializeMethod.addStatement(
 													"$T $$field$$" + (currentVarNumber.getInt(upgradeDataTransformation.from) + 1) + "$$"
@@ -1454,13 +1415,13 @@ public class SourcesGenerator {
 										}
 										case "new-data" -> {
 											var newDataTransformation = (NewDataConfiguration) transformation;
-											String newTypeName = configuration.versions.get(nextVersion.get()).classes
+											String newTypeName = nextVersion.get().getClassMap()
 													.get(newDataTransformation.transformClass)
 													.getData()
 													.get(newDataTransformation.to);
 											TypeName newType = nextVersionTypeTypes.get(newTypeName);
 											Objects.requireNonNull(newType,
-													() -> "Type \"" + newTypeName + "\" is not present from next version " + version
+													() -> "Type \"" + newTypeName + "\" is not present from next version " + versionConfiguration.getName()
 															+ " to version " + nextVersion.get() + " in upgrader "
 															+ newDataTransformation.transformClass + "." + newDataTransformation.to
 											);
@@ -1515,7 +1476,7 @@ public class SourcesGenerator {
 								deserializeMethod.addComment(
 										"Upgrade the remaining untouched values to the new version before returning");
 
-								var nextVersionFieldTypes = configuration.versions.get(nextVersion.get()).classes.get(type).getData();
+								var nextVersionFieldTypes = nextVersion.get().getClassMap().get(type).getData();
 								for (var e : currentVarNumber.object2IntEntrySet()) {
 									String key = e.getKey();
 									int number = e.getIntValue();
@@ -1611,8 +1572,8 @@ public class SourcesGenerator {
 									if (currentVarNumber.getInt(field) < 0) {
 										throw new IllegalStateException(
 												"Field " + field + " in class " + type + " has an invalid var number ("
-														+ currentVarNumber.getInt(field) + ") after upgrading from version " + version
-														+ " to version " + nextVersion.orElse("---"));
+														+ currentVarNumber.getInt(field) + ") after upgrading from version " + versionConfiguration.getName()
+														+ " to version " + nextVersion.map(ComputedVersion::getName).orElse("---"));
 									}
 									deserializeMethod.addCode("$$field$$" + currentVarNumber.getInt(field) + "$$" + field);
 								}
@@ -1633,7 +1594,7 @@ public class SourcesGenerator {
 
 			// Generate the super types serializers
 			{
-				for (Entry<String, Set<String>> entry : versionConfiguration.superTypes.entrySet()) {
+				for (Entry<String, Set<String>> entry : dataModel.getSuperTypes().entrySet()) {
 					String type = entry.getKey();
 					Set<String> superTypeConfiguration = entry.getValue();
 					var classType = ClassName.get(joinPackage(versionPackage, "data"), type);
@@ -1753,7 +1714,7 @@ public class SourcesGenerator {
 							.addModifiers(Modifier.PUBLIC)
 							.addModifiers(Modifier.STATIC)
 							.addModifiers(Modifier.FINAL)
-							.initializer("$T." + getVersionVarName(version),
+							.initializer("$T." + versionConfiguration.getVersionVarName(),
 									ClassName.get(joinPackage(basePackageName, ""), "Versions")
 							)
 							.build();
@@ -1826,9 +1787,9 @@ public class SourcesGenerator {
 										.builder(ClassName.get(joinPackage(versionPackage, "data"), "IBasicType"), "oldData")
 										.build())
 								.beginControlFlow("switch (oldData.getBasicType$$()) ");
-						for (Entry<String, ClassConfiguration> entry : versionConfiguration.classes.entrySet()) {
+						for (Entry<String, ParsedClass> entry : versionConfiguration.getClassMap().entrySet()) {
 							String type = entry.getKey();
-							ClassConfiguration typeConfiguration = entry.getValue();
+							ParsedClass typeConfiguration = entry.getValue();
 							var data = typeConfiguration.data;
 							upgradeToNextVersionMethodBuilder.addStatement(
 									"case " + type + ": return $T." + type + "UpgraderInstance.upgrade(($T) oldData)",
@@ -1858,9 +1819,9 @@ public class SourcesGenerator {
 									.builder(ClassName.get(joinPackage(basePackageName, ""), "BasicType"), "type")
 									.build())
 							.beginControlFlow("switch (type)");
-					for (Entry<String, ClassConfiguration> entry : versionConfiguration.classes.entrySet()) {
+					for (Entry<String, ParsedClass> entry : versionConfiguration.getClassMap().entrySet()) {
 						String type = entry.getKey();
-						ClassConfiguration typeConfiguration = entry.getValue();
+						ParsedClass typeConfiguration = entry.getValue();
 						var data = typeConfiguration.data;
 
 						getClassMethodBuilder.addStatement("case " + type + ": return $T.class",
@@ -1889,9 +1850,9 @@ public class SourcesGenerator {
 									.builder(ClassName.get(joinPackage(basePackageName, ""), "BasicType"), "type")
 									.build())
 							.beginControlFlow("switch (type)");
-					for (Entry<String, ClassConfiguration> entry : versionConfiguration.classes.entrySet()) {
+					for (Entry<String, ParsedClass> entry : versionConfiguration.getClassMap().entrySet()) {
 						String type = entry.getKey();
-						ClassConfiguration typeConfiguration = entry.getValue();
+						ParsedClass typeConfiguration = entry.getValue();
 						var data = typeConfiguration.data;
 						getSerializerMethodBuilder.addStatement("case " + type + ": return ($T) $T." + type + "SerializerInstance",
 								ParameterizedTypeName.get(ClassName.get(DataSerializer.class), TypeVariableName.get("T")),
@@ -2131,7 +2092,7 @@ public class SourcesGenerator {
 
 			// Create the interfaces
 			{
-				for (Entry<String, Set<String>> superType : versionConfiguration.superTypes.entrySet()) {
+				for (Entry<String, Set<String>> superType : dataModel.getSuperTypes().entrySet()) {
 					String type = superType.getKey();
 					Set<String> superTypeConfiguration = superType.getValue();
 					var iBasicTypeInterfaceType = ClassName.get(joinPackage(versionPackage, "data"), "IBasicType");
@@ -2154,7 +2115,7 @@ public class SourcesGenerator {
 
 					// If it's the latest version, add the common methods
 					if (nextVersion.isEmpty()) {
-						var interfaceDataConfiguration = configuration.interfacesData.get(type);
+						var interfaceDataConfiguration = dataModel.getInterfaces().get(type);
 						if (interfaceDataConfiguration != null) {
 							// Extend this interface
 							for (String extendedInterface : interfaceDataConfiguration.extendInterfaces) {
@@ -2218,9 +2179,9 @@ public class SourcesGenerator {
 
 			// Create the basic types classes
 			{
-				for (Entry<String, ClassConfiguration> stringClassConfigurationEntry : versionConfiguration.classes.entrySet()) {
+				for (Entry<String, ParsedClass> stringClassConfigurationEntry : versionConfiguration.getClassMap().entrySet()) {
 					String type = stringClassConfigurationEntry.getKey();
-					ClassConfiguration classConfiguration = stringClassConfigurationEntry.getValue();
+					ParsedClass classConfiguration = stringClassConfigurationEntry.getValue();
 					var typeClass = TypeSpec.recordBuilder(type);
 					typeClass.addModifiers(Modifier.PUBLIC);
 					typeClass.addModifiers(Modifier.STATIC);
@@ -2237,7 +2198,7 @@ public class SourcesGenerator {
 							.returns(ClassName.get(joinPackage(basePackageName, ""), "BasicType"))
 							.addStatement("return $T." + type, ClassName.get(joinPackage(basePackageName, ""), "BasicType"));
 					typeClass.addMethod(getBasicTypeMethod.build());
-					var superTypes = versionConfiguration.superTypes
+					var superTypes = dataModel.getSuperTypes()
 							.entrySet()
 							.parallelStream()
 							.filter(((entry) -> entry.getValue().contains(type)))
@@ -2271,7 +2232,7 @@ public class SourcesGenerator {
 						if (nextVersion.isEmpty()) {
 							for (Entry<String, Integer> superType : superTypes) {
 								if (superType != null) {
-									var interfaceCommonDataConfiguration = configuration.interfacesData.getOrDefault(superType.getKey(),
+									var interfaceCommonDataConfiguration = dataModel.getInterfaces().getOrDefault(superType.getKey(),
 											null
 									);
 									if (interfaceCommonDataConfiguration != null
@@ -2394,10 +2355,6 @@ public class SourcesGenerator {
 
 	private void markFileAsCreated(Set<Path> generatedFilesToDelete, Path basePath, Path filePath) {
 		generatedFilesToDelete.remove(basePath.relativize(filePath));
-	}
-
-	private String computeHash(SourcesGeneratorConfiguration configuration) {
-		return Integer.toString(configuration.hashCode());
 	}
 
 	private TypeName getImmutableArrayType(HashMap<String, TypeName> typeTypes, String typeString) {
@@ -2694,10 +2651,10 @@ public class SourcesGenerator {
 				boolean nextVersionArrayTypeNeeded){}
 
 	@SuppressWarnings("OptionalUsedAsFieldOrParameterType")
-	public NeededTypes registerNeededTypes(VersionConfiguration versionConfiguration,
+	public NeededTypes registerNeededTypes(ComputedVersion versionConfiguration,
 			Family family,
 			String type,
-			Optional<String> nextVersion,
+			Optional<ComputedVersion> nextVersion,
 			Optional<String> nextVersionPackage,
 			ClassName versionClassType,
 			String versionPackage,
@@ -2712,10 +2669,10 @@ public class SourcesGenerator {
 			Supplier<TypeName> arrayClassName,
 			Supplier<TypeName> nextArrayClassName) {
 		// Check if the nullable type is needed
-		boolean nullableTypeNeeded = versionConfiguration.classes
+		boolean nullableTypeNeeded = versionConfiguration.getClassMap()
 				.values()
 				.parallelStream()
-				.map(ClassConfiguration::getData)
+				.map(ParsedClass::getData)
 				.map(Map::values)
 				.flatMap(Collection::parallelStream)
 				.filter((typeZ) -> typeZ.startsWith("-"))
@@ -2723,10 +2680,10 @@ public class SourcesGenerator {
 				.anyMatch((typeZ) -> typeZ.equals(type));
 
 		boolean nextVersionNullableTypeNeeded = nextVersion
-				.filter(s -> configuration.versions.get(s).classes
+				.filter(s -> s.getClassMap()
 						.values()
 						.parallelStream()
-						.map(ClassConfiguration::getData)
+						.map(ParsedClass::getData)
 						.map(Map::values)
 						.flatMap(Collection::parallelStream)
 						.filter((typeZ) -> typeZ.startsWith("-"))
@@ -2766,20 +2723,20 @@ public class SourcesGenerator {
 		}
 
 		// Check if the array type is needed
-		boolean arrayTypeNeeded = versionConfiguration.classes
+		boolean arrayTypeNeeded = versionConfiguration.getClassMap()
 				.values()
 				.parallelStream()
-				.map(ClassConfiguration::getData)
+				.map(ParsedClass::getData)
 				.map(Map::values)
 				.flatMap(Collection::parallelStream)
 				.filter((typeZ) -> typeZ.startsWith("§"))
 				.map((typeZ) -> typeZ.substring(1))
 				.anyMatch((typeZ) -> typeZ.equals(type));
 
-		boolean nextVersionArrayTypeNeeded = nextVersion.filter(s -> configuration.versions.get(s).classes
+		boolean nextVersionArrayTypeNeeded = nextVersion.filter(s -> s.getClassMap()
 				.values()
 				.parallelStream()
-				.map(ClassConfiguration::getData)
+				.map(ParsedClass::getData)
 				.map(Map::values)
 				.flatMap(Collection::parallelStream)
 				.filter((typeZ) -> typeZ.startsWith("§"))
@@ -2831,17 +2788,6 @@ public class SourcesGenerator {
 			firstChar = false;
 		}
 		return sb.toString();
-	}
-
-	private String fixType(String fieldType) {
-		if (fieldType.endsWith("[]") && fieldType.startsWith("-")) {
-			throw new UnsupportedOperationException("Arrays cannot be null");
-		}
-		if (fieldType.endsWith("[]")) {
-			return "§" + fieldType.substring(0, fieldType.length() - 2);
-		} else {
-			return fieldType;
-		}
 	}
 
 	private void addImmutableSetter(Builder classBuilder, TypeName classType, Collection<String> fieldNames,
@@ -2929,36 +2875,9 @@ public class SourcesGenerator {
 		return Character.toUpperCase(field.charAt(0)) + field.substring(1);
 	}
 
-	private Optional<String> findNextVersion(SourcesGeneratorConfiguration config, String version) {
-		int currentVersion = Integer.parseInt(getVersionShortInt(version));
-		int maxVersion = Integer.parseInt(getVersionShortInt(config.currentVersion));
-		if (currentVersion >= maxVersion) {
-			return Optional.empty();
-		}
-
-		AtomicInteger smallestNextVersion = new AtomicInteger(Integer.MAX_VALUE);
-		AtomicReference<String> smallestNextVersionString = new AtomicReference<>(null);
-		for (Entry<String, VersionConfiguration> entry : config.versions.entrySet()) {
-			String possibleNextVersionString = entry.getKey();
-			VersionConfiguration conf = entry.getValue();
-			int possibleNextVersion = Integer.parseInt(getVersionShortInt(possibleNextVersionString));
-			if (possibleNextVersion <= maxVersion && possibleNextVersion > currentVersion
-					&& possibleNextVersion <= smallestNextVersion.get()) {
-				smallestNextVersion.set(possibleNextVersion);
-				smallestNextVersionString.set(possibleNextVersionString);
-			}
-		}
-
-		String value = smallestNextVersionString.get();
-		return Optional.ofNullable(value);
-	}
-
-	private String getVersionPackage(String latestVersion, String basePackageName, String version) {
-		if (latestVersion.equals(version)) {
-			return joinPackage(basePackageName, "current");
-		} else {
-			return joinPackage(basePackageName, "v" + getVersionCompleteInt(version));
-		}
+	@Deprecated
+	private String getVersionPackage(String basePackageName, ComputedVersion version) {
+		return version.getPackage(basePackageName);
 	}
 
 	private String joinPackage(String basePackageName, String packageName) {
@@ -3004,33 +2923,13 @@ public class SourcesGenerator {
 		markFileAsCreated(generatedFilesToDelete, outPath, outJavaFile);
 	}
 
-	private String getVersionVarName(String version) {
-		return "V" + version.replace('-', '_').replace('.', '_');
+	@Deprecated
+	private String getVersionVarName(ComputedVersion computedVersion) {
+		return computedVersion.getVersionVarName();
 	}
 
-	private String getVersionCompleteInt(String version) {
-		String[] parts = version.split("\\.");
-		while (parts[0].length() < 2) {
-			parts[0] = "0" + parts[0];
-		}
-		while (parts[1].length() < 3) {
-			parts[1] = "0" + parts[1];
-		}
-		while (parts[2].length() < 4) {
-			parts[2] = "0" + parts[2];
-		}
-		return parts[0] + parts[1] + parts[2];
-	}
-
-	private String getVersionShortInt(String version) {
-		version = getVersionCompleteInt(version);
-		while (version.startsWith("0")) {
-			version = version.substring(1);
-		}
-		if (version.isBlank()) {
-			return "0";
-		}
-		return version;
+	private String getVersionShortInt(ComputedVersion version) {
+		return Integer.toString(version.getVersion());
 	}
 
 	private enum Family {

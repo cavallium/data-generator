@@ -2,12 +2,15 @@ package it.cavallium.data.generator;
 
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 public class SourcesGeneratorConfiguration {
 	public String currentVersion;
 	public Map<String, InterfaceDataConfiguration> interfacesData;
+	public Map<String, ClassConfiguration> baseTypesData;
+	public Map<String, Set<String>> superTypesData;
+	public Map<String, CustomTypesConfiguration> customTypesData;
 	public Map<String, VersionConfiguration> versions;
-	public SourcesGeneratorConfigurationRefs refs;
 
 	@Override
 	public boolean equals(Object o) {
@@ -19,7 +22,8 @@ public class SourcesGeneratorConfiguration {
 		}
 		SourcesGeneratorConfiguration that = (SourcesGeneratorConfiguration) o;
 		return Objects.equals(currentVersion, that.currentVersion) && Objects.equals(interfacesData, that.interfacesData)
-				&& Objects.equals(versions, that.versions) && Objects.equals(refs, that.refs);
+				&& Objects.equals(baseTypesData, that.baseTypesData) && Objects.equals(superTypesData, that.superTypesData)
+				&& Objects.equals(customTypesData, that.customTypesData) && Objects.equals(versions, that.versions);
 	}
 
 	@Override
@@ -27,8 +31,20 @@ public class SourcesGeneratorConfiguration {
 		int hash = 0;
 		hash += ConfigUtils.hashCode(currentVersion);
 		hash += ConfigUtils.hashCode(interfacesData);
+		hash += ConfigUtils.hashCode(superTypesData);
+		hash += ConfigUtils.hashCode(customTypesData);
 		hash += ConfigUtils.hashCode(versions);
-		hash += ConfigUtils.hashCode(refs);
 		return hash;
+	}
+
+	public DataModel buildDataModel() {
+		return new DataModel(hashCode(),
+				currentVersion,
+				Objects.requireNonNullElse(interfacesData, Map.of()),
+				Objects.requireNonNullElse(baseTypesData, Map.of()),
+				Objects.requireNonNullElse(superTypesData, Map.of()),
+				Objects.requireNonNullElse(customTypesData, Map.of()),
+				Objects.requireNonNullElse(versions, Map.of())
+		);
 	}
 }

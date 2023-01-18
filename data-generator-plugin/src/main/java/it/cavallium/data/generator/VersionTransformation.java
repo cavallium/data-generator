@@ -2,7 +2,7 @@ package it.cavallium.data.generator;
 
 import java.util.Objects;
 
-public class VersionTransformation {
+public final class VersionTransformation {
 
 	public MoveDataConfiguration moveData = null;
 	public RemoveDataConfiguration removeData = null;
@@ -85,5 +85,16 @@ public class VersionTransformation {
 		hash += ConfigUtils.hashCode(upgradeData);
 		hash += ConfigUtils.hashCode(newData);
 		return hash;
+	}
+
+	@SuppressWarnings("MethodDoesntCallSuperMethod")
+	@Override
+	public VersionTransformation clone() {
+		var t = new VersionTransformation();
+		if (this.moveData != null) t.moveData = this.moveData.clone();
+		if (this.removeData != null) t.removeData = this.removeData.clone();
+		if (this.upgradeData != null) t.upgradeData = this.upgradeData.clone();
+		if (this.newData != null) t.newData = this.newData.clone();
+		return t;
 	}
 }

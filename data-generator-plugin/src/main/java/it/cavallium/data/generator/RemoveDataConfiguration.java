@@ -36,4 +36,13 @@ public class RemoveDataConfiguration implements TransformationConfiguration {
 		hash += ConfigUtils.hashCode(from);
 		return hash;
 	}
+
+	@SuppressWarnings("MethodDoesntCallSuperMethod")
+	@Override
+	public RemoveDataConfiguration clone() {
+		var c = new RemoveDataConfiguration();
+		if (this.transformClass != null) c.transformClass = this.transformClass;
+		if (this.from != null) c.from = this.from;
+		return c;
+	}
 }

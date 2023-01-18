@@ -2,7 +2,7 @@ package it.cavallium.data.generator;
 
 import java.util.Objects;
 
-public class MoveDataConfiguration implements TransformationConfiguration {
+public final class MoveDataConfiguration implements TransformationConfiguration {
 
 	public String transformClass;
 	public String from;
@@ -39,5 +39,15 @@ public class MoveDataConfiguration implements TransformationConfiguration {
 		hash += ConfigUtils.hashCode(from);
 		hash += ConfigUtils.hashCode(to);
 		return hash;
+	}
+
+	@SuppressWarnings("MethodDoesntCallSuperMethod")
+	@Override
+	public MoveDataConfiguration clone() {
+		var c = new MoveDataConfiguration();
+		if (this.transformClass != null) c.transformClass = this.transformClass;
+		if (this.from != null) c.from = this.from;
+		if (this.to != null) c.to = this.to;
+		return c;
 	}
 }

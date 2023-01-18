@@ -5,7 +5,7 @@ import com.squareup.javapoet.ParameterizedTypeName;
 import com.squareup.javapoet.TypeName;
 import java.util.Objects;
 
-public class CustomTypesConfiguration {
+public final class CustomTypesConfiguration {
 
 	private String javaClass;
 	public String serializer;
@@ -49,5 +49,14 @@ public class CustomTypesConfiguration {
 		hash += ConfigUtils.hashCode(javaClass);
 		hash += ConfigUtils.hashCode(serializer);
 		return hash;
+	}
+
+	@SuppressWarnings("MethodDoesntCallSuperMethod")
+	@Override
+	public CustomTypesConfiguration clone() {
+		var c = new CustomTypesConfiguration();
+		c.javaClass = this.javaClass;
+		c.serializer = this.serializer;
+		return c;
 	}
 }

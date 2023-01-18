@@ -7,10 +7,8 @@ import java.util.Set;
 
 public class VersionConfiguration {
 
+	public String previousVersion;
 	public DetailsConfiguration details;
-	public Map<String, Set<String>> superTypes;
-	public Map<String, CustomTypesConfiguration> customTypes;
-	public Map<String, ClassConfiguration> classes;
 	public List<VersionTransformation> transformations;
 
 	@Override
@@ -22,19 +20,15 @@ public class VersionConfiguration {
 			return false;
 		}
 		VersionConfiguration that = (VersionConfiguration) o;
-		return Objects.equals(details, that.details) && Objects.equals(superTypes, that.superTypes) && Objects.equals(
-				customTypes,
-				that.customTypes
-		) && Objects.equals(classes, that.classes) && Objects.equals(transformations, that.transformations);
+		return Objects.equals(previousVersion, that.previousVersion) && Objects.equals(details, that.details)
+				&& Objects.equals(transformations, that.transformations);
 	}
 
 	@Override
 	public int hashCode() {
 		int hash = 0;
+		hash += ConfigUtils.hashCode(previousVersion);
 		hash += ConfigUtils.hashCode(details);
-		hash += ConfigUtils.hashCode(superTypes);
-		hash += ConfigUtils.hashCode(customTypes);
-		hash += ConfigUtils.hashCode(classes);
 		hash += ConfigUtils.hashCode(transformations);
 		return hash;
 	}

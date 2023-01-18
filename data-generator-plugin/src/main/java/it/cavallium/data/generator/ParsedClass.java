@@ -1,13 +1,33 @@
 package it.cavallium.data.generator;
 
-import java.util.LinkedHashMap;
-import java.util.Objects;
+import static it.cavallium.data.generator.DataModel.fixType;
 
-public final class ClassConfiguration {
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Objects;
+import java.util.stream.Collectors;
+
+public final class ParsedClass {
 
 	public String stringRepresenter;
 
 	public LinkedHashMap<String, String> data;
+
+	public ParsedClass(ClassConfiguration baseTypesData) {
+		this.stringRepresenter = baseTypesData.stringRepresenter;
+		if (baseTypesData.data != null) {
+			this.data = baseTypesData.data.entrySet().stream()
+					.map(e -> Map.entry(e.getKey(), fixType(e.getValue())))
+					.collect(Collectors.toMap(Entry::getKey, Entry::getValue, (a, b) -> {
+						throw new IllegalStateException();
+					}, LinkedHashMap::new));
+		}
+	}
+
+	public ParsedClass() {
+
+	}
 
 	public String getStringRepresenter() {
 		return stringRepresenter;
@@ -25,7 +45,7 @@ public final class ClassConfiguration {
 		if (o == null || getClass() != o.getClass()) {
 			return false;
 		}
-		ClassConfiguration that = (ClassConfiguration) o;
+		ParsedClass that = (ParsedClass) o;
 		return Objects.equals(stringRepresenter, that.stringRepresenter) && Objects.equals(data, that.data);
 	}
 
@@ -39,9 +59,9 @@ public final class ClassConfiguration {
 
 	@SuppressWarnings("MethodDoesntCallSuperMethod")
 	@Override
-	public ClassConfiguration clone() {
-		var cc = new ClassConfiguration();
-		cc.stringRepresenter = stringRepresenter;
+	public ParsedClass clone() {
+		var cc = new ParsedClass();
+		if (this.stringRepresenter != null) cc.stringRepresenter = this.stringRepresenter;
 		cc.data = new LinkedHashMap<>(data);
 		return cc;
 	}
