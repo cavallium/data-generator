@@ -1,13 +1,22 @@
 package it.cavallium.data.generator.plugin;
 
 import static java.util.Objects.requireNonNull;
+import static java.util.function.Function.identity;
 
+import it.cavallium.data.generator.plugin.ComputedType.ComputedArrayType;
+import it.cavallium.data.generator.plugin.ComputedType.ComputedBaseType;
+import it.cavallium.data.generator.plugin.ComputedType.ComputedCustomType;
+import it.cavallium.data.generator.plugin.ComputedType.ComputedNativeType;
+import it.cavallium.data.generator.plugin.ComputedType.ComputedNullableType;
+import it.cavallium.data.generator.plugin.ComputedType.ComputedSuperType;
+import it.cavallium.data.generator.plugin.ComputedType.VersionedComputedType;
+import it.unimi.dsi.fastutil.ints.Int2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
-import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectCollection;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -15,6 +24,7 @@ import java.util.Map.Entry;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Function;
 import java.util.stream.Collector;
 import java.util.stream.Collectors;
@@ -36,12 +46,12 @@ public class DataModel {
 	);
 
 	private final int currentVersion;
-	private final Int2ObjectMap<Map<String, ParsedClass>> classConfig;
 	private final int hash;
 	private final Map<String, ParsedInterface> interfacesData;
 	private final Int2ObjectMap<ComputedVersion> versions;
 	private final Map<String, Set<String>> superTypes;
 	private final Map<String, CustomTypesConfiguration> customTypes;
+	private final Int2ObjectMap<Map<String, ComputedType>> computedTypes;
 
 	public DataModel(int hash,
 			String currentVersionKey,
@@ -95,7 +105,7 @@ public class DataModel {
 		// Build versions sequence
 		List<String> rawVersionsSequence = new ArrayList<>();
 		int versionsCount = 0;
-		Int2ObjectMap<String> versionToName = new Int2ObjectOpenHashMap<>();
+		Int2ObjectMap<String> versionToName = new Int2ObjectLinkedOpenHashMap<>();
 		Object2IntMap<String> nameToVersion = new Object2IntOpenHashMap<>();
 		{
 			String lastVersion = null;
@@ -132,7 +142,7 @@ public class DataModel {
 
 		Stream.concat(Stream.concat(Stream.concat(baseTypes.stream(), superTypes.stream()),
 						customTypes.stream()), NATIVE_TYPES.stream())
-				.collect(Collectors.groupingBy(Function.identity()))
+				.collect(Collectors.groupingBy(identity()))
 				.values()
 				.stream()
 				.filter(x -> x.size() > 1)
@@ -142,10 +152,10 @@ public class DataModel {
 				});
 
 		// Compute the numeric versions map
-		Int2ObjectMap<ParsedVersion> versions = new Int2ObjectOpenHashMap<>();
+		Int2ObjectMap<ParsedVersion> versions = new Int2ObjectLinkedOpenHashMap<>();
 		rawVersions.forEach((k, v) -> versions.put(nameToVersion.getInt(k), new ParsedVersion(v)));
 
-		Int2ObjectMap<Map<String, ParsedClass>> computedClassConfig = new Int2ObjectOpenHashMap<>();
+		Int2ObjectMap<Map<String, ParsedClass>> computedClassConfig = new Int2ObjectLinkedOpenHashMap<>();
 		for (int versionIndex = 0; versionIndex < versionsCount; versionIndex++) {
 			if (versionIndex == 0) {
 				computedClassConfig.put(0, baseTypesData.entrySet().stream()
@@ -179,6 +189,7 @@ public class DataModel {
 								throw new IllegalArgumentException(transformCoordinate + " refers to an unknown type: "
 										+ t.transformClass);
 							}
+							transformClass.changed = true;
 							var definition = removeAndGetIndex(transformClass.data, t.from);
 							if (definition.isEmpty()) {
 								throw new IllegalArgumentException(transformCoordinate + " refers to an unknown field: " + t.from);
@@ -201,6 +212,7 @@ public class DataModel {
 								throw new IllegalArgumentException(transformCoordinate + " refers to an unknown type: "
 										+ t.transformClass);
 							}
+							transformClass.changed = true;
 							if (!allTypes.contains(extractTypeName(t.type))) {
 								throw new IllegalArgumentException(transformCoordinate + " refers to an unknown type: " + t.type);
 							}
@@ -223,6 +235,7 @@ public class DataModel {
 								throw new IllegalArgumentException(transformCoordinate + " refers to an unknown type: "
 										+ t.transformClass);
 							}
+							transformClass.changed = true;
 							var prevDef = transformClass.data.remove(t.from);
 							if (prevDef == null) {
 								throw new IllegalArgumentException(transformCoordinate + " tries to remove the nonexistent field \""
@@ -236,6 +249,7 @@ public class DataModel {
 								throw new IllegalArgumentException(transformCoordinate + " refers to an unknown type: "
 										+ t.transformClass);
 							}
+							transformClass.changed = true;
 							if (!allTypes.contains(extractTypeName(t.type))) {
 								throw new IllegalArgumentException(transformCoordinate + " refers to an unknown type: " + t.type);
 							}
@@ -252,7 +266,133 @@ public class DataModel {
 			}
 		}
 
-		this.classConfig = computedClassConfig;
+		Int2ObjectMap<Map<String, ComputedType>> computedTypes = new Int2ObjectLinkedOpenHashMap<>();
+		ComputedTypeSupplier computedTypeSupplier = new ComputedTypeSupplier(computedTypes);
+		for (int versionIndex = 0; versionIndex < versionsCount; versionIndex++) {
+			int versionIndexF = versionIndex;
+			if (versionIndexF == 0) {
+				// Compute base types
+				List<ComputedType> versionBaseTypes = computedClassConfig.get(versionIndexF).entrySet().stream()
+						.map(e -> {
+							var data = new LinkedHashMap<String, VersionedType>();
+							e.getValue().getData().forEach((key, value) -> data.put(key, new VersionedType(value, versionIndexF)));
+							return new ComputedBaseType(new VersionedType(e.getKey(), versionIndexF),
+									e.getValue().stringRepresenter, data, computedTypeSupplier);
+						}).collect(Collectors.toList());
+				// Compute custom types
+				customTypesData.forEach((name, data) -> versionBaseTypes.add(new ComputedCustomType(name,
+						data.getJavaClassString(), data.serializer, computedTypeSupplier)));
+				// Compute super types
+				superTypesData.forEach((key, data) -> {
+					List<VersionedType> subTypes = data.stream().map(x -> new VersionedType(x, versionIndexF)).toList();
+					versionBaseTypes.add(new ComputedSuperType(new VersionedType(key, versionIndexF), subTypes, computedTypeSupplier));
+				});
+				// Compute nullable types
+				computedClassConfig.values().stream()
+						.flatMap(x -> x.values().stream())
+						.flatMap(x -> x.getData().values().stream())
+						.filter(x -> x.startsWith("-"))
+						.map(nullableName -> new VersionedType(nullableName.substring(1), versionIndexF))
+						.map(baseType -> new ComputedNullableType(baseType, computedTypeSupplier))
+						.forEach(versionBaseTypes::add);
+				// Compute array types
+				computedClassConfig.values().stream()
+						.flatMap(x -> x.values().stream())
+						.flatMap(x -> x.getData().values().stream())
+						.filter(x -> x.startsWith("§"))
+						.map(nullableName -> new VersionedType(nullableName.substring(1), versionIndexF))
+						.map(baseType -> new ComputedArrayType(baseType, computedTypeSupplier))
+						.forEach(versionBaseTypes::add);
+				// Compute native types
+				versionBaseTypes.addAll(ComputedNativeType.get(computedTypeSupplier));
+
+				computedTypes.put(versionIndexF,
+						versionBaseTypes.stream().distinct().collect(Collectors.toMap(ComputedType::getName, identity())));
+			} else {
+				Set<String> changedTypes = computedTypes.get(versionIndexF - 1).values().stream()
+						.filter(prevType -> prevType instanceof ComputedBaseType prevBaseType
+								&& computedClassConfig.get(versionIndexF).get(prevBaseType.getName()).changed)
+						.map(ComputedType::getName)
+						.collect(Collectors.toSet());
+
+				{
+					boolean addedMoreTypes;
+					do {
+						var newChangedTypes = changedTypes
+								.parallelStream()
+								.flatMap(changedType -> computedTypes.get(versionIndexF - 1).get(changedType).getDependents())
+								.map(ComputedType::getName)
+								.distinct()
+								.toList();
+						addedMoreTypes = changedTypes.addAll(newChangedTypes);
+					} while (addedMoreTypes);
+				}
+
+				Map<String, ComputedType> currentVersionComputedTypes = new HashMap<>();
+				var versionChangeChecker = new VersionChangeChecker(changedTypes);
+				computedTypes.get(versionIndexF - 1).forEach((name, type) -> {
+					if (!changedTypes.contains(name)) {
+						currentVersionComputedTypes.put(name, type);
+					} else {
+						if (type instanceof VersionedComputedType versionedComputedType) {
+							ComputedType newType = versionedComputedType.withChangeAtVersion(versionIndexF, versionChangeChecker);
+							currentVersionComputedTypes.put(name, newType);
+						} else {
+							throw new IllegalStateException();
+						}
+					}
+				});
+				computedTypes.put(versionIndexF, currentVersionComputedTypes);
+			}
+		}
+
+		/*
+		Example upgrade:
+
+		V001======================================
+		_Message                        v1
+		 |__MessageForwardOrigin        v1
+		 |__MessageText                 v1
+
+		_MessageText
+
+		_MessageForwardOrigin           v1
+		 |__MessageForwardOriginChat    v1
+
+		_MessageForwardOriginChat       v1
+		 |__ChatEntityId                v1
+
+		_UserId                         v1
+
+		_ChatEntityId                   v1
+		 |__UserId                      v1
+		 |__SupergroupId                v1
+		 |__BaseGroupId                 v1
+
+
+		V002======================================
+		* UserId changed
+		==========================================
+		_Message                        v2    *
+		 |__MessageForwardOrigin        v2    *
+		 |__MessageText                 v1
+
+		_MessageText                    v1
+
+		_MessageForwardOrigin           v2    *
+		 |__MessageForwardOriginChat    v2    *
+
+		_MessageForwardOriginChat       v2    *
+		 |__ChatEntityId                v2    *
+
+		_UserId                         v2    *
+
+		_ChatEntityId                   v2    *
+		 |__UserId                      v2    *
+		 |__SupergroupId                v1
+		 |__BaseGroupId                 v1
+		 */
+
 		this.interfacesData = interfacesData.entrySet().stream()
 				.map(e -> Map.entry(e.getKey(), new ParsedInterface(e.getValue())))
 				.collect(Collectors.toMap(Entry::getKey, Entry::getValue));
@@ -269,11 +409,30 @@ public class DataModel {
 						(a, b) -> {
 							throw new IllegalStateException();
 						},
-						Int2ObjectOpenHashMap::new
+						Int2ObjectLinkedOpenHashMap::new
 				));
+		LongAdder unchangedTot = new LongAdder();
+		LongAdder changedTot = new LongAdder();
+		computedTypes.forEach((version, types) -> {
+			System.out.println("Version: " + version);
+			System.out.println("\tTypes: " + types.size());
+			System.out.println("\tVersioned types: " + types.values().stream().filter(t -> (t instanceof VersionedComputedType)).count());
+			var unchanged = types.values().stream().filter(t -> (t instanceof VersionedComputedType versionedComputedType && versionedComputedType.getVersion() < version)).count();
+			var changed = types.values().stream().filter(t -> (t instanceof VersionedComputedType versionedComputedType && versionedComputedType.getVersion() == version)).count();
+			unchangedTot.add(unchanged);
+			changedTot.add(changed);
+			System.out.println("\t\tUnchanged: " + unchanged + " (" + (unchanged * 100 / (changed + unchanged)) + "%)");
+			System.out.println("\t\tChanged: " + changed + " (" + (changed * 100 / (changed + unchanged)) + "%)");
+		});
+		System.out.println("Result:");
+		var unchanged = unchangedTot.sum();
+		var changed = changedTot.sum();
+		System.out.println("\tAvoided type versions: " + unchanged + " (" + (unchanged * 100 / (changed + unchanged)) + "%)");
+		System.out.println("\tType versions: " + changed + " (" + (changed * 100 / (changed + unchanged)) + "%)");
 		this.currentVersion = versionsCount - 1;
 		this.superTypes = superTypesData;
 		this.customTypes = customTypesData;
+		this.computedTypes = computedTypes;
 	}
 
 	private String tryInsertAtIndex(LinkedHashMap<String, String> data, String key, String value, int index) {
@@ -428,5 +587,9 @@ public class DataModel {
 
 	public Map<String, CustomTypesConfiguration> getCustomTypes() {
 		return customTypes;
+	}
+
+	public Int2ObjectMap<Map<String, ComputedType>> getComputedTypes() {
+		return computedTypes;
 	}
 }

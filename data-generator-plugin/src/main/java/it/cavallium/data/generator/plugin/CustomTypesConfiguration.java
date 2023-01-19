@@ -31,6 +31,10 @@ public final class CustomTypesConfiguration {
 		}
 	}
 
+	public String getJavaClassString() {
+		return javaClass;
+	}
+
 	@Override
 	public boolean equals(Object o) {
 		if (this == o) {

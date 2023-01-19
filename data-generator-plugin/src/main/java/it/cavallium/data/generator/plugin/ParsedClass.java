@@ -2,6 +2,7 @@ package it.cavallium.data.generator.plugin;
 
 import static it.cavallium.data.generator.plugin.DataModel.fixType;
 
+import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -13,6 +14,7 @@ public final class ParsedClass {
 	public String stringRepresenter;
 
 	public LinkedHashMap<String, String> data;
+	public boolean changed;
 
 	public ParsedClass(ClassConfiguration baseTypesData) {
 		this.stringRepresenter = baseTypesData.stringRepresenter;
