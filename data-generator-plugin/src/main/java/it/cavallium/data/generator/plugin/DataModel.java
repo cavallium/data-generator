@@ -16,6 +16,8 @@ import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectCollection;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -52,6 +54,8 @@ public class DataModel {
 	private final Map<String, Set<String>> superTypes;
 	private final Map<String, CustomTypesConfiguration> customTypes;
 	private final Int2ObjectMap<Map<String, ComputedType>> computedTypes;
+	private final Map<VersionedType, VersionedType> versionedTypePrevVersion;
+	private final Map<VersionedType, VersionedType> versionedTypeNextVersion;
 
 	public DataModel(int hash,
 			String currentVersionKey,
@@ -135,6 +139,7 @@ public class DataModel {
 		// Collect all custom types
 		List<String> customTypes = new ArrayList<>(customTypesData.keySet());
 
+		// Compute all types, excluding nullables and arrays
 		List<String> allTypes = Stream.concat(Stream.concat(Stream.concat(baseTypes.stream(), superTypes.stream()),
 								customTypes.stream()), NATIVE_TYPES.stream())
 				.distinct()
@@ -266,6 +271,7 @@ public class DataModel {
 			}
 		}
 
+		// Compute the types
 		Int2ObjectMap<Map<String, ComputedType>> computedTypes = new Int2ObjectLinkedOpenHashMap<>();
 		ComputedTypeSupplier computedTypeSupplier = new ComputedTypeSupplier(computedTypes);
 		for (int versionIndex = 0; versionIndex < versionsCount; versionIndex++) {
@@ -345,6 +351,41 @@ public class DataModel {
 				computedTypes.put(versionIndexF, currentVersionComputedTypes);
 			}
 		}
+		// All types, including arrays, nullables, primitives, etc
+		var allComputedTypes = computedTypes.values().stream().flatMap(x -> x.values().stream()).distinct().toList();
+		// Compute the upgrade paths
+		Map<VersionedType, VersionedType> versionedTypeNextVersion = new HashMap<>();
+		Map<VersionedType, VersionedType> versionedTypePrevVersion = new HashMap<>();
+		Map<String, List<VersionedType>> versionedTypeVersions = allComputedTypes
+				.stream()
+				.filter(x -> x instanceof VersionedComputedType)
+				.map(x -> (VersionedComputedType) x)
+				.collect(Collectors.groupingBy(ComputedType::getName))
+				.entrySet()
+				.stream()
+				.collect(Collectors.toMap(Entry::getKey, e -> e
+						.getValue()
+						.stream()
+						.sorted(Comparator.comparingInt(VersionedComputedType::getVersion))
+						.map(x -> new VersionedType(e.getKey(), x.getVersion()))
+						.toList()));
+		versionedTypeVersions.forEach((type, versionsList) -> {
+			VersionedType prev = null;
+			for (VersionedType versionedType : versionsList) {
+				if (prev != null) {
+					versionedTypePrevVersion.put(versionedType, prev);
+				}
+				prev = versionedType;
+			}
+			prev = null;
+			for (int i = versionsList.size() - 1; i >= 0; i--) {
+				var versionedType = versionsList.get(i);
+				if (prev != null) {
+					versionedTypeNextVersion.put(versionedType, prev);
+				}
+				prev = versionedType;
+			}
+		});
 
 		/*
 		Example upgrade:
@@ -433,6 +474,8 @@ public class DataModel {
 		this.superTypes = superTypesData;
 		this.customTypes = customTypesData;
 		this.computedTypes = computedTypes;
+		this.versionedTypePrevVersion = versionedTypePrevVersion;
+		this.versionedTypeNextVersion = versionedTypeNextVersion;
 	}
 
 	private String tryInsertAtIndex(LinkedHashMap<String, String> data, String key, String value, int index) {
@@ -591,5 +634,37 @@ public class DataModel {
 
 	public Int2ObjectMap<Map<String, ComputedType>> getComputedTypes() {
 		return computedTypes;
+	}
+
+	public VersionedType getNextVersion(VersionedType type) {
+		return versionedTypeNextVersion.get(type);
+	}
+
+	public VersionedType getPrevVersion(VersionedType type) {
+		return versionedTypePrevVersion.get(type);
+	}
+
+	public ComputedType getNextVersion(ComputedType type) {
+		if (type instanceof VersionedComputedType versionedComputedType) {
+			var result = versionedTypeNextVersion.get(new VersionedType(versionedComputedType.getName(), versionedComputedType.getVersion()));
+			if (result == null) {
+				return null;
+			}
+			return this.computedTypes.get(result.version()).get(result.type());
+		} else {
+			return null;
+		}
+	}
+
+	public ComputedType getPrevVersion(ComputedType type) {
+		if (type instanceof VersionedComputedType versionedComputedType) {
+			var result = versionedTypePrevVersion.get(new VersionedType(versionedComputedType.getName(), versionedComputedType.getVersion()));
+			if (result == null) {
+				return null;
+			}
+			return this.computedTypes.get(result.version()).get(result.type());
+		} else {
+			return null;
+		}
 	}
 }
