@@ -7,7 +7,7 @@ import java.util.Objects;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-public class Nullableshort implements Serializable, IGenericNullable, NativeNullable<Short> {
+public class Nullableshort implements Serializable, INullable, NativeNullable<Short> {
 
 	@Serial
 	private static final long serialVersionUID = 1L;

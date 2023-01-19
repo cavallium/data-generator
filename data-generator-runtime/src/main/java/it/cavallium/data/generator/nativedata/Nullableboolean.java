@@ -7,7 +7,7 @@ import java.util.Objects;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-public class Nullableboolean implements Serializable, IGenericNullable, NativeNullable<Boolean> {
+public class Nullableboolean implements Serializable, INullable, NativeNullable<Boolean> {
 
 	@Serial
 	private static final long serialVersionUID = 1L;

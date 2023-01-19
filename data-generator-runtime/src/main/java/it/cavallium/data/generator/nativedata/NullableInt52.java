@@ -8,7 +8,7 @@ import java.util.Objects;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-public class NullableInt52 implements Serializable, IGenericNullable, TypedNullable<Int52> {
+public class NullableInt52 implements Serializable, INullable, TypedNullable<Int52> {
 
 	@Serial
 	private static final long serialVersionUID = 1L;

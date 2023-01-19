@@ -1,5 +1,5 @@
 package it.cavallium.data.generator.nativedata;
 
-public interface IGenericNullable {
+public interface INullable {
 	Object $getNullable();
 }
