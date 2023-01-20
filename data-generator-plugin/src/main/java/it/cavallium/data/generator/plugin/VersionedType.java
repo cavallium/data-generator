@@ -1,15 +1,17 @@
 package it.cavallium.data.generator.plugin;
 
-public record VersionedType(String type, int version) {
+import java.util.Objects;
 
-	public VersionedType withVersion(int version) {
-		if (version == this.version) {
+public record VersionedType(String type, ComputedVersion version) {
+
+	public VersionedType withVersion(ComputedVersion version) {
+		if (Objects.equals(version, this.version)) {
 			return this;
 		}
 		return new VersionedType(type, version);
 	}
 
-	public VersionedType withVersionIfChanged(int version, VersionChangeChecker versionChangeChecker) {
+	public VersionedType withVersionIfChanged(ComputedVersion version, VersionChangeChecker versionChangeChecker) {
 		if (versionChangeChecker.checkChanged(this.type)) {
 			return withVersion(version);
 		}

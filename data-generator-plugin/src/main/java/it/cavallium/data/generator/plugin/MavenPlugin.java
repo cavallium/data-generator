@@ -20,6 +20,9 @@ public class MavenPlugin extends AbstractMojo {
 	@Parameter( required = true)
 	private String basePackageName;
 
+	@Parameter( required = true, defaultValue = "true")
+	private String deepCheckBeforeCreatingNewEqualInstances;
+
 	@Parameter( required = true, defaultValue = "false")
 	private String useRecordBuilder;
 
@@ -39,7 +42,7 @@ public class MavenPlugin extends AbstractMojo {
 
 			Path outPath = genRecordsPath.resolve("java");
 			this.project.addCompileSourceRoot(outPath.toString());
-			sourcesGenerator.generateSources(basePackageName, outPath, Boolean.parseBoolean(useRecordBuilder));
+			sourcesGenerator.generateSources(basePackageName, outPath, Boolean.parseBoolean(useRecordBuilder), false, Boolean.parseBoolean(deepCheckBeforeCreatingNewEqualInstances));
 		} catch (IOException e) {
 			throw new MojoExecutionException("Exception while generating classes", e);
 		}

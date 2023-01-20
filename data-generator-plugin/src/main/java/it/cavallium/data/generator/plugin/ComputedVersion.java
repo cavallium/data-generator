@@ -1,25 +1,27 @@
 package it.cavallium.data.generator.plugin;
 
+import static it.cavallium.data.generator.plugin.DataModel.joinPackage;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.StringJoiner;
+import org.jetbrains.annotations.NotNull;
 
-public class ComputedVersion {
+public class ComputedVersion implements Comparable<ComputedVersion> {
 
 	private final String name;
-	private final Map<String, ParsedClass> classMap;
 	private final int version;
 	private final boolean current;
 	public DetailsConfiguration details;
 	public List<VersionTransformation> transformations;
 
-	public ComputedVersion(ParsedVersion value, int version, boolean current, String versionName, Map<String, ParsedClass> classMap) {
+	public ComputedVersion(ParsedVersion value, int version, boolean current, String versionName) {
 		this.details = value.details;
 		this.transformations = value.transformations;
+		this.name = versionName;
 		this.version = version;
 		this.current = current;
-		this.name = versionName;
-		this.classMap = classMap;
 	}
 
 	public int getVersion() {
@@ -28,10 +30,6 @@ public class ComputedVersion {
 
 	public String getName() {
 		return name;
-	}
-
-	public Map<String, ParsedClass> getClassMap() {
-		return classMap;
 	}
 
 	@Override
@@ -43,46 +41,65 @@ public class ComputedVersion {
 			return false;
 		}
 		ComputedVersion that = (ComputedVersion) o;
-		return Objects.equals(details, that.details)
-				&& Objects.equals(transformations, that.transformations);
+		return Objects.equals(version, that.version);
 	}
 
 	@Override
 	public int hashCode() {
-		int hash = 0;
-		hash += ConfigUtils.hashCode(details);
-		hash += ConfigUtils.hashCode(transformations);
-		return hash;
+		return ConfigUtils.hashCode(version);
 	}
 
 	public String getPackage(String basePackageName) {
 		if (current) {
 			return joinPackage(basePackageName, "current");
 		} else {
-			return joinPackage(basePackageName, "v" + getVersionCompleteInt());
+			return joinPackage(basePackageName, "v" + version);
 		}
+	}
+
+	public String getDataPackage(String basePackageName) {
+		return joinPackage(getPackage(basePackageName), "data");
+	}
+
+	public String getUpgradersPackage(String basePackageName) {
+		return joinPackage(getPackage(basePackageName), "upgraders");
+	}
+
+	public String getSerializersPackage(String basePackageName) {
+		return joinPackage(getPackage(basePackageName), "serializers");
+	}
+
+	public String getDataNullablesPackage(String basePackageName) {
+		return joinPackage(getDataPackage(basePackageName), "nullables");
 	}
 
 	public String getVersionVarName() {
 		return "V" + version;
 	}
 
-	private String getVersionCompleteInt() {
+	public String getVersionShortInt() {
 		return Integer.toString(version);
-	}
-
-	private String joinPackage(String basePackageName, String packageName) {
-		if (basePackageName.isBlank()) {
-			basePackageName = "org.generated";
-		}
-		if (packageName.isBlank()) {
-			return basePackageName;
-		} else {
-			return basePackageName + "." + packageName;
-		}
 	}
 
 	public boolean isCurrent() {
 		return current;
+	}
+
+	@Override
+	public int compareTo(@NotNull ComputedVersion o) {
+		return Integer.compare(version, o.version);
+	}
+
+	@Override
+	public String toString() {
+		StringBuilder sb = new StringBuilder();
+		sb.append(version);
+		sb.append(" (");
+		sb.append(name);
+		if (current) {
+			sb.append(", current");
+		}
+		sb.append(")");
+		return sb.toString();
 	}
 }

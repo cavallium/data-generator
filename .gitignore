@@ -9,3 +9,4 @@
 
 .flattened-pom.xml
 /.idea/
+/data-generator-plugin/src/test/java/it/test/

@@ -3,20 +3,14 @@ package it.cavallium.data.generator.plugin;
 import static java.util.Objects.requireNonNull;
 import static java.util.function.Function.identity;
 
-import it.cavallium.data.generator.plugin.ComputedType.ComputedArrayType;
-import it.cavallium.data.generator.plugin.ComputedType.ComputedBaseType;
-import it.cavallium.data.generator.plugin.ComputedType.ComputedCustomType;
-import it.cavallium.data.generator.plugin.ComputedType.ComputedNativeType;
-import it.cavallium.data.generator.plugin.ComputedType.ComputedNullableType;
-import it.cavallium.data.generator.plugin.ComputedType.ComputedSuperType;
 import it.cavallium.data.generator.plugin.ComputedType.VersionedComputedType;
 import it.unimi.dsi.fastutil.ints.Int2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectCollection;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -30,6 +24,7 @@ import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Function;
 import java.util.stream.Collector;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.jetbrains.annotations.Nullable;
 
@@ -47,7 +42,7 @@ public class DataModel {
 			"Int52"
 	);
 
-	private final int currentVersion;
+	private final ComputedVersion currentVersion;
 	private final int hash;
 	private final Map<String, ParsedInterface> interfacesData;
 	private final Int2ObjectMap<ComputedVersion> versions;
@@ -107,7 +102,6 @@ public class DataModel {
 				.collect(Collectors.toMap(Entry::getKey, Entry::getValue));
 
 		// Build versions sequence
-		List<String> rawVersionsSequence = new ArrayList<>();
 		int versionsCount = 0;
 		Int2ObjectMap<String> versionToName = new Int2ObjectLinkedOpenHashMap<>();
 		Object2IntMap<String> nameToVersion = new Object2IntOpenHashMap<>();
@@ -115,7 +109,6 @@ public class DataModel {
 			String lastVersion = null;
 			String nextVersion = rootVersion;
 			while (nextVersion != null) {
-				rawVersionsSequence.add(nextVersion);
 				lastVersion = nextVersion;
 				versionToName.put(versionsCount, nextVersion);
 				nameToVersion.put(nextVersion, versionsCount);
@@ -157,8 +150,8 @@ public class DataModel {
 				});
 
 		// Compute the numeric versions map
-		Int2ObjectMap<ParsedVersion> versions = new Int2ObjectLinkedOpenHashMap<>();
-		rawVersions.forEach((k, v) -> versions.put(nameToVersion.getInt(k), new ParsedVersion(v)));
+		Int2ObjectMap<ParsedVersion> parsedVersions = new Int2ObjectLinkedOpenHashMap<>();
+		rawVersions.forEach((k, v) -> parsedVersions.put(nameToVersion.getInt(k), new ParsedVersion(v)));
 
 		Int2ObjectMap<Map<String, ParsedClass>> computedClassConfig = new Int2ObjectLinkedOpenHashMap<>();
 		for (int versionIndex = 0; versionIndex < versionsCount; versionIndex++) {
@@ -168,7 +161,7 @@ public class DataModel {
 						.collect(Collectors.toMap(Entry::getKey, Entry::getValue))
 				);
 			} else {
-				var version = versions.get(versionIndex);
+				var version = parsedVersions.get(versionIndex);
 				Map<String, ParsedClass> prevVersionConfiguration
 						= requireNonNull(computedClassConfig.get(versionIndex - 1));
 				Map<String, ParsedClass> newVersionConfiguration = prevVersionConfiguration.entrySet().stream()
@@ -194,7 +187,7 @@ public class DataModel {
 								throw new IllegalArgumentException(transformCoordinate + " refers to an unknown type: "
 										+ t.transformClass);
 							}
-							transformClass.changed = true;
+							transformClass.differentThanPrev = true;
 							var definition = removeAndGetIndex(transformClass.data, t.from);
 							if (definition.isEmpty()) {
 								throw new IllegalArgumentException(transformCoordinate + " refers to an unknown field: " + t.from);
@@ -217,7 +210,7 @@ public class DataModel {
 								throw new IllegalArgumentException(transformCoordinate + " refers to an unknown type: "
 										+ t.transformClass);
 							}
-							transformClass.changed = true;
+							transformClass.differentThanPrev = true;
 							if (!allTypes.contains(extractTypeName(t.type))) {
 								throw new IllegalArgumentException(transformCoordinate + " refers to an unknown type: " + t.type);
 							}
@@ -240,7 +233,7 @@ public class DataModel {
 								throw new IllegalArgumentException(transformCoordinate + " refers to an unknown type: "
 										+ t.transformClass);
 							}
-							transformClass.changed = true;
+							transformClass.differentThanPrev = true;
 							var prevDef = transformClass.data.remove(t.from);
 							if (prevDef == null) {
 								throw new IllegalArgumentException(transformCoordinate + " tries to remove the nonexistent field \""
@@ -254,7 +247,7 @@ public class DataModel {
 								throw new IllegalArgumentException(transformCoordinate + " refers to an unknown type: "
 										+ t.transformClass);
 							}
-							transformClass.changed = true;
+							transformClass.differentThanPrev = true;
 							if (!allTypes.contains(extractTypeName(t.type))) {
 								throw new IllegalArgumentException(transformCoordinate + " refers to an unknown type: " + t.type);
 							}
@@ -271,84 +264,141 @@ public class DataModel {
 			}
 		}
 
+		// Compute the versions
+		var computedVersions = parsedVersions
+				.int2ObjectEntrySet()
+				.stream()
+				.collect(Collectors.toMap(Int2ObjectMap.Entry::getIntKey,
+						e -> new ComputedVersion(e.getValue(),
+								e.getIntKey(),
+								e.getIntKey() == latestVersion,
+								versionToName.get(e.getIntKey())
+						),
+						(a, b) -> {
+							throw new IllegalStateException();
+						},
+						Int2ObjectLinkedOpenHashMap::new
+				));
+
 		// Compute the types
 		Int2ObjectMap<Map<String, ComputedType>> computedTypes = new Int2ObjectLinkedOpenHashMap<>();
-		ComputedTypeSupplier computedTypeSupplier = new ComputedTypeSupplier(computedTypes);
-		for (int versionIndex = 0; versionIndex < versionsCount; versionIndex++) {
-			int versionIndexF = versionIndex;
-			if (versionIndexF == 0) {
-				// Compute base types
-				List<ComputedType> versionBaseTypes = computedClassConfig.get(versionIndexF).entrySet().stream()
-						.map(e -> {
-							var data = new LinkedHashMap<String, VersionedType>();
-							e.getValue().getData().forEach((key, value) -> data.put(key, new VersionedType(value, versionIndexF)));
-							return new ComputedBaseType(new VersionedType(e.getKey(), versionIndexF),
-									e.getValue().stringRepresenter, data, computedTypeSupplier);
-						}).collect(Collectors.toList());
-				// Compute custom types
-				customTypesData.forEach((name, data) -> versionBaseTypes.add(new ComputedCustomType(name,
-						data.getJavaClassString(), data.serializer, computedTypeSupplier)));
-				// Compute super types
-				superTypesData.forEach((key, data) -> {
-					List<VersionedType> subTypes = data.stream().map(x -> new VersionedType(x, versionIndexF)).toList();
-					versionBaseTypes.add(new ComputedSuperType(new VersionedType(key, versionIndexF), subTypes, computedTypeSupplier));
-				});
-				// Compute nullable types
-				computedClassConfig.values().stream()
-						.flatMap(x -> x.values().stream())
-						.flatMap(x -> x.getData().values().stream())
-						.filter(x -> x.startsWith("-"))
-						.map(nullableName -> new VersionedType(nullableName.substring(1), versionIndexF))
-						.map(baseType -> new ComputedNullableType(baseType, computedTypeSupplier))
-						.forEach(versionBaseTypes::add);
-				// Compute array types
-				computedClassConfig.values().stream()
-						.flatMap(x -> x.values().stream())
-						.flatMap(x -> x.getData().values().stream())
-						.filter(x -> x.startsWith("§"))
-						.map(nullableName -> new VersionedType(nullableName.substring(1), versionIndexF))
-						.map(baseType -> new ComputedArrayType(baseType, computedTypeSupplier))
-						.forEach(versionBaseTypes::add);
-				// Compute native types
-				versionBaseTypes.addAll(ComputedNativeType.get(computedTypeSupplier));
-
-				computedTypes.put(versionIndexF,
-						versionBaseTypes.stream().distinct().collect(Collectors.toMap(ComputedType::getName, identity())));
-			} else {
-				Set<String> changedTypes = computedTypes.get(versionIndexF - 1).values().stream()
-						.filter(prevType -> prevType instanceof ComputedBaseType prevBaseType
-								&& computedClassConfig.get(versionIndexF).get(prevBaseType.getName()).changed)
-						.map(ComputedType::getName)
-						.collect(Collectors.toSet());
-
-				{
-					boolean addedMoreTypes;
-					do {
-						var newChangedTypes = changedTypes
-								.parallelStream()
-								.flatMap(changedType -> computedTypes.get(versionIndexF - 1).get(changedType).getDependents())
-								.map(ComputedType::getName)
-								.distinct()
-								.toList();
-						addedMoreTypes = changedTypes.addAll(newChangedTypes);
-					} while (addedMoreTypes);
-				}
-
-				Map<String, ComputedType> currentVersionComputedTypes = new HashMap<>();
-				var versionChangeChecker = new VersionChangeChecker(changedTypes);
-				computedTypes.get(versionIndexF - 1).forEach((name, type) -> {
-					if (!changedTypes.contains(name)) {
-						currentVersionComputedTypes.put(name, type);
-					} else {
-						if (type instanceof VersionedComputedType versionedComputedType) {
-							ComputedType newType = versionedComputedType.withChangeAtVersion(versionIndexF, versionChangeChecker);
-							currentVersionComputedTypes.put(name, newType);
-						} else {
-							throw new IllegalStateException();
-						}
+		Int2ObjectMap<Map<String, ComputedType>> randomComputedTypes = new Int2ObjectOpenHashMap<>();
+		ComputedTypeSupplier computedTypeSupplier = new ComputedTypeSupplier(randomComputedTypes, computedVersions.get(latestVersion));
+		{
+			for (int versionNumber = latestVersion - 1; versionNumber >= 0; versionNumber--) {
+				var version = computedClassConfig.get(versionNumber);
+				computedClassConfig.get(versionNumber + 1).forEach((type, typeConfig) -> {
+					if (typeConfig.differentThanPrev) {
+						version.get(type).differentThanNext = true;
 					}
 				});
-				computedTypes.put(versionIndexF, currentVersionComputedTypes);
+			}
+			for (int versionIndex = latestVersion; versionIndex >= 0; versionIndex--) {
+				int versionIndexF = versionIndex;
+				var version = computedVersions.get(versionIndexF);
+				if (versionIndexF == latestVersion) {
+					// Compute base types
+					List<ComputedType> versionBaseTypes = computedClassConfig.get(versionIndexF).entrySet().stream()
+							.map(e -> {
+								var data = new LinkedHashMap<String, VersionedType>();
+								e.getValue().getData().forEach((key, value) -> data.put(key, new VersionedType(value, version)));
+								return new ComputedTypeBase(new VersionedType(e.getKey(), version),
+										e.getValue().stringRepresenter, data, computedTypeSupplier);
+							}).collect(Collectors.toList());
+					// Compute custom types
+					customTypesData.forEach((name, data) -> versionBaseTypes.add(new ComputedTypeCustom(name,
+							data.getJavaClassString(), data.serializer, computedTypeSupplier, computedVersions.get(latestVersion))));
+					// Compute super types
+					superTypesData.forEach((key, data) -> {
+						List<VersionedType> subTypes = data.stream().map(x -> new VersionedType(x, version)).toList();
+						versionBaseTypes.add(new ComputedTypeSuper(new VersionedType(key, version), subTypes, computedTypeSupplier));
+					});
+					// Compute nullable types
+					{
+						var nullableRawTypes = computedClassConfig.values().stream()
+								.flatMap(x -> x.values().stream())
+								.flatMap(x -> x.getData().values().stream())
+								.filter(x -> x.startsWith("-"))
+								.map(nullableName -> nullableName.substring(1))
+								.toList();
+						// Compute nullable base types
+						nullableRawTypes.stream()
+								.filter(nullableName -> !NATIVE_TYPES.contains(nullableName))
+								.map(nullableName -> new VersionedType(nullableName, version))
+								.map(baseType -> new ComputedTypeNullableVersioned(baseType, computedTypeSupplier))
+								.forEach(versionBaseTypes::add);
+						// Compute nullable native types
+						nullableRawTypes.stream()
+								.filter(NATIVE_TYPES::contains)
+								.map(baseType ->
+										new ComputedTypeNullableNative(baseType, computedVersions.get(latestVersion), computedTypeSupplier))
+								.forEach(versionBaseTypes::add);
+					}
+					// Compute array types
+					{
+						var arrayRawTypes = computedClassConfig.values().stream()
+								.flatMap(x -> x.values().stream())
+								.flatMap(x -> x.getData().values().stream())
+								.filter(x -> x.startsWith("§"))
+								.map(nullableName -> nullableName.substring(1))
+								.toList();
+						// Compute array base types
+						arrayRawTypes.stream()
+								.filter(nullableName -> !NATIVE_TYPES.contains(nullableName))
+								.map(nullableName -> new VersionedType(nullableName, version))
+								.map(baseType -> new ComputedTypeArrayVersioned(baseType, computedTypeSupplier))
+								.forEach(versionBaseTypes::add);
+						// Compute array native types
+						arrayRawTypes.stream()
+								.filter(NATIVE_TYPES::contains)
+								.map(baseType ->
+										new ComputedTypeArrayNative(baseType, computedTypeSupplier))
+								.forEach(versionBaseTypes::add);
+					}
+					// Compute native types
+					versionBaseTypes.addAll(ComputedTypeNative.get(computedTypeSupplier));
+
+					randomComputedTypes.put(versionIndexF,
+							versionBaseTypes.stream().distinct().collect(Collectors.toMap(ComputedType::getName, identity())));
+				} else {
+					Set<String> changedTypes = randomComputedTypes.get(versionIndexF + 1).values().stream()
+							.filter(prevType -> prevType instanceof ComputedTypeBase prevBaseType
+									&& computedClassConfig.get(versionIndexF).get(prevBaseType.getName()).differentThanNext)
+							.map(ComputedType::getName)
+							.collect(Collectors.toSet());
+
+					{
+						boolean addedMoreTypes;
+						do {
+							var newChangedTypes = changedTypes
+									.parallelStream()
+									.flatMap(changedType -> randomComputedTypes.get(versionIndexF + 1).get(changedType).getDependents())
+									.map(ComputedType::getName)
+									.distinct()
+									.toList();
+							addedMoreTypes = changedTypes.addAll(newChangedTypes);
+						} while (addedMoreTypes);
+					}
+
+					Map<String, ComputedType> currentVersionComputedTypes = new HashMap<>();
+					var versionChangeChecker = new VersionChangeChecker(changedTypes, versionIndexF, latestVersion);
+					randomComputedTypes.get(versionIndexF + 1).forEach((name, type) -> {
+						if (!changedTypes.contains(name)) {
+							currentVersionComputedTypes.put(name, type);
+						} else {
+							if (type instanceof VersionedComputedType versionedComputedType) {
+								ComputedType newType = versionedComputedType.withChangeAtVersion(version, versionChangeChecker);
+								currentVersionComputedTypes.put(name, newType);
+							} else {
+								throw new IllegalStateException();
+							}
+						}
+					});
+					randomComputedTypes.put(versionIndexF, currentVersionComputedTypes);
+				}
+			}
+			for (int i = 0; i < versionsCount; i++) {
+				computedTypes.put(i, Objects.requireNonNull(randomComputedTypes.get(i)));
 			}
 		}
 		// All types, including arrays, nullables, primitives, etc
@@ -366,7 +416,7 @@ public class DataModel {
 				.collect(Collectors.toMap(Entry::getKey, e -> e
 						.getValue()
 						.stream()
-						.sorted(Comparator.comparingInt(VersionedComputedType::getVersion))
+						.sorted(Comparator.comparingInt(x -> x.getVersion().getVersion()))
 						.map(x -> new VersionedType(e.getKey(), x.getVersion()))
 						.toList()));
 		versionedTypeVersions.forEach((type, versionsList) -> {
@@ -434,43 +484,31 @@ public class DataModel {
 		 |__BaseGroupId                 v1
 		 */
 
+		this.versions = computedVersions;
 		this.interfacesData = interfacesData.entrySet().stream()
 				.map(e -> Map.entry(e.getKey(), new ParsedInterface(e.getValue())))
 				.collect(Collectors.toMap(Entry::getKey, Entry::getValue));
-		this.versions = versions
-				.int2ObjectEntrySet()
-				.stream()
-				.collect(Collectors.toMap(Int2ObjectMap.Entry::getIntKey,
-						e -> new ComputedVersion(e.getValue(),
-								e.getIntKey(),
-								e.getIntKey() == latestVersion,
-								versionToName.get(e.getIntKey()),
-								computedClassConfig.get(e.getIntKey())
-						),
-						(a, b) -> {
-							throw new IllegalStateException();
-						},
-						Int2ObjectLinkedOpenHashMap::new
-				));
 		LongAdder unchangedTot = new LongAdder();
 		LongAdder changedTot = new LongAdder();
 		computedTypes.forEach((version, types) -> {
 			System.out.println("Version: " + version);
 			System.out.println("\tTypes: " + types.size());
 			System.out.println("\tVersioned types: " + types.values().stream().filter(t -> (t instanceof VersionedComputedType)).count());
-			var unchanged = types.values().stream().filter(t -> (t instanceof VersionedComputedType versionedComputedType && versionedComputedType.getVersion() < version)).count();
-			var changed = types.values().stream().filter(t -> (t instanceof VersionedComputedType versionedComputedType && versionedComputedType.getVersion() == version)).count();
+			var unchanged = types.values().stream().filter(t -> (t instanceof VersionedComputedType versionedComputedType
+					&& versionedComputedType.getVersion().getVersion() != version)).count();
+			var changed = types.values().stream().filter(t -> (t instanceof VersionedComputedType versionedComputedType
+					&& versionedComputedType.getVersion().getVersion() == version)).count();
 			unchangedTot.add(unchanged);
 			changedTot.add(changed);
-			System.out.println("\t\tUnchanged: " + unchanged + " (" + (unchanged * 100 / (changed + unchanged)) + "%)");
-			System.out.println("\t\tChanged: " + changed + " (" + (changed * 100 / (changed + unchanged)) + "%)");
+			System.out.println("\t\tUnchanged: " + unchanged + " (" + (unchanged * 100 / Math.max(changed + unchanged, 1)) + "%)");
+			System.out.println("\t\tChanged: " + changed + " (" + (changed * 100 / Math.max(changed + unchanged, 1)) + "%)");
 		});
 		System.out.println("Result:");
 		var unchanged = unchangedTot.sum();
 		var changed = changedTot.sum();
 		System.out.println("\tAvoided type versions: " + unchanged + " (" + (unchanged * 100 / (changed + unchanged)) + "%)");
 		System.out.println("\tType versions: " + changed + " (" + (changed * 100 / (changed + unchanged)) + "%)");
-		this.currentVersion = versionsCount - 1;
+		this.currentVersion = computedVersions.get(versionsCount - 1);
 		this.superTypes = superTypesData;
 		this.customTypes = customTypesData;
 		this.computedTypes = computedTypes;
@@ -604,15 +642,34 @@ public class DataModel {
 	}
 
 	public int getCurrentVersionNumber() {
-		return currentVersion;
+		return currentVersion.getVersion();
 	}
 
 	public ComputedVersion getCurrentVersion() {
-		return versions.get(currentVersion);
+		return currentVersion;
 	}
 
-	public Map<String, Set<String>> getSuperTypes() {
+	@Deprecated
+	public Map<String, Set<String>> getSuperTypesRaw() {
 		return this.superTypes;
+	}
+
+	public Stream<ComputedTypeSuper> getSuperTypesComputed() {
+		return getSuperTypesComputed(currentVersion);
+	}
+
+	public Stream<ComputedTypeSuper> getSuperTypesComputed(ComputedVersion version) {
+		return this.computedTypes.get(version.getVersion()).values().stream()
+				.filter(t -> t instanceof ComputedTypeSuper).map(t -> (ComputedTypeSuper) t);
+	}
+
+	public Stream<ComputedTypeBase> getBaseTypesComputed() {
+		return getBaseTypesComputed(currentVersion);
+	}
+
+	public Stream<ComputedTypeBase> getBaseTypesComputed(ComputedVersion version) {
+		return this.computedTypes.get(version.getVersion()).values().stream()
+				.filter(t -> t instanceof ComputedTypeBase).map(t -> (ComputedTypeBase) t);
 	}
 
 	public Optional<ComputedVersion> getNextVersion(ComputedVersion versionConfiguration) {
@@ -628,12 +685,17 @@ public class DataModel {
 		return interfacesData;
 	}
 
+	@Deprecated
 	public Map<String, CustomTypesConfiguration> getCustomTypes() {
 		return customTypes;
 	}
 
 	public Int2ObjectMap<Map<String, ComputedType>> getComputedTypes() {
 		return computedTypes;
+	}
+
+	public Map<String, ComputedType> getComputedTypes(ComputedVersion version) {
+		return computedTypes.get(version.getVersion());
 	}
 
 	public VersionedType getNextVersion(VersionedType type) {
@@ -644,27 +706,134 @@ public class DataModel {
 		return versionedTypePrevVersion.get(type);
 	}
 
-	public ComputedType getNextVersion(ComputedType type) {
+	public <T extends ComputedType> T getNextVersion(T type) {
 		if (type instanceof VersionedComputedType versionedComputedType) {
 			var result = versionedTypeNextVersion.get(new VersionedType(versionedComputedType.getName(), versionedComputedType.getVersion()));
 			if (result == null) {
 				return null;
 			}
-			return this.computedTypes.get(result.version()).get(result.type());
+			//noinspection unchecked
+			return (T) this.computedTypes.get(result.version().getVersion()).get(result.type());
 		} else {
 			return null;
 		}
 	}
 
-	public ComputedType getPrevVersion(ComputedType type) {
+	public <T extends ComputedType> T getPrevVersion(T type) {
 		if (type instanceof VersionedComputedType versionedComputedType) {
 			var result = versionedTypePrevVersion.get(new VersionedType(versionedComputedType.getName(), versionedComputedType.getVersion()));
 			if (result == null) {
 				return null;
 			}
-			return this.computedTypes.get(result.version()).get(result.type());
+			//noinspection unchecked
+			return (T) this.computedTypes.get(result.version().getVersion()).get(result.type());
 		} else {
 			return null;
 		}
+	}
+
+	public boolean isTypeForVersion(ComputedVersion versionConfiguration, String key) {
+		var type = getComputedTypes(versionConfiguration).get(key);
+		return type instanceof VersionedComputedType versionedComputedType
+				&& versionedComputedType.getVersion().getVersion() == versionConfiguration.getVersion();
+	}
+
+	public ComputedVersion getTypeFirstSameVersion(VersionedComputedType type) {
+		var prevVersion = getPrevVersion(type);
+		if (prevVersion != null) {
+			return versions.get(prevVersion.getVersion().getVersion() + 1);
+		} else {
+			return type.getVersion();
+		}
+	}
+
+	public Stream<ComputedVersion> getTypeSameVersions(VersionedComputedType type) {
+		var initialVersion = getTypeFirstSameVersion(type);
+		var lastVersion = type.getVersion();
+		return getVersionRange(initialVersion, lastVersion);
+	}
+
+	@Deprecated
+	public ComputedVersion getVersion(int version) {
+		return Objects.requireNonNull(versions.get(version));
+	}
+
+	public ComputedVersion getVersion(VersionedComputedType versionedComputedType) {
+		return Objects.requireNonNull(versions.get(versionedComputedType.getVersion().getVersion()));
+	}
+
+	public Stream<ComputedVersion> getVersionRange(ComputedVersion initialVersionInclusive,
+			ComputedVersion lastVersionInclusive) {
+		if (initialVersionInclusive.getVersion() > lastVersionInclusive.getVersion()) {
+			throw new IllegalArgumentException();
+		}
+		return IntStream
+				.rangeClosed(initialVersionInclusive.getVersion(), lastVersionInclusive.getVersion())
+				.mapToObj(versions::get);
+	}
+
+	public String getVersionPackage(ComputedVersion version, String basePackageName) {
+		return version.getPackage(basePackageName);
+	}
+
+	public String getVersionDataPackage(ComputedVersion version, String basePackageName) {
+		return version.getDataPackage(basePackageName);
+	}
+
+	@Deprecated
+	public String getVersionDataPackage(VersionedComputedType type, String basePackageName) {
+		return type.getVersion().getDataPackage(basePackageName);
+	}
+
+	public String getRootPackage(String basePackageName) {
+		return joinPackage(basePackageName, "");
+	}
+
+	public static String joinPackage(String basePackageName, String packageName) {
+		if (basePackageName.isBlank()) {
+			basePackageName = "org.generated";
+		}
+		if (packageName.isBlank()) {
+			return basePackageName;
+		} else {
+			return basePackageName + "." + packageName;
+		}
+	}
+
+	public Stream<ComputedTypeSuper> getSuperTypesOf(VersionedComputedType baseType) {
+		return getSuperTypesComputed(baseType.getVersion()).filter(type -> type.subTypes().contains(baseType));
+	}
+
+	public Stream<ComputedTypeSuper> getExtendsInterfaces(ComputedTypeSuper superType) {
+		if (superType.getVersion().isCurrent()) {
+			var interfaces = interfacesData.get(superType.getName());
+			if (interfaces != null) {
+				return interfaces.extendInterfaces.stream()
+						.map(name -> (ComputedTypeSuper) this.computedTypes.get(currentVersion.getVersion()).get(name));
+			}
+		}
+		return Stream.of();
+	}
+
+	public Stream<Entry<String, ComputedType>> getCommonInterfaceGetters(ComputedTypeSuper superType) {
+		if (superType.getVersion().isCurrent()) {
+			var interfaces = interfacesData.get(superType.getName());
+			if (interfaces != null) {
+				return interfaces.commonGetters.entrySet().stream().map(x ->
+						Map.entry(x.getKey(), this.computedTypes.get(currentVersion.getVersion()).get(x.getValue())));
+			}
+		}
+		return Stream.of();
+	}
+
+	public Stream<Entry<String, ComputedType>> getCommonInterfaceData(ComputedTypeSuper superType) {
+		if (superType.getVersion().isCurrent()) {
+			var interfaces = interfacesData.get(superType.getName());
+			if (interfaces != null) {
+				return interfaces.commonData.entrySet().stream().map(x ->
+						Map.entry(x.getKey(), this.computedTypes.get(currentVersion.getVersion()).get(x.getValue())));
+			}
+		}
+		return Stream.of();
 	}
 }
