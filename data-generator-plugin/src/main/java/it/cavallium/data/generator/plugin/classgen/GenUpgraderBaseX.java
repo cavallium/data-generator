@@ -8,8 +8,10 @@ import com.squareup.javapoet.FieldSpec;
 import com.squareup.javapoet.MethodSpec;
 import com.squareup.javapoet.ParameterSpec;
 import com.squareup.javapoet.ParameterizedTypeName;
+import com.squareup.javapoet.TypeName;
 import com.squareup.javapoet.TypeSpec;
 import com.squareup.javapoet.TypeSpec.Builder;
+import it.cavallium.data.generator.DataInitializer;
 import it.cavallium.data.generator.DataUpgrader;
 import it.cavallium.data.generator.plugin.ClassGenerator;
 import it.cavallium.data.generator.plugin.ComputedType;
@@ -86,10 +88,6 @@ public class GenUpgraderBaseX extends ClassGenerator {
 
 		method.addParameter(ParameterSpec.builder(typeBaseClassName, "data").addAnnotation(NotNull.class).build());
 
-		nextTypeBase.getData().forEach((fieldName, fieldType) -> {
-			method.addStatement("$T $N", fieldType.getJTypeName(basePackageName), fieldName);
-		});
-
 		List<String> expectedResultFields = nextTypeBase.getData().keySet().stream().toList();
 
 		AtomicInteger nextInitializerStaticFieldId = new AtomicInteger();
@@ -122,11 +120,15 @@ public class GenUpgraderBaseX extends ClassGenerator {
 								var computedTypes = dataModel.getComputedTypes(nextTypeBase.getVersion());
 								var newFieldType = Objects.requireNonNull(computedTypes.get(fixType(newDataConfiguration.type)));
 								var initializerClass = ClassName.bestGuess(newDataConfiguration.initializer);
+								var genericInitializerClass = ParameterizedTypeName.get(ClassName.get(DataInitializer.class),
+										newFieldType.getJTypeName(basePackageName).box()
+								);
 
 								var initializerName = createInitializerStaticField(nextInitializerStaticFieldId,
 										initializerStaticFieldNames,
 										classBuilder,
-										initializerClass
+										initializerClass,
+										genericInitializerClass
 								);
 
 								return new Field(newDataConfiguration.to, newFieldType, CodeBlock.of("$N.initialize()", initializerName), i + 1);
@@ -168,11 +170,16 @@ public class GenUpgraderBaseX extends ClassGenerator {
 						var cb = CodeBlock.builder();
 						var newFieldType = Objects
 								.requireNonNull(dataModel.getComputedTypes(version).get(fixType(upgradeDataConfiguration.type)));
+						var genericUpgraderClass = ParameterizedTypeName.get(ClassName.get(DataUpgrader.class),
+								fieldType.getJTypeName(basePackageName).box(),
+								newFieldType.getJTypeName(basePackageName).box()
+						);
 
 						var upgraderName = createUpgraderStaticField(nextUpgraderStaticFieldId,
 								upgraderStaticFieldNames,
 								classBuilder,
-								upgraderClass
+								upgraderClass,
+								genericUpgraderClass
 						);
 
 						cb.add("($T) $N.upgrade(($T) ",
@@ -219,13 +226,14 @@ public class GenUpgraderBaseX extends ClassGenerator {
 	private String createInitializerStaticField(AtomicInteger nextInitializerStaticFieldId,
 			HashMap<String, String> initializerStaticFieldNames,
 			Builder classBuilder,
-			ClassName initializerClass) {
+			ClassName initializerClass,
+			TypeName genericInitializerClass) {
 		var ref = initializerClass.reflectionName();
 		var initializerName = initializerStaticFieldNames.get(ref);
 		if (initializerName == null) {
 			initializerName = "I" + nextInitializerStaticFieldId.getAndIncrement();
 			classBuilder.addField(FieldSpec
-					.builder(initializerClass, initializerName)
+					.builder(genericInitializerClass, initializerName)
 					.addModifiers(Modifier.PRIVATE, Modifier.STATIC, Modifier.FINAL)
 					.initializer("new $T()", initializerClass)
 					.build());
@@ -237,13 +245,14 @@ public class GenUpgraderBaseX extends ClassGenerator {
 	private String createUpgraderStaticField(AtomicInteger nextUpgraderStaticFieldId,
 			HashMap<String, String> upgraderStaticFieldNames,
 			Builder classBuilder,
-			ClassName upgraderClass) {
+			ClassName upgraderClass,
+			TypeName genericUpgraderClass) {
 		var ref = upgraderClass.reflectionName();
 		var upgraderName = upgraderStaticFieldNames.get(ref);
 		if (upgraderName == null) {
 			upgraderName = "U" + nextUpgraderStaticFieldId.getAndIncrement();
 			classBuilder.addField(FieldSpec
-					.builder(upgraderClass, upgraderName)
+					.builder(genericUpgraderClass, upgraderName)
 					.addModifiers(Modifier.PRIVATE, Modifier.STATIC, Modifier.FINAL)
 					.initializer("new $T()", upgraderClass)
 					.build());

@@ -1,7 +1,7 @@
 package it.cavallium.data.generator.plugin;
 
 import com.squareup.javapoet.ClassName;
-import com.squareup.javapoet.TypeName;
+import com.squareup.javapoet.CodeBlock;
 import it.cavallium.data.generator.plugin.ComputedType.VersionedComputedType;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -110,7 +110,7 @@ public final class ComputedTypeSuper implements VersionedComputedType {
 	}
 
 	@Override
-	public TypeName getJUpgraderName(String basePackageName) {
+	public ClassName getJUpgraderName(String basePackageName) {
 		return ClassName.get(type.version().getSerializersPackage(basePackageName), type.type() + "Upgrader");
 	}
 
@@ -119,6 +119,16 @@ public final class ComputedTypeSuper implements VersionedComputedType {
 		var className = ClassName.get(type.version().getPackage(basePackageName), "Version");
 		var upgraderFieldName = type.type() + "UpgraderInstance";
 		return new FieldLocation(className, upgraderFieldName);
+	}
+
+	@Override
+	public CodeBlock wrapWithUpgrade(String basePackageName, CodeBlock content, ComputedType next) {
+		var upgraderInstance = getJUpgraderInstance(basePackageName);
+		var cb = CodeBlock.builder();
+		cb.add(CodeBlock.of("$T.$N.upgrade(", upgraderInstance.className(), upgraderInstance.fieldName()));
+		cb.add(content);
+		cb.add(")");
+		return VersionedComputedType.super.wrapWithUpgrade(basePackageName, cb.build(), next);
 	}
 
 	@Override

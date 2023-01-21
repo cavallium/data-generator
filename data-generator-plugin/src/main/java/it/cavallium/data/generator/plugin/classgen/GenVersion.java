@@ -15,6 +15,7 @@ import it.cavallium.data.generator.plugin.ClassGenerator;
 import it.cavallium.data.generator.plugin.ComputedType.VersionedComputedType;
 import it.cavallium.data.generator.plugin.ComputedTypeBase;
 import it.cavallium.data.generator.plugin.ComputedTypeCustom;
+import it.cavallium.data.generator.plugin.ComputedTypeSuper;
 import it.cavallium.data.generator.plugin.ComputedVersion;
 import java.io.IOException;
 import java.util.Objects;
@@ -171,7 +172,8 @@ public class GenVersion extends ClassGenerator {
 	private void generateUpgraderInstance(ComputedVersion version, Builder classBuilder) {
 		var versionClassType = ClassName.get(version.getPackage(basePackageName), "Version");
 		dataModel.getComputedTypes(version).forEach((typeName, type) -> {
-			boolean shouldCreateInstanceField = type instanceof ComputedTypeBase versionedComputedType
+			boolean shouldCreateInstanceField = type instanceof VersionedComputedType versionedComputedType
+					&& (type instanceof ComputedTypeBase || type instanceof ComputedTypeSuper)
 					&& versionedComputedType.getVersion().equals(version) && !version.isCurrent();
 			if (!shouldCreateInstanceField) {
 				return;

@@ -51,7 +51,7 @@ public class GenDataBaseX extends ClassGenerator {
 		dataModel.getSuperTypesOf(base, false).forEach(superType -> {
 			classBuilder.addMethod(MethodSpec
 					.methodBuilder("getMetaId$" + superType.getName())
-					.addModifiers(Modifier.PUBLIC, Modifier.FINAL)
+					.addModifiers(Modifier.PUBLIC)
 					.addAnnotation(Override.class)
 					.returns(int.class)
 					.addStatement("return " + superType.subTypes().indexOf(base))
@@ -60,7 +60,7 @@ public class GenDataBaseX extends ClassGenerator {
 
 		var ofMethod = MethodSpec
 				.methodBuilder("of")
-				.addModifiers(Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL);
+				.addModifiers(Modifier.PUBLIC, Modifier.STATIC);
 
 		base.getData().forEach((fieldName, fieldType) -> {
 			var fieldTypeName = fieldType.getJTypeName(basePackageName);
