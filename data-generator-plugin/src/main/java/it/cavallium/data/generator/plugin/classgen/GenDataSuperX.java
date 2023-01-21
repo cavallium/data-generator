@@ -41,7 +41,7 @@ public class GenDataSuperX extends ClassGenerator {
 			classBuilder.addSuperinterface(iTypeClass);
 		});
 
-		dataModel.getExtendsInterfaces(typeSuper).forEach(superType -> {
+		dataModel.getExtendsInterfaces(typeSuper).distinct().forEach(superType -> {
 			classBuilder.addSuperinterface(superType.getJTypeName(basePackageName));
 		});
 
