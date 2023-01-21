@@ -13,8 +13,10 @@ import it.cavallium.data.generator.DataSerializer;
 import it.cavallium.data.generator.DataUpgrader;
 import it.cavallium.data.generator.plugin.ClassGenerator;
 import it.cavallium.data.generator.plugin.ComputedType.VersionedComputedType;
+import it.cavallium.data.generator.plugin.ComputedTypeArrayFixed;
 import it.cavallium.data.generator.plugin.ComputedTypeBase;
 import it.cavallium.data.generator.plugin.ComputedTypeCustom;
+import it.cavallium.data.generator.plugin.ComputedTypeNullableFixed;
 import it.cavallium.data.generator.plugin.ComputedTypeSuper;
 import it.cavallium.data.generator.plugin.ComputedVersion;
 import java.io.IOException;
@@ -148,7 +150,9 @@ public class GenVersion extends ClassGenerator {
 					&& versionedComputedType.getVersion().equals(version);
 
 			// Check if the type is custom, and this is the latest version
-			shouldCreateInstanceField |= version.isCurrent() && type instanceof ComputedTypeCustom;
+			shouldCreateInstanceField |=
+					version.isCurrent() && (type instanceof ComputedTypeCustom || type instanceof ComputedTypeNullableFixed
+							|| type instanceof ComputedTypeArrayFixed);
 
 			if (!shouldCreateInstanceField) {
 				return;
