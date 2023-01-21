@@ -36,9 +36,10 @@ public class GenDataSuperX extends ClassGenerator {
 
 		classBuilder.addModifiers(Modifier.PUBLIC);
 
-		var baseTypeClass = ClassName.get(dataModel.getRootPackage(basePackageName), "BaseType");
-		var iBaseTypeClass = ClassName.get(version.getPackage(basePackageName), "IBaseType");
-		classBuilder.addSuperinterface(iBaseTypeClass);
+		dataModel.getTypeSameVersions(typeSuper).forEach(v -> {
+			var iTypeClass = ClassName.get(v.getPackage(basePackageName), "IBaseType");
+			classBuilder.addSuperinterface(iTypeClass);
+		});
 
 		dataModel.getExtendsInterfaces(typeSuper).forEach(superType -> {
 			classBuilder.addSuperinterface(superType.getJTypeName(basePackageName));
@@ -70,7 +71,7 @@ public class GenDataSuperX extends ClassGenerator {
 			classBuilder.addMethod(setter.build());
 		});
 
-		dataModel.getSuperTypesOf(typeSuper).forEach(superType -> {
+		dataModel.getSuperTypesOf(typeSuper, true).forEach(superType -> {
 			classBuilder.addSuperinterface(superType.getJTypeName(basePackageName));
 		});
 

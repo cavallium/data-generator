@@ -38,12 +38,17 @@ public class GenDataBaseX extends ClassGenerator {
 		classBuilder.addModifiers(Modifier.PUBLIC);
 
 		var baseTypeClass = ClassName.get(dataModel.getRootPackage(basePackageName), "BaseType");
-		var iTypeClass = ClassName.get(version.getPackage(basePackageName), "IBaseType");
-		classBuilder.addSuperinterface(iTypeClass);
 
-		dataModel.getSuperTypesOf(base).forEach(superType -> {
+		dataModel.getTypeSameVersions(base).forEach(v -> {
+			var iTypeClass = ClassName.get(v.getPackage(basePackageName), "IBaseType");
+			classBuilder.addSuperinterface(iTypeClass);
+		});
+
+		dataModel.getSuperTypesOf(base, true).forEach(superType -> {
 			classBuilder.addSuperinterface(superType.getJTypeName(basePackageName));
+		});
 
+		dataModel.getSuperTypesOf(base, false).forEach(superType -> {
 			classBuilder.addMethod(MethodSpec
 					.methodBuilder("getMetaId$" + superType.getName())
 					.addModifiers(Modifier.PUBLIC, Modifier.FINAL)

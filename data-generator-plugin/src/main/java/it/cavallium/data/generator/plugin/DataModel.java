@@ -672,6 +672,16 @@ public class DataModel {
 				.filter(t -> t instanceof ComputedTypeBase).map(t -> (ComputedTypeBase) t);
 	}
 
+	public Stream<ComputedTypeArray> getArrayTypesComputed(ComputedVersion version) {
+		return this.computedTypes.get(version.getVersion()).values().stream()
+				.filter(t -> t instanceof ComputedTypeArray).map(t -> (ComputedTypeArray) t);
+	}
+
+	public Stream<ComputedTypeNullable> getNullableTypesComputed(ComputedVersion version) {
+		return this.computedTypes.get(version.getVersion()).values().stream()
+				.filter(t -> t instanceof ComputedTypeNullable).map(t -> (ComputedTypeNullable) t);
+	}
+
 	public Optional<ComputedVersion> getNextVersion(ComputedVersion versionConfiguration) {
 		var nextVersion = versions.get(versionConfiguration.getVersion() + 1);
 		return Optional.ofNullable(nextVersion);
@@ -743,7 +753,7 @@ public class DataModel {
 		if (prevVersion != null) {
 			return versions.get(prevVersion.getVersion().getVersion() + 1);
 		} else {
-			return type.getVersion();
+			return versions.get(0);
 		}
 	}
 
@@ -800,8 +810,29 @@ public class DataModel {
 		}
 	}
 
-	public Stream<ComputedTypeSuper> getSuperTypesOf(VersionedComputedType baseType) {
-		return getSuperTypesComputed(baseType.getVersion()).filter(type -> type.subTypes().contains(baseType));
+	/**
+	 * @param includeMulti Includes all used super type versions
+	 */
+	public Stream<ComputedTypeSuper> getSuperTypesOf(VersionedComputedType baseType, boolean includeMulti) {
+		ComputedVersion lowestBaseVersion = getTypeFirstSameVersion(baseType);
+		if (lowestBaseVersion == null) {
+			return Stream.of();
+		}
+		return getSuperTypesComputed(baseType.getVersion())
+				.filter(type -> type.subTypes().contains(baseType))
+				.mapMulti((superType, cons) -> {
+					if (includeMulti) {
+						while (superType != null) {
+							ComputedVersion lowestSuperVersion = Objects.requireNonNull(getTypeFirstSameVersion(superType));
+							if (lowestSuperVersion.compareTo(lowestBaseVersion) >= 0) {
+								cons.accept(superType);
+							}
+							superType = getPrevVersion(superType);
+						}
+					} else {
+						cons.accept(superType);
+					}
+				});
 	}
 
 	public Stream<ComputedTypeSuper> getExtendsInterfaces(ComputedTypeSuper superType) {

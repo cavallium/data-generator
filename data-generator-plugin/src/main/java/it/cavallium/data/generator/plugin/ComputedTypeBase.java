@@ -1,10 +1,7 @@
 package it.cavallium.data.generator.plugin;
 
-import static it.cavallium.data.generator.plugin.DataModel.joinPackage;
-
 import com.squareup.javapoet.ClassName;
 import com.squareup.javapoet.TypeName;
-import it.cavallium.data.generator.nativedata.Serializers;
 import it.cavallium.data.generator.plugin.ComputedType.VersionedComputedType;
 import java.util.LinkedHashMap;
 import java.util.Objects;
@@ -101,7 +98,7 @@ public final class ComputedTypeBase implements VersionedComputedType {
 	}
 
 	@Override
-	public TypeName getJTypeName(String basePackageName) {
+	public ClassName getJTypeName(String basePackageName) {
 		return ClassName.get(getVersion().getDataPackage(basePackageName), type.type());
 	}
 

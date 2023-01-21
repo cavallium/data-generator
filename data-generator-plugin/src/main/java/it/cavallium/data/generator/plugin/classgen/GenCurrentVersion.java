@@ -156,7 +156,7 @@ public class GenCurrentVersion extends ClassGenerator {
 							.addStatement(
 									"data = " + versionConfiguration.getPackage(basePackageName)
 											+ ".Version.upgradeToNextVersion(($T) data)",
-									ClassName.get(versionConfiguration.getDataPackage(basePackageName), "IBaseType")
+									ClassName.get(versionConfiguration.getPackage(basePackageName), "IBaseType")
 							);
 				}
 			}
@@ -178,7 +178,7 @@ public class GenCurrentVersion extends ClassGenerator {
 		var baseTypeClassName = ClassName.get(dataModel.getRootPackage(basePackageName), "BaseType");
 		methodBuilder.addParameter(baseTypeClassName, "type");
 
-		var iBaseTypeClassName = ClassName.get(version.getDataPackage(basePackageName), "IBaseType");
+		var iBaseTypeClassName = ClassName.get(version.getPackage(basePackageName), "IBaseType");
 		methodBuilder.returns(ParameterizedTypeName.get(ClassName.get(Class.class), WildcardTypeName.subtypeOf(iBaseTypeClassName)));
 
 		methodBuilder.beginControlFlow("return switch (type)");

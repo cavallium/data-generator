@@ -10,11 +10,13 @@ import com.squareup.javapoet.TypeSpec;
 import com.squareup.javapoet.TypeSpec.Builder;
 import com.squareup.javapoet.TypeVariableName;
 import it.cavallium.data.generator.DataSerializer;
+import it.cavallium.data.generator.DataUpgrader;
 import it.cavallium.data.generator.plugin.ClassGenerator;
 import it.cavallium.data.generator.plugin.ComputedType.VersionedComputedType;
 import it.cavallium.data.generator.plugin.ComputedTypeCustom;
 import it.cavallium.data.generator.plugin.ComputedVersion;
 import java.io.IOException;
+import java.util.Objects;
 import java.util.stream.Stream;
 import javax.lang.model.element.Modifier;
 
@@ -37,7 +39,7 @@ public class GenVersion extends ClassGenerator {
 		classBuilder.addModifiers(Modifier.PUBLIC, Modifier.FINAL);
 
 		var iVersionClassName = ClassName.get(dataModel.getRootPackage(basePackageName), "IVersion");
-		var iBaseTypeClassName = ClassName.get(version.getDataPackage(basePackageName), "IBaseType");
+		var iBaseTypeClassName = ClassName.get(version.getPackage(basePackageName), "IBaseType");
 		classBuilder.addSuperinterface(ParameterizedTypeName.get(iVersionClassName, iBaseTypeClassName));
 
 		generateVersionField(version, classBuilder);
@@ -101,10 +103,10 @@ public class GenVersion extends ClassGenerator {
 		methodBuilder.addModifiers(Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL);
 		methodBuilder.addException(ClassName.get(IOException.class));
 
-		var nextIBaseType = ClassName.get(nextVersion.getDataPackage(basePackageName), "IBaseType");
+		var nextIBaseType = ClassName.get(nextVersion.getPackage(basePackageName), "IBaseType");
 		methodBuilder.returns(nextIBaseType);
 
-		var iBaseTypeClassName = ClassName.get(version.getDataPackage(basePackageName), "IBaseType");
+		var iBaseTypeClassName = ClassName.get(version.getPackage(basePackageName), "IBaseType");
 		methodBuilder.addParameter(iBaseTypeClassName, "oldData");
 
 		methodBuilder.beginControlFlow( "return switch (oldData.getBaseType$$())");
@@ -169,19 +171,24 @@ public class GenVersion extends ClassGenerator {
 		var versionClassType = ClassName.get(version.getPackage(basePackageName), "Version");
 		dataModel.getComputedTypes(version).forEach((typeName, type) -> {
 			boolean shouldCreateInstanceField = type instanceof VersionedComputedType versionedComputedType
-					&& versionedComputedType.getVersion().equals(version);
+					&& versionedComputedType.getVersion().equals(version) && !version.isCurrent();
 			if (!shouldCreateInstanceField) {
 				return;
 			}
+
+			var nextVersion = Objects.requireNonNull(dataModel.getNextVersion(type));
 
 			var upgraderFieldLocation = type.getJUpgraderInstance(basePackageName);
 			if (!versionClassType.equals(upgraderFieldLocation.className())) {
 				return;
 			}
 
+			var genericClassName = ParameterizedTypeName.get(ClassName.get(DataUpgrader.class),
+					type.getJTypeName(basePackageName), nextVersion.getJTypeName(basePackageName)
+			);
 			var upgraderClassName = type.getJUpgraderName(basePackageName);
 
-			var fieldBuilder = FieldSpec.builder(upgraderClassName,
+			var fieldBuilder = FieldSpec.builder(genericClassName,
 					upgraderFieldLocation.fieldName(),
 					Modifier.PUBLIC,
 					Modifier.STATIC,
@@ -199,15 +206,16 @@ public class GenVersion extends ClassGenerator {
 		methodBuilder.addAnnotation(Override.class);
 		methodBuilder.addException(ClassName.get(IOException.class));
 
-		var iBaseTypeClassName = ClassName.get(version.getDataPackage(basePackageName), "IBaseType");
+		var iBaseTypeClassName = ClassName.get(version.getPackage(basePackageName), "IBaseType");
 		methodBuilder.addTypeVariable(TypeVariableName.get("T", iBaseTypeClassName));
 
 		var baseTypeClassName = ClassName.get(dataModel.getRootPackage(basePackageName), "BaseType");
 		methodBuilder.addParameter(baseTypeClassName, "type");
 
-		methodBuilder.returns(ParameterizedTypeName.get(ClassName.get(DataSerializer.class), TypeVariableName.get("T")));
+		var returnType = ParameterizedTypeName.get(ClassName.get(DataSerializer.class), TypeVariableName.get("T"));
+		methodBuilder.returns(returnType);
 
-		methodBuilder.beginControlFlow("return switch (type)");
+		methodBuilder.beginControlFlow("return ($T) switch (type)", returnType);
 		dataModel.getBaseTypesComputed(version).forEach(baseType -> {
 			var field = baseType.getJSerializerInstance(basePackageName);
 			methodBuilder.addStatement("case $N -> $T.$N", baseType.getName(), field.className(), field.fieldName());

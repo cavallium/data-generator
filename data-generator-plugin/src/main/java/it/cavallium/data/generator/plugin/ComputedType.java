@@ -41,4 +41,8 @@ public sealed interface ComputedType permits VersionedComputedType, ComputedType
 	 */
 	Stream<ComputedType> getDependents();
 
+	default boolean isPrimitive() {
+		return false;
+	}
+
 }

@@ -1,7 +1,5 @@
 package it.cavallium.data.generator.plugin;
 
-import static it.cavallium.data.generator.plugin.DataModel.joinPackage;
-
 import com.squareup.javapoet.ClassName;
 import com.squareup.javapoet.TypeName;
 import it.cavallium.data.generator.nativedata.Int52Serializer;
@@ -9,16 +7,21 @@ import it.cavallium.data.generator.nativedata.Serializers;
 import it.cavallium.data.generator.nativedata.StringSerializer;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Stream;
 
 public final class ComputedTypeNative implements ComputedType {
 
+	private static final Set<String> PRIMITIVE_TYPES = Set.of("boolean", "short", "char", "int", "long", "float", "double", "byte");
+
 	private final String type;
 	private final ComputedTypeSupplier computedTypeSupplier;
+	private boolean primitive;
 
 	public ComputedTypeNative(String type, ComputedTypeSupplier computedTypeSupplier) {
 		this.type = type;
 		this.computedTypeSupplier = computedTypeSupplier;
+		this.primitive = PRIMITIVE_TYPES.contains(type);
 	}
 
 	public String getName() {
@@ -108,5 +111,9 @@ public final class ComputedTypeNative implements ComputedType {
 	@Override
 	public String toString() {
 		return type + " (native)";
+	}
+
+	public boolean isPrimitive() {
+		return primitive;
 	}
 }
