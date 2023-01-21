@@ -10,6 +10,8 @@ import it.cavallium.data.generator.TypedNullable;
 import it.cavallium.data.generator.nativedata.INullable;
 import it.cavallium.data.generator.plugin.ClassGenerator;
 import it.cavallium.data.generator.plugin.ComputedTypeBase;
+import it.cavallium.data.generator.plugin.ComputedTypeNullable;
+import it.cavallium.data.generator.plugin.ComputedTypeNullableFixed;
 import it.cavallium.data.generator.plugin.ComputedTypeNullableVersioned;
 import it.cavallium.data.generator.plugin.ComputedTypeSuper;
 import it.cavallium.data.generator.plugin.ComputedVersion;
@@ -35,13 +37,14 @@ public class GenNullableX extends ClassGenerator {
 				.getComputedTypes(version)
 				.values()
 				.stream()
-				.filter(type -> type instanceof ComputedTypeNullableVersioned)
-				.map(type -> (ComputedTypeNullableVersioned) type)
-				.filter(type -> type.getVersion().equals(version))
+				.filter(f ->  f instanceof ComputedTypeNullable)
+				.map(f -> (ComputedTypeNullable) f)
+				.filter(type -> (type instanceof ComputedTypeNullableVersioned versioned
+						&& versioned.getVersion().equals(version)) || type instanceof ComputedTypeNullableFixed)
 				.map(type -> generateTypeVersioned(version, type));
 	}
 
-	private GeneratedClass generateTypeVersioned(ComputedVersion version, ComputedTypeNullableVersioned computedType) {
+	private GeneratedClass generateTypeVersioned(ComputedVersion version, ComputedTypeNullable computedType) {
 		var type = (ClassName) computedType.getJTypeName(basePackageName);
 		var classBuilder = TypeSpec.recordBuilder(type.simpleName());
 
