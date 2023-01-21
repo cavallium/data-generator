@@ -13,7 +13,7 @@ public class Serializers {
 	public static final NullableintSerializer NullableintSerializerInstance = new NullableintSerializer();
 	public static final NullablelongSerializer NullablelongSerializerInstance = new NullablelongSerializer();
 	public static final NullablefloatSerializer NullablefloatSerializerInstance = new NullablefloatSerializer();
-	public static final NullabledoubleSerializer NullabledoubleSerializer = new NullabledoubleSerializer();
+	public static final NullabledoubleSerializer NullabledoubleSerializerInstance = new NullabledoubleSerializer();
 
 	public static final ArrayStringSerializer ArrayStringSerializerInstance = new ArrayStringSerializer();
 	public static final ArrayInt52Serializer ArrayInt52SerializerInstance = new ArrayInt52Serializer();
