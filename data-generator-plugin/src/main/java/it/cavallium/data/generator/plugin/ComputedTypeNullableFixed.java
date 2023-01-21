@@ -21,8 +21,8 @@ public final class ComputedTypeNullableFixed implements ComputedTypeNullable {
 		this.computedTypeSupplier = computedTypeSupplier;
 	}
 
-	public VersionedComputedType getBase() {
-		return (VersionedComputedType) computedTypeSupplier.get(baseType);
+	public ComputedType getBase() {
+		return computedTypeSupplier.get(baseType);
 	}
 
 	public ComputedType child() {
