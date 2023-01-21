@@ -24,5 +24,5 @@ public class Serializers {
 	public static final ArrayintSerializer ArrayintSerializerInstance = new ArrayintSerializer();
 	public static final ArraylongSerializer ArraylongSerializerInstance = new ArraylongSerializer();
 	public static final ArrayfloatSerializer ArrayfloatSerializerInstance = new ArrayfloatSerializer();
-	public static final ArraydoubleSerializer ArraydoubleSerializer = new ArraydoubleSerializer();
+	public static final ArraydoubleSerializer ArraydoubleSerializerInstance = new ArraydoubleSerializer();
 }
