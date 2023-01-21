@@ -338,11 +338,16 @@ public class DataModel {
 								.filter(x -> x.startsWith("-"))
 								.map(nullableName -> nullableName.substring(1))
 								.toList();
-						// Compute nullable base types
+						// Compute nullable versioned types
 						nullableRawTypes.stream()
-								.filter(nullableName -> !NATIVE_TYPES.contains(nullableName))
+								.filter(key -> superTypesData.containsKey(key) || baseTypesData.containsKey(key))
 								.map(nullableName -> new VersionedType(nullableName, version))
 								.map(baseType -> new ComputedTypeNullableVersioned(baseType, computedTypeSupplier))
+								.forEach(versionBaseTypes::add);
+						// Compute nullable other types
+						nullableRawTypes.stream()
+								.filter(customTypesData::containsKey)
+								.map(baseType -> new ComputedTypeNullableFixed(baseType, computedVersions.get(latestVersion), computedTypeSupplier))
 								.forEach(versionBaseTypes::add);
 						// Compute nullable native types
 						nullableRawTypes.stream()
@@ -359,11 +364,16 @@ public class DataModel {
 								.filter(x -> x.startsWith("§"))
 								.map(nullableName -> nullableName.substring(1))
 								.toList();
-						// Compute array base types
+						// Compute array versioned types
 						arrayRawTypes.stream()
-								.filter(nullableName -> !NATIVE_TYPES.contains(nullableName))
+								.filter(key -> superTypesData.containsKey(key) || baseTypesData.containsKey(key))
 								.map(nullableName -> new VersionedType(nullableName, version))
 								.map(baseType -> new ComputedTypeArrayVersioned(baseType, computedTypeSupplier))
+								.forEach(versionBaseTypes::add);
+						// Compute array other types
+						arrayRawTypes.stream()
+								.filter(customTypesData::containsKey)
+								.map(type -> new ComputedTypeArrayFixed(type, computedVersions.get(latestVersion), computedTypeSupplier))
 								.forEach(versionBaseTypes::add);
 						// Compute array native types
 						arrayRawTypes.stream()
