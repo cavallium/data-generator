@@ -4,6 +4,7 @@ import com.squareup.javapoet.ClassName;
 import com.squareup.javapoet.MethodSpec;
 import com.squareup.javapoet.ParameterSpec;
 import com.squareup.javapoet.TypeSpec;
+import io.soabase.recordbuilder.core.RecordBuilder;
 import it.cavallium.data.generator.plugin.ClassGenerator;
 import it.cavallium.data.generator.plugin.ComputedTypeBase;
 import it.cavallium.data.generator.plugin.ComputedVersion;
@@ -36,6 +37,10 @@ public class GenDataBaseX extends ClassGenerator {
 		var classBuilder = TypeSpec.recordBuilder(type.simpleName());
 
 		classBuilder.addModifiers(Modifier.PUBLIC);
+
+		if (useRecordBuilders && base.getVersion().isCurrent()) {
+			classBuilder.addAnnotation(RecordBuilder.class);
+		}
 
 		var baseTypeClass = ClassName.get(dataModel.getRootPackage(basePackageName), "BaseType");
 

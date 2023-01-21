@@ -113,14 +113,16 @@ public class SourcesGenerator {
 		var curHash = dataModel.computeHash();
 		if (Files.isRegularFile(hashPath) && Files.isReadable(hashPath)) {
 			var lines = Files.readAllLines(hashPath, StandardCharsets.UTF_8);
-			if (lines.size() >= 3) {
+			if (lines.size() >= 4) {
 				var prevBasePackageName = lines.get(0);
 				var prevRecordBuilders = lines.get(1);
 				var prevHash = lines.get(2);
+				var prevDeepCheckBeforeCreatingNewEqualInstances = lines.get(3);
 
 				if (!force
 						&& prevBasePackageName.equals(basePackageName)
-						&& (prevRecordBuilders.equalsIgnoreCase("true") == useRecordBuilders) 
+						&& (prevRecordBuilders.equalsIgnoreCase("true") == useRecordBuilders)
+						&& (prevDeepCheckBeforeCreatingNewEqualInstances.equalsIgnoreCase("true") == deepCheckBeforeCreatingNewEqualInstances)
 						&& prevHash.equals(Integer.toString(curHash))) {
 					logger.info("Skipped sources generation because it didn't change");
 					return;
@@ -146,7 +148,7 @@ public class SourcesGenerator {
 					.collect(Collectors.toCollection(HashSet::new));
 		}
 
-		var genParams = new ClassGeneratorParams(generatedFilesToDelete, dataModel, basePackageName, outPath, deepCheckBeforeCreatingNewEqualInstances);
+		var genParams = new ClassGeneratorParams(generatedFilesToDelete, dataModel, basePackageName, outPath, deepCheckBeforeCreatingNewEqualInstances, useRecordBuilders);
 
 		// Create the Versions class
 		new GenVersions(genParams).run();
@@ -194,8 +196,14 @@ public class SourcesGenerator {
 		new GenUpgraderSuperX(genParams).run();
 
 		// Update the hash at the end
-		Files.writeString(hashPath, basePackageName + '\n' + useRecordBuilders + '\n' + curHash + '\n',
-				StandardCharsets.UTF_8, TRUNCATE_EXISTING, WRITE, CREATE);
+		Files.writeString(hashPath,
+				basePackageName + '\n' + useRecordBuilders + '\n' + deepCheckBeforeCreatingNewEqualInstances + '\n' + curHash
+						+ '\n',
+				StandardCharsets.UTF_8,
+				TRUNCATE_EXISTING,
+				WRITE,
+				CREATE
+		);
 		generatedFilesToDelete.remove(outPath.relativize(hashPath));
 	}
 
