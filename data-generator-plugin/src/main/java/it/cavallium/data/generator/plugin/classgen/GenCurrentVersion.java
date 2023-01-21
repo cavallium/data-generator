@@ -174,7 +174,7 @@ public class GenCurrentVersion extends ClassGenerator {
 	private void generateGetClass(ComputedVersion version, Builder classBuilder) {
 		var methodBuilder = MethodSpec.methodBuilder("getClass");
 
-		methodBuilder.addModifiers(Modifier.PUBLIC);
+		methodBuilder.addModifiers(Modifier.PUBLIC, Modifier.STATIC);
 
 		var baseTypeClassName = ClassName.get(dataModel.getRootPackage(basePackageName), "BaseType");
 		methodBuilder.addParameter(baseTypeClassName, "type");
