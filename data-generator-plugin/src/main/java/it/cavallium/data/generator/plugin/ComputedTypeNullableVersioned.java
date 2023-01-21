@@ -1,7 +1,9 @@
 package it.cavallium.data.generator.plugin;
 
 import com.squareup.javapoet.ClassName;
+import com.squareup.javapoet.CodeBlock;
 import com.squareup.javapoet.TypeName;
+import it.cavallium.data.generator.nativedata.UpgradeUtil;
 import it.cavallium.data.generator.plugin.ComputedType.VersionedComputedType;
 import java.util.Objects;
 import java.util.stream.Stream;
@@ -28,8 +30,7 @@ public final class ComputedTypeNullableVersioned implements ComputedTypeNullable
 	}
 
 	@Override
-	public ComputedTypeNullableVersioned withChangeAtVersion(ComputedVersion version,
-			VersionChangeChecker versionChangeChecker) {
+	public ComputedTypeNullableVersioned withChangeAtVersion(ComputedVersion version, VersionChangeChecker versionChangeChecker) {
 		return new ComputedTypeNullableVersioned(baseType.withVersion(version),
 				computedTypeSupplier
 		);
@@ -75,7 +76,11 @@ public final class ComputedTypeNullableVersioned implements ComputedTypeNullable
 
 	@Override
 	public TypeName getJTypeName(String basePackageName) {
-		return ClassName.get(baseType.version().getDataNullablesPackage(basePackageName),
+		return getJTypeNameOfVersion(baseType.version(), basePackageName);
+	}
+
+	private TypeName getJTypeNameOfVersion(ComputedVersion version, String basePackageName) {
+		return ClassName.get(version.getDataNullablesPackage(basePackageName),
 				"Nullable" + baseType.type());
 	}
 
@@ -94,15 +99,23 @@ public final class ComputedTypeNullableVersioned implements ComputedTypeNullable
 
 	@Override
 	public TypeName getJUpgraderName(String basePackageName) {
-		return ClassName.get(baseType.version().getSerializersPackage(basePackageName),
-				"Nullable" + baseType.type() + "Upgrader");
+		throw new UnsupportedOperationException("Not upgradable");
 	}
 
 	@Override
 	public FieldLocation getJUpgraderInstance(String basePackageName) {
-		var className = ClassName.get(baseType.version().getPackage(basePackageName), "Version");
-		var upgraderFieldName = "Nullable" + baseType.type() + "UpgraderInstance";
-		return new FieldLocation(className, upgraderFieldName);
+		throw new UnsupportedOperationException("Not upgradable");
+	}
+
+	@Override
+	public CodeBlock wrapWithUpgrade(String basePackageName, CodeBlock content, ComputedType next) {
+		var builder = CodeBlock.builder();
+		var upgraderInstance = getBase().getJUpgraderInstance(basePackageName);
+		builder.add("new $T($T.upgradeNullable(", next.getJTypeName(basePackageName), UpgradeUtil.class);
+		builder.add(content);
+		builder.add(".value(), $T.$N)", upgraderInstance.className(), upgraderInstance.fieldName());
+		builder.add(")");
+		return builder.build();
 	}
 
 	@Override

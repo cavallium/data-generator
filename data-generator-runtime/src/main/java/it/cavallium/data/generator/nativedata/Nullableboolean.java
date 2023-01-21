@@ -90,11 +90,6 @@ public class Nullableboolean implements Serializable, INullable, NativeNullable<
 		}
 	}
 
-	@Override
-	public Boolean $getNullable() {
-		return this.getNullable();
-	}
-
 	@Nullable
 	public Boolean getNullable() {
 		return value;

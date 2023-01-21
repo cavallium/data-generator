@@ -1,7 +1,7 @@
 package it.cavallium.data.generator.plugin;
 
 import com.squareup.javapoet.ClassName;
-import com.squareup.javapoet.TypeName;
+import com.squareup.javapoet.CodeBlock;
 import it.cavallium.data.generator.plugin.ComputedType.VersionedComputedType;
 import java.util.LinkedHashMap;
 import java.util.Objects;
@@ -39,14 +39,12 @@ public final class ComputedTypeBase implements VersionedComputedType {
 	}
 
 	@Override
-	public ComputedTypeBase withChangeAtVersion(ComputedVersion version,
-			VersionChangeChecker versionChangeChecker) {
+	public ComputedTypeBase withChangeAtVersion(ComputedVersion version, VersionChangeChecker versionChangeChecker) {
 		var newData = new LinkedHashMap<String, VersionedType>();
 		data.forEach((k, v) -> newData.put(k, v.withVersionIfChanged(version, versionChangeChecker)));
 		return new ComputedTypeBase(type.withVersion(version),
 				stringRepresenter,
-				newData,
-				computedTypeSupplier
+				newData, computedTypeSupplier
 		);
 	}
 
@@ -115,7 +113,7 @@ public final class ComputedTypeBase implements VersionedComputedType {
 	}
 
 	@Override
-	public TypeName getJUpgraderName(String basePackageName) {
+	public ClassName getJUpgraderName(String basePackageName) {
 		return ClassName.get(type.version().getUpgradersPackage(basePackageName), type.type() + "Upgrader");
 	}
 
@@ -124,6 +122,16 @@ public final class ComputedTypeBase implements VersionedComputedType {
 		var className = ClassName.get(type.version().getPackage(basePackageName), "Version");
 		var upgraderFieldName = type.type() + "UpgraderInstance";
 		return new FieldLocation(className, upgraderFieldName);
+	}
+
+	@Override
+	public CodeBlock wrapWithUpgrade(String basePackageName, CodeBlock content, ComputedType next) {
+		var upgraderInstance = getJUpgraderInstance(basePackageName);
+		var cb = CodeBlock.builder();
+		cb.add(CodeBlock.of("$T.$N.upgrade(", upgraderInstance.className(), upgraderInstance.fieldName()));
+		cb.add(content);
+		cb.add(")");
+		return VersionedComputedType.super.wrapWithUpgrade(basePackageName, cb.build(), next);
 	}
 
 	@Override

@@ -51,6 +51,7 @@ public class DataModel {
 	private final Int2ObjectMap<Map<String, ComputedType>> computedTypes;
 	private final Map<VersionedType, VersionedType> versionedTypePrevVersion;
 	private final Map<VersionedType, VersionedType> versionedTypeNextVersion;
+	private final Int2ObjectMap<Map<String, List<TransformationConfiguration>>> baseTypeDataChanges;
 
 	public DataModel(int hash,
 			String currentVersionKey,
@@ -149,6 +150,8 @@ public class DataModel {
 					throw new IllegalArgumentException("Type " + type + " has been defined more than once (check base, super, and custom types)!");
 				});
 
+		record RawVersionedType(String type, int version) {}
+
 		// Compute the numeric versions map
 		Int2ObjectMap<ParsedVersion> parsedVersions = new Int2ObjectLinkedOpenHashMap<>();
 		rawVersions.forEach((k, v) -> parsedVersions.put(nameToVersion.getInt(k), new ParsedVersion(v)));
@@ -187,7 +190,7 @@ public class DataModel {
 								throw new IllegalArgumentException(transformCoordinate + " refers to an unknown type: "
 										+ t.transformClass);
 							}
-							transformClass.differentThanPrev = true;
+							transformClass.addDifferentThanPrev(transformation);
 							var definition = removeAndGetIndex(transformClass.data, t.from);
 							if (definition.isEmpty()) {
 								throw new IllegalArgumentException(transformCoordinate + " refers to an unknown field: " + t.from);
@@ -210,7 +213,7 @@ public class DataModel {
 								throw new IllegalArgumentException(transformCoordinate + " refers to an unknown type: "
 										+ t.transformClass);
 							}
-							transformClass.differentThanPrev = true;
+							transformClass.addDifferentThanPrev(transformation);
 							if (!allTypes.contains(extractTypeName(t.type))) {
 								throw new IllegalArgumentException(transformCoordinate + " refers to an unknown type: " + t.type);
 							}
@@ -233,7 +236,7 @@ public class DataModel {
 								throw new IllegalArgumentException(transformCoordinate + " refers to an unknown type: "
 										+ t.transformClass);
 							}
-							transformClass.differentThanPrev = true;
+							transformClass.addDifferentThanPrev(transformation);
 							var prevDef = transformClass.data.remove(t.from);
 							if (prevDef == null) {
 								throw new IllegalArgumentException(transformCoordinate + " tries to remove the nonexistent field \""
@@ -247,7 +250,7 @@ public class DataModel {
 								throw new IllegalArgumentException(transformCoordinate + " refers to an unknown type: "
 										+ t.transformClass);
 							}
-							transformClass.differentThanPrev = true;
+							transformClass.addDifferentThanPrev(transformation);
 							if (!allTypes.contains(extractTypeName(t.type))) {
 								throw new IllegalArgumentException(transformCoordinate + " refers to an unknown type: " + t.type);
 							}
@@ -283,12 +286,20 @@ public class DataModel {
 		// Compute the types
 		Int2ObjectMap<Map<String, ComputedType>> computedTypes = new Int2ObjectLinkedOpenHashMap<>();
 		Int2ObjectMap<Map<String, ComputedType>> randomComputedTypes = new Int2ObjectOpenHashMap<>();
+		Int2ObjectMap<Map<String, List<TransformationConfiguration>>> baseTypeDataChanges = new Int2ObjectOpenHashMap<>();
 		ComputedTypeSupplier computedTypeSupplier = new ComputedTypeSupplier(randomComputedTypes, computedVersions.get(latestVersion));
 		{
+			for (int versionIndex = 0; versionIndex <= latestVersion; versionIndex++) {
+				var versionChanges = new HashMap<String, List<TransformationConfiguration>>();
+				baseTypeDataChanges.put(versionIndex, versionChanges);
+				computedClassConfig.get(versionIndex).forEach((dataType, data) -> {
+					versionChanges.put(dataType, Objects.requireNonNullElse(data.differentThanPrev, List.of()));
+				});
+			}
 			for (int versionNumber = latestVersion - 1; versionNumber >= 0; versionNumber--) {
 				var version = computedClassConfig.get(versionNumber);
 				computedClassConfig.get(versionNumber + 1).forEach((type, typeConfig) -> {
-					if (typeConfig.differentThanPrev) {
+					if (typeConfig.differentThanPrev != null) {
 						version.get(type).differentThanNext = true;
 					}
 				});
@@ -514,6 +525,7 @@ public class DataModel {
 		this.computedTypes = computedTypes;
 		this.versionedTypePrevVersion = versionedTypePrevVersion;
 		this.versionedTypeNextVersion = versionedTypeNextVersion;
+		this.baseTypeDataChanges = baseTypeDataChanges;
 	}
 
 	private String tryInsertAtIndex(LinkedHashMap<String, String> data, String key, String value, int index) {
@@ -866,5 +878,9 @@ public class DataModel {
 			}
 		}
 		return Stream.of();
+	}
+
+	public List<TransformationConfiguration> getChanges(ComputedTypeBase nextType) {
+		return baseTypeDataChanges.get(nextType.getVersion().getVersion()).get(nextType.getName());
 	}
 }

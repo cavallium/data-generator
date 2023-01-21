@@ -98,11 +98,6 @@ public class Nullablefloat implements Serializable, INullable, NativeNullable<Fl
 		}
 	}
 
-	@Override
-	public Object $getNullable() {
-		return this.getNullable();
-	}
-
 	@Nullable
 	public Float getNullable() {
 		return value;

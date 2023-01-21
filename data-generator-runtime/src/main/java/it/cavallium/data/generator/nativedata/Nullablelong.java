@@ -98,11 +98,6 @@ public class Nullablelong implements Serializable, INullable, NativeNullable<Lon
 		}
 	}
 
-	@Override
-	public Long $getNullable() {
-		return this.getNullable();
-	}
-
 	@Nullable
 	public Long getNullable() {
 		return value;

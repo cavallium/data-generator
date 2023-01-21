@@ -29,6 +29,7 @@ import it.cavallium.data.generator.plugin.classgen.GenSerializerBaseX;
 import it.cavallium.data.generator.plugin.classgen.GenSerializerNullableX;
 import it.cavallium.data.generator.plugin.classgen.GenSerializerSuperX;
 import it.cavallium.data.generator.plugin.classgen.GenSuperType;
+import it.cavallium.data.generator.plugin.classgen.GenUpgraderBaseX;
 import it.cavallium.data.generator.plugin.classgen.GenVersion;
 import it.cavallium.data.generator.plugin.classgen.GenVersions;
 import it.unimi.dsi.fastutil.booleans.BooleanList;
@@ -186,6 +187,8 @@ public class SourcesGenerator {
 		new GenSerializerArrayX(genParams).run();
 
 		new GenSerializerNullableX(genParams).run();
+
+		new GenUpgraderBaseX(genParams).run();
 
 		// Update the hash at the end
 		Files.writeString(hashPath, basePackageName + '\n' + useRecordBuilders + '\n' + curHash + '\n',

@@ -98,11 +98,6 @@ public class Nullablebyte implements Serializable, INullable, NativeNullable<Byt
 		}
 	}
 
-	@Override
-	public Byte $getNullable() {
-		return this.getNullable();
-	}
-
 	@Nullable
 	public Byte getNullable() {
 		return value;

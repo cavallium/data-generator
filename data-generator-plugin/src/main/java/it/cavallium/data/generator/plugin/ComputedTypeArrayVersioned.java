@@ -1,8 +1,10 @@
 package it.cavallium.data.generator.plugin;
 
 import com.squareup.javapoet.ClassName;
+import com.squareup.javapoet.CodeBlock;
 import com.squareup.javapoet.ParameterizedTypeName;
 import com.squareup.javapoet.TypeName;
+import it.cavallium.data.generator.nativedata.UpgradeUtil;
 import it.cavallium.data.generator.plugin.ComputedType.VersionedComputedType;
 import java.util.List;
 import java.util.Objects;
@@ -30,8 +32,7 @@ public final class ComputedTypeArrayVersioned implements VersionedComputedType, 
 	}
 
 	@Override
-	public ComputedTypeArrayVersioned withChangeAtVersion(ComputedVersion version,
-			VersionChangeChecker versionChangeChecker) {
+	public ComputedTypeArrayVersioned withChangeAtVersion(ComputedVersion version, VersionChangeChecker versionChangeChecker) {
 		return new ComputedTypeArrayVersioned(baseType.withVersion(version),
 				computedTypeSupplier
 		);
@@ -99,14 +100,22 @@ public final class ComputedTypeArrayVersioned implements VersionedComputedType, 
 
 	@Override
 	public TypeName getJUpgraderName(String basePackageName) {
-		return ClassName.get(baseType.version().getUpgradersPackage(basePackageName), "Array" + baseType.type() + "Upgrader");
+		throw new UnsupportedOperationException("Not upgradable");
 	}
 
 	@Override
 	public FieldLocation getJUpgraderInstance(String basePackageName) {
-		var className = ClassName.get(baseType.version().getPackage(basePackageName), "Version");
-		var upgraderFieldName = "Array" + baseType.type() + "UpgraderInstance";
-		return new FieldLocation(className, upgraderFieldName);
+		throw new UnsupportedOperationException("Not upgradable");
+	}
+
+	@Override
+	public CodeBlock wrapWithUpgrade(String basePackageName, CodeBlock content, ComputedType next) {
+		var builder = CodeBlock.builder();
+		builder.add("$T.upgradeArray(", UpgradeUtil.class);
+		builder.add(content);
+		var upgraderInstance = getBase().getJUpgraderInstance(basePackageName);
+		builder.add(", $T.$N)", upgraderInstance.className(), upgraderInstance.fieldName());
+		return builder.build();
 	}
 
 	@Override

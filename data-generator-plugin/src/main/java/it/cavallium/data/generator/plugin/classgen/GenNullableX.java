@@ -122,15 +122,15 @@ public class GenNullableX extends ClassGenerator {
 					.addParameter(ParameterSpec.builder(type, "fallback").addAnnotation(NotNull.class).build())
 					.addStatement("return this.value == null ? fallback : this")
 					.build());
-
-			classBuilder.addMethod(MethodSpec
-					.methodBuilder("getNullable")
-					.addModifiers(Modifier.PUBLIC, Modifier.FINAL)
-					.addAnnotation(Nullable.class)
-					.returns(baseType)
-					.addStatement("return this.value")
-					.build());
 		}
+
+		classBuilder.addMethod(MethodSpec
+				.methodBuilder("getNullable")
+				.addModifiers(Modifier.PUBLIC, Modifier.FINAL)
+				.addAnnotation(Nullable.class)
+				.returns(baseType)
+				.addStatement("return this.value")
+				.build());
 
 		return new GeneratedClass(type.packageName(), classBuilder);
 	}

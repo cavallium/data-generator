@@ -2,7 +2,9 @@ package it.cavallium.data.generator.plugin;
 
 import static it.cavallium.data.generator.plugin.DataModel.fixType;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Objects;
@@ -13,7 +15,7 @@ public final class ParsedClass {
 	public String stringRepresenter;
 
 	public LinkedHashMap<String, String> data;
-	public boolean differentThanPrev;
+	public List<TransformationConfiguration> differentThanPrev;
 	public boolean differentThanNext;
 
 	public ParsedClass(ClassConfiguration baseTypesData) {
@@ -66,5 +68,12 @@ public final class ParsedClass {
 		if (this.stringRepresenter != null) cc.stringRepresenter = this.stringRepresenter;
 		cc.data = new LinkedHashMap<>(data);
 		return cc;
+	}
+
+	public void addDifferentThanPrev(TransformationConfiguration transformation) {
+		if (differentThanPrev == null) {
+			differentThanPrev = new ArrayList<>();
+		}
+		differentThanPrev.add(transformation);
 	}
 }

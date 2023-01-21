@@ -90,11 +90,6 @@ public class Nullablechar implements Serializable, INullable, NativeNullable<Cha
 		}
 	}
 
-	@Override
-	public Character $getNullable() {
-		return this.getNullable();
-	}
-
 	@Nullable
 	public Character getNullable() {
 		return value;

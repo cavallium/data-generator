@@ -98,11 +98,6 @@ public class Nullableshort implements Serializable, INullable, NativeNullable<Sh
 		}
 	}
 
-	@Override
-	public Short $getNullable() {
-		return this.getNullable();
-	}
-
 	@Nullable
 	public Short getNullable() {
 		return value;

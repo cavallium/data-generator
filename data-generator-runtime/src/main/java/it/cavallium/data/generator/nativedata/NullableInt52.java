@@ -86,10 +86,6 @@ public class NullableInt52 implements Serializable, INullable, TypedNullable<Int
 		}
 	}
 
-	@Override
-	public Object $getNullable() {
-		return this.getNullable();
-	}
 
 	@Nullable
 	public Int52 getNullable() {

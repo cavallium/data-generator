@@ -119,11 +119,6 @@ public class NullableString implements Serializable, INullable, TypedNullable<St
 		}
 	}
 
-	@Override
-	public String $getNullable() {
-		return this.getNullable();
-	}
-
 	@Nullable
 	public String getNullable() {
 		return value;

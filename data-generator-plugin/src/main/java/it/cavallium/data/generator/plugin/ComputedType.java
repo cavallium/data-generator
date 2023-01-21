@@ -1,5 +1,6 @@
 package it.cavallium.data.generator.plugin;
 
+import com.squareup.javapoet.CodeBlock;
 import com.squareup.javapoet.TypeName;
 import it.cavallium.data.generator.plugin.ComputedType.VersionedComputedType;
 import java.util.stream.Stream;
@@ -18,6 +19,10 @@ public sealed interface ComputedType permits VersionedComputedType, ComputedType
 	TypeName getJUpgraderName(String basePackageName);
 
 	FieldLocation getJUpgraderInstance(String basePackageName);
+
+	default CodeBlock wrapWithUpgrade(String basePackageName, CodeBlock content, ComputedType next) {
+		return content;
+	}
 
 	sealed interface VersionedComputedType extends ComputedType permits ComputedTypeArrayVersioned, ComputedTypeBase,
 			ComputedTypeNullableVersioned, ComputedTypeSuper {

@@ -98,11 +98,6 @@ public class Nullableint implements Serializable, INullable, NativeNullable<Inte
 		}
 	}
 
-	@Override
-	public Integer $getNullable() {
-		return this.getNullable();
-	}
-
 	@Nullable
 	public Integer getNullable() {
 		return value;

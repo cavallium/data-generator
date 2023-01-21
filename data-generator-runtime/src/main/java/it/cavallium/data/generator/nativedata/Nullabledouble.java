@@ -98,11 +98,6 @@ public class Nullabledouble implements Serializable, INullable, NativeNullable<D
 		}
 	}
 
-	@Override
-	public Double $getNullable() {
-		return this.getNullable();
-	}
-
 	@Nullable
 	public Double getNullable() {
 		return value;
