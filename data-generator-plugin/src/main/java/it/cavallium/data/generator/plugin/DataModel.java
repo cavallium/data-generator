@@ -89,6 +89,15 @@ public class DataModel {
 							.stream().map(Entry::getKey).collect(Collectors.joining(", ")));
 				});
 
+		// Check if the first version has no transformations
+		rawVersions
+				.values()
+				.stream()
+				.filter(v -> v.previousVersion == null && v.transformations != null && !v.transformations.isEmpty())
+				.forEach(v -> {
+					throw new IllegalArgumentException("First version must not have any transformation");
+				});
+
 		// Create the next versions map
 		Map<String, String> nextVersionMap = rawVersions.keySet().stream()
 				.map(version -> Map.entry(version, rawVersions
