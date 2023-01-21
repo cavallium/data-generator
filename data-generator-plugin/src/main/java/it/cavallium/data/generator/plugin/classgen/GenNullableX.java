@@ -10,6 +10,7 @@ import it.cavallium.data.generator.TypedNullable;
 import it.cavallium.data.generator.nativedata.INullable;
 import it.cavallium.data.generator.plugin.ClassGenerator;
 import it.cavallium.data.generator.plugin.ComputedTypeBase;
+import it.cavallium.data.generator.plugin.ComputedTypeCustom;
 import it.cavallium.data.generator.plugin.ComputedTypeNullable;
 import it.cavallium.data.generator.plugin.ComputedTypeNullableFixed;
 import it.cavallium.data.generator.plugin.ComputedTypeNullableVersioned;
@@ -69,7 +70,7 @@ public class GenNullableX extends ClassGenerator {
 					.returns(superTypeClass)
 					.addStatement("return $T.$N", superTypeClass, base.getName())
 					.build());
-		} else if (base instanceof ComputedTypeBase computedTypeBase) {
+		} else if (base instanceof ComputedTypeBase) {
 			var iNullableBaseTypeClass = ClassName.get(version.getDataNullablesPackage(basePackageName), "INullableBaseType");
 			var baseTypeClass = ClassName.get(dataModel.getRootPackage(basePackageName), "BaseType");
 			classBuilder.addSuperinterface(iNullableBaseTypeClass);
@@ -80,7 +81,7 @@ public class GenNullableX extends ClassGenerator {
 					.returns(baseTypeClass)
 					.addStatement("return $T.$N", baseTypeClass, base.getName())
 					.build());
-		} else {
+		} else if (!(base instanceof ComputedTypeCustom)) {
 			throw new UnsupportedOperationException();
 		}
 
