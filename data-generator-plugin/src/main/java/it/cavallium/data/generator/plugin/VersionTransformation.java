@@ -87,14 +87,12 @@ public final class VersionTransformation {
 		return hash;
 	}
 
-	@SuppressWarnings("MethodDoesntCallSuperMethod")
-	@Override
-	public VersionTransformation clone() {
+	public VersionTransformation copy() {
 		var t = new VersionTransformation();
-		if (this.moveData != null) t.moveData = this.moveData.clone();
-		if (this.removeData != null) t.removeData = this.removeData.clone();
-		if (this.upgradeData != null) t.upgradeData = this.upgradeData.clone();
-		if (this.newData != null) t.newData = this.newData.clone();
+		if (this.moveData != null) t.moveData = this.moveData.copy();
+		if (this.removeData != null) t.removeData = this.removeData.copy();
+		if (this.upgradeData != null) t.upgradeData = this.upgradeData.copy();
+		if (this.newData != null) t.newData = this.newData.copy();
 		return t;
 	}
 }

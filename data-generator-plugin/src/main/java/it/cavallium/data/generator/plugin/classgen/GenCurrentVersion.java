@@ -29,6 +29,7 @@ public class GenCurrentVersion extends ClassGenerator {
 
 	@Override
 	protected Stream<GeneratedClass> generateClasses() {
+		var currentVersionPackage = dataModel.getCurrentVersion().getPackage(basePackageName);
 		var currentVersionDataPackage = dataModel.getCurrentVersion().getDataPackage(basePackageName);
 
 		var currentVersionClass = TypeSpec.classBuilder("CurrentVersion");
@@ -57,7 +58,7 @@ public class GenCurrentVersion extends ClassGenerator {
 					.addModifiers(Modifier.FINAL).addModifiers(Modifier.STATIC)
 					.returns(ParameterizedTypeName.get(ClassName.get(Set.class),
 							ParameterizedTypeName.get(ClassName.get(Class.class),
-									WildcardTypeName.subtypeOf(ClassName.get(currentVersionDataPackage, "IType")))))
+									WildcardTypeName.subtypeOf(ClassName.get(currentVersionPackage, "IType")))))
 					.addCode("return $T.of(\n", Set.class);
 			AtomicBoolean isFirst = new AtomicBoolean(true);
 			dataModel.getSuperTypesComputed(dataModel.getCurrentVersion()).forEach(superType -> {
@@ -77,10 +78,10 @@ public class GenCurrentVersion extends ClassGenerator {
 					.addModifiers(Modifier.FINAL).addModifiers(Modifier.STATIC)
 					.returns(ParameterizedTypeName.get(ClassName.get(Set.class),
 							ParameterizedTypeName.get(ClassName.get(Class.class),
-									WildcardTypeName.subtypeOf(ClassName.get(currentVersionDataPackage, "IBaseType")))));
+									WildcardTypeName.subtypeOf(ClassName.get(currentVersionPackage, "IBaseType")))));
 			getSuperTypeSubtypesClasses
 					.addParameter(ParameterSpec.builder(ParameterizedTypeName.get(ClassName.get(Class.class),
-							WildcardTypeName.subtypeOf(ClassName.get(currentVersionDataPackage, "IType"))
+							WildcardTypeName.subtypeOf(ClassName.get(currentVersionPackage, "IType"))
 					), "superTypeClass").build());
 			getSuperTypeSubtypesClasses.beginControlFlow("return switch (superTypeClass.getCanonicalName())");
 			dataModel.getSuperTypesComputed(dataModel.getCurrentVersion()).forEach(superType -> {
@@ -107,7 +108,7 @@ public class GenCurrentVersion extends ClassGenerator {
 		// UpgradeDataToLatestVersion1 Method
 		{
 			var upgradeDataToLatestVersion1MethodBuilder = MethodSpec.methodBuilder("upgradeDataToLatestVersion")
-					.addTypeVariable(TypeVariableName.get("U", ClassName.get(currentVersionDataPackage, "IBaseType")))
+					.addTypeVariable(TypeVariableName.get("U", ClassName.get(currentVersionPackage, "IBaseType")))
 					.addModifiers(Modifier.PUBLIC).addModifiers(Modifier.STATIC).addModifiers(Modifier.FINAL).returns(TypeVariableName.get("U"))
 					.addParameter(ParameterSpec.builder(TypeName.INT, "oldVersion").build()).addParameter(
 							ParameterSpec.builder(ClassName.get(dataModel.getRootPackage(basePackageName), "BaseType"), "type").build())
@@ -133,7 +134,7 @@ public class GenCurrentVersion extends ClassGenerator {
 			var versionsClassName = ClassName.get(dataModel.getRootPackage(basePackageName), "Versions");
 			var upgradeDataToLatestVersion2MethodBuilder = MethodSpec.methodBuilder("upgradeDataToLatestVersion")
 					.addModifiers(Modifier.PUBLIC).addModifiers(Modifier.STATIC).addModifiers(Modifier.FINAL).addTypeVariable(TypeVariableName.get("T"))
-					.addTypeVariable(TypeVariableName.get("U", ClassName.get(currentVersionDataPackage, "IBaseType")))
+					.addTypeVariable(TypeVariableName.get("U", ClassName.get(currentVersionPackage, "IBaseType")))
 					.returns(TypeVariableName.get("U"))
 					.addParameter(ParameterSpec.builder(TypeName.INT, "oldVersion").build())
 					.addParameter(ParameterSpec.builder(TypeVariableName.get("T"), "oldData").build())

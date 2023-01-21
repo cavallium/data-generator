@@ -39,7 +39,8 @@ public final class ComputedTypeBase implements VersionedComputedType {
 	}
 
 	@Override
-	public ComputedTypeBase withChangeAtVersion(ComputedVersion version, VersionChangeChecker versionChangeChecker) {
+	public ComputedTypeBase withChangeAtVersion(ComputedVersion version, VersionChangeChecker versionChangeChecker,
+			LinkedHashMap<String, VersionedType> data) {
 		var newData = new LinkedHashMap<String, VersionedType>();
 		data.forEach((k, v) -> newData.put(k, v.withVersionIfChanged(version, versionChangeChecker)));
 		return new ComputedTypeBase(type.withVersion(version),

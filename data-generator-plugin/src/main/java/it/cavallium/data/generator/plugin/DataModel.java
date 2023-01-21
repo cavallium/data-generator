@@ -168,7 +168,12 @@ public class DataModel {
 				Map<String, ParsedClass> prevVersionConfiguration
 						= requireNonNull(computedClassConfig.get(versionIndex - 1));
 				Map<String, ParsedClass> newVersionConfiguration = prevVersionConfiguration.entrySet().stream()
-						.map(entry -> Map.entry(entry.getKey(), entry.getValue().clone()))
+						.map(entry -> {
+							var parsedClass = entry.getValue().copy();
+							parsedClass.differentThanPrev = null;
+							parsedClass.differentThanNext = false;
+							return Map.entry(entry.getKey(), parsedClass);
+						})
 						.collect(Collectors.toMap(Entry::getKey, Entry::getValue));
 
 				for (VersionTransformation rawTransformation : version.transformations) {
@@ -284,6 +289,7 @@ public class DataModel {
 				));
 
 		// Compute the types
+		Object2IntMap<String> currentOrNewerTypeVersion = new Object2IntOpenHashMap<>();
 		Int2ObjectMap<Map<String, ComputedType>> computedTypes = new Int2ObjectLinkedOpenHashMap<>();
 		Int2ObjectMap<Map<String, ComputedType>> randomComputedTypes = new Int2ObjectOpenHashMap<>();
 		Int2ObjectMap<Map<String, List<TransformationConfiguration>>> baseTypeDataChanges = new Int2ObjectOpenHashMap<>();
@@ -369,8 +375,11 @@ public class DataModel {
 					// Compute native types
 					versionBaseTypes.addAll(ComputedTypeNative.get(computedTypeSupplier));
 
-					randomComputedTypes.put(versionIndexF,
-							versionBaseTypes.stream().distinct().collect(Collectors.toMap(ComputedType::getName, identity())));
+					var allLatestTypes = versionBaseTypes.stream().distinct().collect(Collectors.toMap(ComputedType::getName, identity()));
+
+					allLatestTypes.forEach((typeName, type) -> currentOrNewerTypeVersion.put(typeName, latestVersion));
+
+					randomComputedTypes.put(versionIndexF, allLatestTypes);
 				} else {
 					Set<String> changedTypes = randomComputedTypes.get(versionIndexF + 1).values().stream()
 							.filter(prevType -> prevType instanceof ComputedTypeBase prevBaseType
@@ -391,15 +400,37 @@ public class DataModel {
 						} while (addedMoreTypes);
 					}
 
+					for (String changedType : changedTypes) {
+						currentOrNewerTypeVersion.put(changedType, versionIndexF);
+					}
+
 					Map<String, ComputedType> currentVersionComputedTypes = new HashMap<>();
 					var versionChangeChecker = new VersionChangeChecker(changedTypes, versionIndexF, latestVersion);
-					randomComputedTypes.get(versionIndexF + 1).forEach((name, type) -> {
-						if (!changedTypes.contains(name)) {
-							currentVersionComputedTypes.put(name, type);
+					randomComputedTypes.get(versionIndexF + 1).forEach((computedTypeName, computedType) -> {
+						if (!changedTypes.contains(computedTypeName)) {
+							currentVersionComputedTypes.put(computedTypeName, computedType);
 						} else {
-							if (type instanceof VersionedComputedType versionedComputedType) {
-								ComputedType newType = versionedComputedType.withChangeAtVersion(version, versionChangeChecker);
-								currentVersionComputedTypes.put(name, newType);
+							if (computedType instanceof VersionedComputedType versionedComputedType) {
+								ParsedClass parsedClass = computedClassConfig.get(versionIndexF).get(computedTypeName);
+								LinkedHashMap<String, VersionedType> parsedFields;
+								if (parsedClass != null) {
+									parsedFields = parsedClass.data
+											.entrySet()
+											.stream()
+											.collect(Collectors.toMap(Entry::getKey, e -> {
+												var fieldTypeName = e.getValue();
+												return new VersionedType(fieldTypeName, computedVersions.get(currentOrNewerTypeVersion.getInt(fieldTypeName)));
+											}, (a, b) -> {
+												throw new IllegalStateException();
+											}, LinkedHashMap::new));
+								} else {
+									parsedFields = new LinkedHashMap<>();
+								}
+								ComputedType olderComputedType = versionedComputedType.withChangeAtVersion(version,
+										versionChangeChecker,
+										parsedFields
+								);
+								currentVersionComputedTypes.put(computedTypeName, olderComputedType);
 							} else {
 								throw new IllegalStateException();
 							}
@@ -881,6 +912,10 @@ public class DataModel {
 	}
 
 	public List<TransformationConfiguration> getChanges(ComputedTypeBase nextType) {
-		return baseTypeDataChanges.get(nextType.getVersion().getVersion()).get(nextType.getName());
+		var prev = getPrevVersion(nextType);
+		if (prev == null) {
+			return List.of();
+		}
+		return baseTypeDataChanges.get(prev.getVersion().getVersion() + 1).get(nextType.getName());
 	}
 }

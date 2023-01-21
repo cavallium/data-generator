@@ -24,7 +24,7 @@ public class GenIBaseType extends ClassGenerator {
 
 		interfaceBuilder.addModifiers(Modifier.PUBLIC);
 
-		var iTypeClassName = ClassName.get(version.getDataPackage(basePackageName), "IType");
+		var iTypeClassName = ClassName.get(version.getPackage(basePackageName), "IType");
 		var baseTypeClassName = ClassName.get(dataModel.getRootPackage(basePackageName), "BaseType");
 		interfaceBuilder.addSuperinterface(iTypeClassName);
 

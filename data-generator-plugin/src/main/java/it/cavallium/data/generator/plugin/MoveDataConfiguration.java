@@ -41,9 +41,7 @@ public final class MoveDataConfiguration implements TransformationConfiguration 
 		return hash;
 	}
 
-	@SuppressWarnings("MethodDoesntCallSuperMethod")
-	@Override
-	public MoveDataConfiguration clone() {
+	public MoveDataConfiguration copy() {
 		var c = new MoveDataConfiguration();
 		if (this.transformClass != null) c.transformClass = this.transformClass;
 		if (this.from != null) c.from = this.from;

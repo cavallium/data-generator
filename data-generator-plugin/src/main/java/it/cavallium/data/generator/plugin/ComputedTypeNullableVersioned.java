@@ -5,6 +5,7 @@ import com.squareup.javapoet.CodeBlock;
 import com.squareup.javapoet.TypeName;
 import it.cavallium.data.generator.nativedata.UpgradeUtil;
 import it.cavallium.data.generator.plugin.ComputedType.VersionedComputedType;
+import java.util.LinkedHashMap;
 import java.util.Objects;
 import java.util.stream.Stream;
 
@@ -30,7 +31,8 @@ public final class ComputedTypeNullableVersioned implements ComputedTypeNullable
 	}
 
 	@Override
-	public ComputedTypeNullableVersioned withChangeAtVersion(ComputedVersion version, VersionChangeChecker versionChangeChecker) {
+	public ComputedTypeNullableVersioned withChangeAtVersion(ComputedVersion version, VersionChangeChecker versionChangeChecker,
+			LinkedHashMap<String, VersionedType> data) {
 		return new ComputedTypeNullableVersioned(baseType.withVersion(version),
 				computedTypeSupplier
 		);

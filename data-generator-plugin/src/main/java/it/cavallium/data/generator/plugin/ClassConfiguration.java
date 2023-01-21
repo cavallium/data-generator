@@ -37,9 +37,7 @@ public final class ClassConfiguration {
 		return hash;
 	}
 
-	@SuppressWarnings("MethodDoesntCallSuperMethod")
-	@Override
-	public ClassConfiguration clone() {
+	public ClassConfiguration copy() {
 		var cc = new ClassConfiguration();
 		cc.stringRepresenter = stringRepresenter;
 		cc.data = new LinkedHashMap<>(data);

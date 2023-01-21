@@ -3,6 +3,7 @@ package it.cavallium.data.generator.plugin;
 import com.squareup.javapoet.CodeBlock;
 import com.squareup.javapoet.TypeName;
 import it.cavallium.data.generator.plugin.ComputedType.VersionedComputedType;
+import java.util.LinkedHashMap;
 import java.util.stream.Stream;
 
 public sealed interface ComputedType permits VersionedComputedType, ComputedTypeArray, ComputedTypeCustom,
@@ -33,7 +34,8 @@ public sealed interface ComputedType permits VersionedComputedType, ComputedType
 			return !version.isCurrent() && version.getVersion() == this.getVersion().getVersion();
 		}
 
-		ComputedType withChangeAtVersion(ComputedVersion version, VersionChangeChecker versionChangeChecker);
+		ComputedType withChangeAtVersion(ComputedVersion version, VersionChangeChecker versionChangeChecker,
+				LinkedHashMap<String, VersionedType> data);
 	}
 
 	/**

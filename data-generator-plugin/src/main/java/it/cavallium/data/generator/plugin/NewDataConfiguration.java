@@ -47,9 +47,7 @@ public class NewDataConfiguration implements TransformationConfiguration {
 		return hash;
 	}
 
-	@SuppressWarnings("MethodDoesntCallSuperMethod")
-	@Override
-	public NewDataConfiguration clone() {
+	public NewDataConfiguration copy() {
 		var c = new NewDataConfiguration();
 		if (this.transformClass != null) c.transformClass = this.transformClass;
 		if (this.initializer != null) c.initializer = this.initializer;

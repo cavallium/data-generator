@@ -6,6 +6,7 @@ import com.squareup.javapoet.ParameterizedTypeName;
 import com.squareup.javapoet.TypeName;
 import it.cavallium.data.generator.nativedata.UpgradeUtil;
 import it.cavallium.data.generator.plugin.ComputedType.VersionedComputedType;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Stream;
@@ -32,7 +33,8 @@ public final class ComputedTypeArrayVersioned implements VersionedComputedType, 
 	}
 
 	@Override
-	public ComputedTypeArrayVersioned withChangeAtVersion(ComputedVersion version, VersionChangeChecker versionChangeChecker) {
+	public ComputedTypeArrayVersioned withChangeAtVersion(ComputedVersion version, VersionChangeChecker versionChangeChecker,
+			LinkedHashMap<String, VersionedType> data) {
 		return new ComputedTypeArrayVersioned(baseType.withVersion(version),
 				computedTypeSupplier
 		);

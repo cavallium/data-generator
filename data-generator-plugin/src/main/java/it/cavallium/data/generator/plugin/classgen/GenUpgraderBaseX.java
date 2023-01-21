@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import javax.lang.model.element.Modifier;
@@ -93,6 +94,8 @@ public class GenUpgraderBaseX extends ClassGenerator {
 
 		AtomicInteger nextInitializerStaticFieldId = new AtomicInteger();
 		HashMap<String, String> initializerStaticFieldNames = new HashMap<>();
+		AtomicInteger nextUpgraderStaticFieldId = new AtomicInteger();
+		HashMap<String, String> upgraderStaticFieldNames = new HashMap<>();
 		List<TransformationConfiguration> transformations = dataModel.getChanges(nextTypeBase);
 		method.addCode("return new $T(\n$>", nextTypeBaseClassName);
 		record ResultField(String name, ComputedType type, CodeBlock code) {}
@@ -116,7 +119,7 @@ public class GenUpgraderBaseX extends ClassGenerator {
 							.map(e -> {
 								var i = e.getKey();
 								var newDataConfiguration = e.getValue();
-								var computedTypes = dataModel.getComputedTypes(version);
+								var computedTypes = dataModel.getComputedTypes(nextTypeBase.getVersion());
 								var newFieldType = Objects.requireNonNull(computedTypes.get(fixType(newDataConfiguration.type)));
 								var initializerClass = ClassName.bestGuess(newDataConfiguration.initializer);
 
@@ -126,13 +129,13 @@ public class GenUpgraderBaseX extends ClassGenerator {
 										initializerClass
 								);
 
-								return new Field(newDataConfiguration.to, newFieldType, CodeBlock.of("$N", initializerName), i);
+								return new Field(newDataConfiguration.to, newFieldType, CodeBlock.of("$N.initialize()", initializerName), i + 1);
 							})
 			);
 			resultFields = fields.<ResultField>mapMulti((field, consumer) -> {
 				String fieldName = field.name();
 				ComputedType fieldType = field.type();
-				CodeBlock codeBlock = CodeBlock.of("data.$N()", fieldName);
+				CodeBlock codeBlock = field.code();
 				for (TransformationConfiguration transformation : transformations.subList(field.processFromTx(),
 						transformations.size()
 				)) {
@@ -142,11 +145,20 @@ public class GenUpgraderBaseX extends ClassGenerator {
 						}
 						fieldName = moveDataConfiguration.to;
 					} else if (transformation instanceof NewDataConfiguration newDataConfiguration) {
+						if (newDataConfiguration.to.equals(fieldName)) {
+							var type = dataModel.getComputedTypes(version).get(fixType(newDataConfiguration.type));
+							throw new IllegalStateException(
+									"New field " + typeBase.getName() + "." + fieldName + " of type \"" + type + "\" at version \"" + nextTypeBase.getVersion()
+											+ "\" conflicts with another field of type \"" + fieldType + "\" with the same name at version \""
+											+ version + "\"!");
+						}
 						continue;
 					} else if (transformation instanceof RemoveDataConfiguration removeDataConfiguration) {
 						if (!removeDataConfiguration.from.equals(fieldName)) {
 							continue;
 						}
+						fieldName = null;
+						fieldType = null;
 						return;
 					} else if (transformation instanceof UpgradeDataConfiguration upgradeDataConfiguration) {
 						if (!upgradeDataConfiguration.from.equals(fieldName)) {
@@ -156,9 +168,16 @@ public class GenUpgraderBaseX extends ClassGenerator {
 						var cb = CodeBlock.builder();
 						var newFieldType = Objects
 								.requireNonNull(dataModel.getComputedTypes(version).get(fixType(upgradeDataConfiguration.type)));
-						cb.add("($T) $T.upgrade(($T) ",
+
+						var upgraderName = createUpgraderStaticField(nextUpgraderStaticFieldId,
+								upgraderStaticFieldNames,
+								classBuilder,
+								upgraderClass
+						);
+
+						cb.add("($T) $N.upgrade(($T) ",
 								newFieldType.getJTypeName(basePackageName),
-								upgraderClass,
+								upgraderName,
 								fieldType.getJTypeName(basePackageName)
 						);
 						cb.add(codeBlock);
@@ -169,11 +188,27 @@ public class GenUpgraderBaseX extends ClassGenerator {
 						throw	new UnsupportedOperationException("Unsupported transformation type: " + transformation);
 					}
 				}
+				System.out.println();
 				consumer.accept(new ResultField(fieldName, fieldType, codeBlock));
 			}).sorted(Comparator.comparingInt(f -> expectedResultFields.indexOf(f.name())));
 		}
-		resultFields
-				.flatMap(e -> Stream.of(CodeBlock.of(",\n"), upgradeFieldToType(e.name(), e.type(), e.code(), nextTypeBase)))
+		AtomicInteger currentField = new AtomicInteger();
+		var resultFieldsList = resultFields.toList();
+		resultFieldsList.stream().flatMap(e -> {
+					var currentFieldIndex = currentField.getAndIncrement();
+					var currentFieldName = e.name();
+					var expectedFieldIndex = expectedResultFields.indexOf(currentFieldName);
+					if (expectedFieldIndex != currentFieldIndex) {
+						var expectedFieldName = (currentFieldIndex >= 0 && expectedResultFields.size() > currentFieldIndex) ? expectedResultFields.get(currentFieldIndex) : "<?>";
+						throw new IllegalStateException(
+								"" + typeBase + " to " + nextTypeBase + ". Index " + currentFieldIndex + ". Expected " + expectedFieldName + ", got " + currentFieldName
+										+ ".\n\tExpected: " + String.join(", ", expectedResultFields) + "\n\tResult: " + resultFieldsList
+										.stream()
+										.map(ResultField::name)
+										.collect(Collectors.joining(", ")));
+					}
+					return Stream.of(CodeBlock.of(",\n"), upgradeFieldToType(e.name(), e.type(), e.code(), nextTypeBase));
+				})
 				.skip(1)
 				.forEach(method::addCode);
 		method.addCode("\n$<);\n");
@@ -189,10 +224,32 @@ public class GenUpgraderBaseX extends ClassGenerator {
 		var initializerName = initializerStaticFieldNames.get(ref);
 		if (initializerName == null) {
 			initializerName = "I" + nextInitializerStaticFieldId.getAndIncrement();
-			classBuilder.addField(FieldSpec.builder(initializerClass, initializerName).initializer("new $T()", initializerClass).build());
+			classBuilder.addField(FieldSpec
+					.builder(initializerClass, initializerName)
+					.addModifiers(Modifier.PRIVATE, Modifier.STATIC, Modifier.FINAL)
+					.initializer("new $T()", initializerClass)
+					.build());
 			initializerStaticFieldNames.put(ref, initializerName);
 		}
 		return initializerName;
+	}
+
+	private String createUpgraderStaticField(AtomicInteger nextUpgraderStaticFieldId,
+			HashMap<String, String> upgraderStaticFieldNames,
+			Builder classBuilder,
+			ClassName upgraderClass) {
+		var ref = upgraderClass.reflectionName();
+		var upgraderName = upgraderStaticFieldNames.get(ref);
+		if (upgraderName == null) {
+			upgraderName = "U" + nextUpgraderStaticFieldId.getAndIncrement();
+			classBuilder.addField(FieldSpec
+					.builder(upgraderClass, upgraderName)
+					.addModifiers(Modifier.PRIVATE, Modifier.STATIC, Modifier.FINAL)
+					.initializer("new $T()", upgraderClass)
+					.build());
+			upgraderStaticFieldNames.put(ref, upgraderName);
+		}
+		return upgraderName;
 	}
 
 	private CodeBlock upgradeFieldToType(String fieldName,
@@ -207,9 +264,5 @@ public class GenUpgraderBaseX extends ClassGenerator {
 			fieldType = nextFieldType;
 		}
 		return codeBlock;
-	}
-
-	private String getFieldVarName(int totalTransformations, int transformationId) {
-		return null;
 	}
 }

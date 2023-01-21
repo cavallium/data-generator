@@ -42,9 +42,7 @@ public class UpgradeDataConfiguration implements TransformationConfiguration {
 		return hash;
 	}
 
-	@SuppressWarnings("MethodDoesntCallSuperMethod")
-	@Override
-	public UpgradeDataConfiguration clone() {
+	public UpgradeDataConfiguration copy() {
 		var c = new UpgradeDataConfiguration();
 		if (this.transformClass != null) c.transformClass = this.transformClass;
 		if (this.from != null) c.from = this.from;

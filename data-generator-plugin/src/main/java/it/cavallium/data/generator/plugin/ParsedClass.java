@@ -61,12 +61,12 @@ public final class ParsedClass {
 		return hash;
 	}
 
-	@SuppressWarnings("MethodDoesntCallSuperMethod")
-	@Override
-	public ParsedClass clone() {
+	public ParsedClass copy() {
 		var cc = new ParsedClass();
 		if (this.stringRepresenter != null) cc.stringRepresenter = this.stringRepresenter;
 		cc.data = new LinkedHashMap<>(data);
+		cc.differentThanNext = differentThanNext;
+		cc.differentThanPrev = differentThanPrev;
 		return cc;
 	}
 

@@ -1,8 +1,5 @@
 package it.cavallium.data.generator.plugin;
 
-import com.squareup.javapoet.ClassName;
-import com.squareup.javapoet.ParameterizedTypeName;
-import com.squareup.javapoet.TypeName;
 import java.util.Objects;
 
 public final class CustomTypesConfiguration {
@@ -38,9 +35,7 @@ public final class CustomTypesConfiguration {
 		return hash;
 	}
 
-	@SuppressWarnings("MethodDoesntCallSuperMethod")
-	@Override
-	public CustomTypesConfiguration clone() {
+	public CustomTypesConfiguration copy() {
 		var c = new CustomTypesConfiguration();
 		c.javaClass = this.javaClass;
 		c.serializer = this.serializer;
