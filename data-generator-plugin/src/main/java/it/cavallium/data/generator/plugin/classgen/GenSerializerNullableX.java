@@ -8,6 +8,8 @@ import com.squareup.javapoet.TypeSpec;
 import com.squareup.javapoet.TypeSpec.Builder;
 import it.cavallium.data.generator.DataSerializer;
 import it.cavallium.data.generator.plugin.ClassGenerator;
+import it.cavallium.data.generator.plugin.ComputedTypeNullable;
+import it.cavallium.data.generator.plugin.ComputedTypeNullableFixed;
 import it.cavallium.data.generator.plugin.ComputedTypeNullableVersioned;
 import it.cavallium.data.generator.plugin.ComputedVersion;
 import java.io.DataInput;
@@ -33,11 +35,13 @@ public class GenSerializerNullableX extends ClassGenerator {
 	private Stream<GeneratedClass> generateVersionClasses(ComputedVersion version) {
 		return dataModel
 				.getNullableTypesComputed(version)
-				.filter(type -> type instanceof ComputedTypeNullableVersioned versioned && versioned.getVersion().equals(version))
-				.map(type -> generateTypeVersioned(version, (ComputedTypeNullableVersioned) type));
+				.filter(type -> (
+						(type instanceof ComputedTypeNullableVersioned versioned && versioned.getVersion().equals(version))
+								|| type instanceof ComputedTypeNullableFixed))
+				.map(type -> generateTypeVersioned(version, type));
 	}
 
-	private GeneratedClass generateTypeVersioned(ComputedVersion version, ComputedTypeNullableVersioned typeNullable) {
+	private GeneratedClass generateTypeVersioned(ComputedVersion version, ComputedTypeNullable typeNullable) {
 		ClassName serializerClassName = typeNullable.getJSerializerName(basePackageName);
 		var typeNullableClassName = typeNullable.getJTypeName(basePackageName);
 
@@ -54,7 +58,7 @@ public class GenSerializerNullableX extends ClassGenerator {
 		return new GeneratedClass(serializerClassName.packageName(), classBuilder);
 	}
 
-	private void generateSerialize(ComputedVersion version, ComputedTypeNullableVersioned typeNullable, Builder classBuilder) {
+	private void generateSerialize(ComputedVersion version, ComputedTypeNullable typeNullable, Builder classBuilder) {
 		var method = MethodSpec.methodBuilder("serialize");
 
 		var base = typeNullable.getBase();
@@ -89,7 +93,7 @@ public class GenSerializerNullableX extends ClassGenerator {
 		classBuilder.addMethod(method.build());
 	}
 
-	private void generateDeserialize(ComputedVersion version, ComputedTypeNullableVersioned typeNullable, Builder classBuilder) {
+	private void generateDeserialize(ComputedVersion version, ComputedTypeNullable typeNullable, Builder classBuilder) {
 		var method = MethodSpec.methodBuilder("deserialize");
 
 		var base = typeNullable.getBase();

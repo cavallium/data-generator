@@ -10,6 +10,8 @@ import com.squareup.javapoet.TypeSpec.Builder;
 import it.cavallium.data.generator.DataSerializer;
 import it.cavallium.data.generator.nativedata.ImmutableWrappedArrayList;
 import it.cavallium.data.generator.plugin.ClassGenerator;
+import it.cavallium.data.generator.plugin.ComputedTypeArray;
+import it.cavallium.data.generator.plugin.ComputedTypeArrayFixed;
 import it.cavallium.data.generator.plugin.ComputedTypeArrayVersioned;
 import it.cavallium.data.generator.plugin.ComputedVersion;
 import java.io.DataInput;
@@ -35,11 +37,12 @@ public class GenSerializerArrayX extends ClassGenerator {
 	private Stream<GeneratedClass> generateVersionClasses(ComputedVersion version) {
 		return dataModel
 				.getArrayTypesComputed(version)
-				.filter(type -> type instanceof ComputedTypeArrayVersioned versioned && versioned.getVersion().equals(version))
-				.map(type -> generateTypeVersioned(version, (ComputedTypeArrayVersioned) type));
+				.filter(type -> (type instanceof ComputedTypeArrayVersioned versioned
+						&& versioned.getVersion().equals(version)) || type instanceof ComputedTypeArrayFixed)
+				.map(type -> generateTypeVersioned(version, type));
 	}
 
-	private GeneratedClass generateTypeVersioned(ComputedVersion version, ComputedTypeArrayVersioned typeArray) {
+	private GeneratedClass generateTypeVersioned(ComputedVersion version, ComputedTypeArray typeArray) {
 		ClassName serializerClassName = typeArray.getJSerializerName(basePackageName);
 		var typeArrayClassName = typeArray.getJTypeName(basePackageName);
 
@@ -56,7 +59,7 @@ public class GenSerializerArrayX extends ClassGenerator {
 		return new GeneratedClass(serializerClassName.packageName(), classBuilder);
 	}
 
-	private void generateSerialize(ComputedVersion version, ComputedTypeArrayVersioned typeArray, Builder classBuilder) {
+	private void generateSerialize(ComputedVersion version, ComputedTypeArray typeArray, Builder classBuilder) {
 		var method = MethodSpec.methodBuilder("serialize");
 
 		method.addModifiers(Modifier.PUBLIC, Modifier.FINAL);
@@ -89,7 +92,7 @@ public class GenSerializerArrayX extends ClassGenerator {
 		classBuilder.addMethod(method.build());
 	}
 
-	private void generateDeserialize(ComputedVersion version, ComputedTypeArrayVersioned typeArray, Builder classBuilder) {
+	private void generateDeserialize(ComputedVersion version, ComputedTypeArray typeArray, Builder classBuilder) {
 		var method = MethodSpec.methodBuilder("deserialize");
 
 		method.addModifiers(Modifier.PUBLIC, Modifier.FINAL);
