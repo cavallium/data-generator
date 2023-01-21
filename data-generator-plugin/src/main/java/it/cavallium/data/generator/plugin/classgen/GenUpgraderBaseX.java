@@ -169,7 +169,7 @@ public class GenUpgraderBaseX extends ClassGenerator {
 						var upgraderClass = ClassName.bestGuess(upgradeDataConfiguration.upgrader);
 						var cb = CodeBlock.builder();
 						var newFieldType = Objects
-								.requireNonNull(dataModel.getComputedTypes(version).get(fixType(upgradeDataConfiguration.type)));
+								.requireNonNull(dataModel.getComputedTypes(nextTypeBase.getVersion()).get(fixType(upgradeDataConfiguration.type)));
 						var genericUpgraderClass = ParameterizedTypeName.get(ClassName.get(DataUpgrader.class),
 								fieldType.getJTypeName(basePackageName).box(),
 								newFieldType.getJTypeName(basePackageName).box()
