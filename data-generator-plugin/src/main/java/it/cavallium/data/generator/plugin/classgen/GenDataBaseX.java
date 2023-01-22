@@ -113,7 +113,9 @@ public class GenDataBaseX extends ClassGenerator {
 		ofMethod.addCode(String.join(", ", base.getData().keySet()));
 		ofMethod.addStatement(")");
 		ofMethod.returns(type);
-		classBuilder.addMethod(ofMethod.build());
+		if (version.isCurrent()) {
+			classBuilder.addMethod(ofMethod.build());
+		}
 
 		return new GeneratedClass(type.packageName(), classBuilder);
 	}
