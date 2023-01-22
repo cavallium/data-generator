@@ -27,8 +27,12 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class DataModel {
+
+	private static final Logger logger = LoggerFactory.getLogger(DataModel.class);
 
 	private static final List<String> NATIVE_TYPES = List.of("String",
 			"boolean",
@@ -552,23 +556,23 @@ public class DataModel {
 		LongAdder unchangedTot = new LongAdder();
 		LongAdder changedTot = new LongAdder();
 		computedTypes.forEach((version, types) -> {
-			System.out.println("Version: " + version);
-			System.out.println("\tTypes: " + types.size());
-			System.out.println("\tVersioned types: " + types.values().stream().filter(t -> (t instanceof VersionedComputedType)).count());
+			logger.debug("Version: {}", version);
+			logger.debug("\tTypes: {}", types.size());
+			logger.debug("\tVersioned types: {}", types.values().stream().filter(t -> (t instanceof VersionedComputedType)).count());
 			var unchanged = types.values().stream().filter(t -> (t instanceof VersionedComputedType versionedComputedType
 					&& versionedComputedType.getVersion().getVersion() != version)).count();
 			var changed = types.values().stream().filter(t -> (t instanceof VersionedComputedType versionedComputedType
 					&& versionedComputedType.getVersion().getVersion() == version)).count();
 			unchangedTot.add(unchanged);
 			changedTot.add(changed);
-			System.out.println("\t\tUnchanged: " + unchanged + " (" + (unchanged * 100 / Math.max(changed + unchanged, 1)) + "%)");
-			System.out.println("\t\tChanged: " + changed + " (" + (changed * 100 / Math.max(changed + unchanged, 1)) + "%)");
+			logger.debug("\t\tUnchanged: {} ({}%)", unchanged, (unchanged * 100 / Math.max(changed + unchanged, 1)));
+			logger.debug("\t\tChanged: {} ({}%)", changed, (changed * 100 / Math.max(changed + unchanged, 1)));
 		});
-		System.out.println("Result:");
+		logger.debug("Result:");
 		var unchanged = unchangedTot.sum();
 		var changed = changedTot.sum();
-		System.out.println("\tAvoided type versions: " + unchanged + " (" + (unchanged * 100 / (changed + unchanged)) + "%)");
-		System.out.println("\tType versions: " + changed + " (" + (changed * 100 / (changed + unchanged)) + "%)");
+		logger.debug("\tAvoided type versions: {} ({}%)", unchanged, (unchanged * 100 / (changed + unchanged)));
+		logger.debug("\tType versions: {} ({}%)", changed, (changed * 100 / (changed + unchanged)));
 		this.currentVersion = computedVersions.get(versionsCount - 1);
 		this.superTypes = superTypesData;
 		this.customTypes = customTypesData;

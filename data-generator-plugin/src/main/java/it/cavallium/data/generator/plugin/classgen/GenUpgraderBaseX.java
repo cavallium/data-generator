@@ -195,7 +195,6 @@ public class GenUpgraderBaseX extends ClassGenerator {
 						throw	new UnsupportedOperationException("Unsupported transformation type: " + transformation);
 					}
 				}
-				System.out.println();
 				consumer.accept(new ResultField(fieldName, fieldType, codeBlock));
 			}).sorted(Comparator.comparingInt(f -> expectedResultFields.indexOf(f.name())));
 		}
