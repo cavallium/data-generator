@@ -74,10 +74,10 @@ public class GenSerializerNullableX extends ClassGenerator {
 				.addAnnotation(NotNull.class)
 				.build());
 
-		if (version.isCurrent()) {
+		if (generateOldSerializers || version.isCurrent()) {
 			method.addStatement("$T.requireNonNull(data)", Objects.class);
 			method.addCode("\n");
-			method.addStatement("boolean notEmpty = !data.isEmpty()");
+			method.addStatement("boolean notEmpty = data.getNullable() != null");
 			method.addStatement("out.writeBoolean(notEmpty)");
 			method.beginControlFlow("if (notEmpty)");
 			method.addStatement("$T.$N.serialize(out, ($T) data.getNullable())",

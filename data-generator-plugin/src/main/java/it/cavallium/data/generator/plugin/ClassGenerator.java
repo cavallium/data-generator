@@ -28,6 +28,7 @@ public abstract class ClassGenerator {
 	private final Path outPath;
 	protected final boolean deepCheckBeforeCreatingNewEqualInstances;
 	protected final boolean useRecordBuilders;
+	protected final boolean generateOldSerializers;
 
 	public ClassGenerator(ClassGeneratorParams params) {
 		this.generatedFilesToDelete = params.generatedFilesToDelete;
@@ -36,6 +37,7 @@ public abstract class ClassGenerator {
 		this.outPath = params.outPath;
 		this.deepCheckBeforeCreatingNewEqualInstances = params.deepCheckBeforeCreatingNewEqualInstances;
 		this.useRecordBuilders = params.useRecordBuilders;
+		this.generateOldSerializers = params.generateOldSerializers;
 	}
 
 	public void run() throws IOException {
@@ -86,5 +88,6 @@ public abstract class ClassGenerator {
 																		 String basePackageName,
 																		 Path outPath,
 																		 boolean deepCheckBeforeCreatingNewEqualInstances,
-																		 boolean useRecordBuilders) {}
+																		 boolean useRecordBuilders,
+																		 boolean generateOldSerializers) {}
 }

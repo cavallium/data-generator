@@ -71,7 +71,7 @@ public class GenSerializerArrayX extends ClassGenerator {
 				.addAnnotation(NotNull.class)
 				.build());
 
-		if (version.isCurrent()) {
+		if (generateOldSerializers || version.isCurrent()) {
 			method.addStatement("$T.requireNonNull(data)", Objects.class);
 			method.addCode("\n");
 			method.addStatement("final int sz = data.size()");

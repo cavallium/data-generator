@@ -83,7 +83,7 @@ public class GenSerializerSuperX extends ClassGenerator {
 				.addAnnotation(NotNull.class)
 				.build());
 
-		if (version.isCurrent()) {
+		if (generateOldSerializers || version.isCurrent()) {
 			method.addStatement("$T.requireNonNull(data)", Objects.class);
 			method.addStatement("int id = data.getMetaId$$$N()", typeSuper.getName());
 			method.addStatement("out.writeByte(id)");

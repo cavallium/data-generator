@@ -24,6 +24,9 @@ public class MavenPlugin extends AbstractMojo {
 	private String deepCheckBeforeCreatingNewEqualInstances;
 
 	@Parameter( required = true, defaultValue = "false")
+	private String generateOldSerializers;
+
+	@Parameter( required = true, defaultValue = "false")
 	private String useRecordBuilder;
 
 	/**
@@ -42,7 +45,8 @@ public class MavenPlugin extends AbstractMojo {
 
 			Path outPath = genRecordsPath.resolve("java");
 			this.project.addCompileSourceRoot(outPath.toString());
-			sourcesGenerator.generateSources(basePackageName, outPath, Boolean.parseBoolean(useRecordBuilder), false, Boolean.parseBoolean(deepCheckBeforeCreatingNewEqualInstances));
+			sourcesGenerator.generateSources(basePackageName, outPath, Boolean.parseBoolean(useRecordBuilder), false, Boolean.parseBoolean(deepCheckBeforeCreatingNewEqualInstances),
+					Boolean.parseBoolean(generateOldSerializers));
 		} catch (IOException e) {
 			throw new MojoExecutionException("Exception while generating classes", e);
 		}
