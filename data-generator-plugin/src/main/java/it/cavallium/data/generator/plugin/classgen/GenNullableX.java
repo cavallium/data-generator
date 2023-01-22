@@ -85,10 +85,11 @@ public class GenNullableX extends ClassGenerator {
 			throw new UnsupportedOperationException();
 		}
 
+		classBuilder.addField(FieldSpec
+				.builder(type, "NULL").addModifiers(Modifier.PRIVATE, Modifier.STATIC, Modifier.FINAL).initializer("new $T(null)", type).build());
+
 		if (version.isCurrent()) {
 			classBuilder.addSuperinterfaces(List.of(iNullableITypeClass, iNullableClass, typedNullable));
-
-			classBuilder.addField(FieldSpec.builder(type, "NULL").addModifiers(Modifier.PRIVATE, Modifier.STATIC, Modifier.FINAL).initializer("new $T(($T)null)", type, baseType).build());
 
 			classBuilder.addMethod(MethodSpec
 					.methodBuilder("of")
@@ -112,13 +113,6 @@ public class GenNullableX extends ClassGenerator {
 					.build());
 
 			classBuilder.addMethod(MethodSpec
-					.methodBuilder("empty")
-					.addModifiers(Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL)
-					.returns(type)
-					.addStatement("return NULL")
-					.build());
-
-			classBuilder.addMethod(MethodSpec
 					.methodBuilder("or")
 					.addModifiers(Modifier.PUBLIC, Modifier.FINAL)
 					.addAnnotation(NotNull.class)
@@ -127,6 +121,13 @@ public class GenNullableX extends ClassGenerator {
 					.addStatement("return this.value == null ? fallback : this")
 					.build());
 		}
+
+		classBuilder.addMethod(MethodSpec
+				.methodBuilder("empty")
+				.addModifiers(Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL)
+				.returns(type)
+				.addStatement("return NULL")
+				.build());
 
 		classBuilder.addMethod(MethodSpec
 				.methodBuilder("getNullable")
