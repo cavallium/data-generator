@@ -52,24 +52,31 @@ public class GenCurrentVersion extends ClassGenerator {
 					.addCode("return version == VERSION.getVersion();").build();
 			currentVersionClass.addMethod(isLatestVersionMethod);
 		}
-		// Get super type classes method
+		// Get super type classes method and static field
 		{
+			var returnType = ParameterizedTypeName.get(ClassName.get(Set.class),
+					ParameterizedTypeName.get(ClassName.get(Class.class),
+							WildcardTypeName.subtypeOf(ClassName.get(currentVersionPackage, "IType"))));
+			var superTypesField = FieldSpec.builder(returnType, "SUPER_TYPE_CLASSES", Modifier.PRIVATE, Modifier.STATIC, Modifier.FINAL);
 			var getSuperTypeClasses = MethodSpec.methodBuilder("getSuperTypeClasses").addModifiers(Modifier.PUBLIC)
 					.addModifiers(Modifier.FINAL).addModifiers(Modifier.STATIC)
-					.returns(ParameterizedTypeName.get(ClassName.get(Set.class),
-							ParameterizedTypeName.get(ClassName.get(Class.class),
-									WildcardTypeName.subtypeOf(ClassName.get(currentVersionPackage, "IType")))))
-					.addCode("return $T.of(\n", Set.class);
+					.returns(returnType);
+
+			var superTypesInitializerField = CodeBlock.builder();
+			superTypesInitializerField.add("$T.of(\n", Set.class);
 			AtomicBoolean isFirst = new AtomicBoolean(true);
 			dataModel.getSuperTypesComputed(dataModel.getCurrentVersion()).forEach(superType -> {
 				if (!isFirst.getAndSet(false)) {
-					getSuperTypeClasses.addCode(",\n");
+					superTypesInitializerField.add(",\n");
 				}
-				getSuperTypeClasses.addCode("$T.class",
+				superTypesInitializerField.add("$T.class",
 						ClassName.get(dataModel.getVersion(superType).getDataPackage(basePackageName), superType.getName())
 				);
 			});
-			getSuperTypeClasses.addCode("\n);");
+			superTypesInitializerField.add("\n);");
+			superTypesField.initializer(superTypesInitializerField.build());
+			getSuperTypeClasses.addStatement("return SUPER_TYPE_CLASSES");
+			currentVersionClass.addField(superTypesField.build());
 			currentVersionClass.addMethod(getSuperTypeClasses.build());
 		}
 		// Get super type subtypes classes method
