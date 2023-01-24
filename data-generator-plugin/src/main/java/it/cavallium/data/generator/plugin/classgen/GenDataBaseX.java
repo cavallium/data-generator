@@ -116,7 +116,7 @@ public class GenDataBaseX extends ClassGenerator {
 		}
 
 		final String stringRepresenter = base.getStringRepresenter();
-		if (stringRepresenter != null && !stringRepresenter.isBlank()) {
+		if (version.isCurrent() && stringRepresenter != null && !stringRepresenter.isBlank()) {
 			var toStringMethod = MethodSpec.methodBuilder("toString");
 			toStringMethod.addModifiers(Modifier.PUBLIC);
 			toStringMethod.addAnnotation(Override.class);
