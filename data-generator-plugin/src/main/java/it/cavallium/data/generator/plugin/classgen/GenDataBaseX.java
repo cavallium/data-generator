@@ -90,13 +90,11 @@ public class GenDataBaseX extends ClassGenerator {
 			}
 			if (fieldTypeName.isPrimitive() || !deepCheckBeforeCreatingNewEqualInstances) {
 				setter.addCode("return $N == this.$N ? this : new $T(", fieldName, fieldName, type);
-				setter.addCode(String.join(", ", base.getData().keySet()));
-				setter.addStatement(")");
 			} else {
 				setter.addCode("return $T.equals($N, this.$N) ? this : new $T(", Objects.class, fieldName, fieldName, type);
-				setter.addCode(String.join(", ", base.getData().keySet()));
-				setter.addStatement(")");
 			}
+			setter.addCode(String.join(", ", base.getData().keySet()));
+			setter.addStatement(")");
 
 			classBuilder.addMethod(setter.build());
 		});
@@ -115,6 +113,16 @@ public class GenDataBaseX extends ClassGenerator {
 		ofMethod.returns(type);
 		if (version.isCurrent()) {
 			classBuilder.addMethod(ofMethod.build());
+		}
+
+		final String stringRepresenter = base.getStringRepresenter();
+		if (stringRepresenter != null && !stringRepresenter.isBlank()) {
+			var toStringMethod = MethodSpec.methodBuilder("toString");
+			toStringMethod.addModifiers(Modifier.PUBLIC);
+			toStringMethod.addAnnotation(Override.class);
+			toStringMethod.returns(String.class);
+			toStringMethod.addStatement("return " + stringRepresenter + "(this)");
+			classBuilder.addMethod(toStringMethod.build());
 		}
 
 		return new GeneratedClass(type.packageName(), classBuilder);
