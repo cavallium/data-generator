@@ -30,6 +30,11 @@
 			<name>MCHV Snapshot Apache Maven Packages</name>
 			<url>https://mvn.mchv.eu/repository/mchv-snapshot</url>
 		</repository>
+		<repository>
+			<id>fabric</id>
+			<name>FabricMC repository</name>
+			<url>https://maven.fabricmc.net/</url>
+		</repository>
 	</repositories>
 	<distributionManagement>
 		<repository>
@@ -183,9 +188,9 @@
 			<version>1.33</version>
 		</dependency>
 		<dependency>
-			<groupId>com.squareup</groupId>
+			<groupId>net.fabricmc</groupId>
 			<artifactId>javapoet</artifactId>
-			<version>1.14.0-records</version>
+			<version>0.1.0</version>
 		</dependency>
 		<dependency>
 			<groupId>org.jetbrains</groupId>
