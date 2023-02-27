@@ -211,7 +211,6 @@ public class GenVersion extends ClassGenerator {
 
 		methodBuilder.addModifiers(Modifier.PUBLIC);
 		methodBuilder.addAnnotation(Override.class);
-		methodBuilder.addException(ClassName.get(IOException.class));
 
 		var iBaseTypeClassName = ClassName.get(version.getPackage(basePackageName), "IBaseType");
 		methodBuilder.addTypeVariable(TypeVariableName.get("T", iBaseTypeClassName));

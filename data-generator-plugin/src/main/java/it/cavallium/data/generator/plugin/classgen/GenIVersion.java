@@ -9,7 +9,6 @@ import com.squareup.javapoet.TypeSpec;
 import com.squareup.javapoet.TypeVariableName;
 import it.cavallium.data.generator.DataSerializer;
 import it.cavallium.data.generator.plugin.ClassGenerator;
-import java.io.IOException;
 import java.util.stream.Stream;
 import javax.lang.model.element.Modifier;
 
@@ -35,7 +34,6 @@ public class GenIVersion extends ClassGenerator {
 							TypeVariableName.get("B")
 					))
 					.returns(ParameterizedTypeName.get(ClassName.get(DataSerializer.class), TypeVariableName.get("T")))
-					.addException(IOException.class)
 					.addParameter(ParameterSpec
 							.builder(ClassName.get(dataModel.getRootPackage(basePackageName), "BaseType"), "type")
 							.build());
