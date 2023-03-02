@@ -1,19 +1,16 @@
 package it.cavallium.data.generator.nativedata;
 
 import it.cavallium.data.generator.DataSerializer;
-import java.io.DataInput;
-import java.io.DataOutput;
+import it.cavallium.stream.SafeDataInput;
+import it.cavallium.stream.SafeDataOutput;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
-import java.nio.channels.Channels;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CharsetDecoder;
 import java.nio.charset.CharsetEncoder;
 import java.nio.charset.CodingErrorAction;
-import java.nio.charset.MalformedInputException;
 import java.nio.charset.StandardCharsets;
-import java.nio.charset.UnmappableCharacterException;
 import org.jetbrains.annotations.NotNull;
 
 public class StringSerializer implements DataSerializer<String> {
@@ -31,7 +28,7 @@ public class StringSerializer implements DataSerializer<String> {
 	);
 
 	@Override
-	public void serialize(DataOutput dataOutput, @NotNull String data) throws IOException {
+	public void serialize(SafeDataOutput dataOutput, @NotNull String data) {
 		try {
 			var bytes = UTF8_ENCODER.get().reset().encode(CharBuffer.wrap(data));
 
@@ -43,21 +40,21 @@ public class StringSerializer implements DataSerializer<String> {
 					dataOutput.writeByte(bytes.get());
 				}
 			}
-		} catch (IllegalStateException | CharacterCodingException ex) {
-			throw new IOException("Can't encode this UTF-8 string", ex);
+		} catch (CharacterCodingException ex) {
+			throw new IllegalStateException("Can't encode this UTF-8 string", ex);
 		}
 	}
 
 	@NotNull
 	@Override
-	public String deserialize(DataInput dataInput) throws IOException {
+	public String deserialize(SafeDataInput dataInput) {
 		byte[] bytes = new byte[dataInput.readInt()];
 		dataInput.readFully(bytes);
 		try {
 			CharBuffer decoded = UTF8_DECODER.get().reset().decode(ByteBuffer.wrap(bytes));
 			return decoded.toString();
 		} catch (IllegalStateException | CharacterCodingException ex) {
-			throw new IOException("Can't decode this UTF-8 string", ex);
+			throw new IllegalStateException("Can't decode this UTF-8 string", ex);
 		}
 	}
 }

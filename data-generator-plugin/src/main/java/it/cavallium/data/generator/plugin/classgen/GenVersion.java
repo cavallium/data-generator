@@ -19,7 +19,6 @@ import it.cavallium.data.generator.plugin.ComputedTypeCustom;
 import it.cavallium.data.generator.plugin.ComputedTypeNullableFixed;
 import it.cavallium.data.generator.plugin.ComputedTypeSuper;
 import it.cavallium.data.generator.plugin.ComputedVersion;
-import java.io.IOException;
 import java.util.Objects;
 import java.util.stream.Stream;
 import javax.lang.model.element.Modifier;
@@ -105,7 +104,6 @@ public class GenVersion extends ClassGenerator {
 		var methodBuilder = MethodSpec.methodBuilder("upgradeToNextVersion");
 
 		methodBuilder.addModifiers(Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL);
-		methodBuilder.addException(ClassName.get(IOException.class));
 
 		var nextIBaseType = ClassName.get(nextVersion.getPackage(basePackageName), "IBaseType");
 		methodBuilder.returns(nextIBaseType);

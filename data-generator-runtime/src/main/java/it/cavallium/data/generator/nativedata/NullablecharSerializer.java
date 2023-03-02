@@ -1,9 +1,8 @@
 package it.cavallium.data.generator.nativedata;
 
 import it.cavallium.data.generator.DataSerializer;
-import java.io.DataInput;
-import java.io.DataOutput;
-import java.io.IOException;
+import it.cavallium.stream.SafeDataInput;
+import it.cavallium.stream.SafeDataOutput;
 import org.jetbrains.annotations.NotNull;
 
 public class NullablecharSerializer implements DataSerializer<Nullablechar> {
@@ -11,7 +10,7 @@ public class NullablecharSerializer implements DataSerializer<Nullablechar> {
 	public static final NullablecharSerializer INSTANCE = new NullablecharSerializer();
 
 	@Override
-	public void serialize(DataOutput dataOutput, @NotNull Nullablechar data) throws IOException {
+	public void serialize(SafeDataOutput dataOutput, @NotNull Nullablechar data) {
 		if (data.isEmpty()) {
 			dataOutput.writeBoolean(false);
 		} else {
@@ -23,7 +22,7 @@ public class NullablecharSerializer implements DataSerializer<Nullablechar> {
 
 	@NotNull
 	@Override
-	public Nullablechar deserialize(DataInput dataInput) throws IOException {
+	public Nullablechar deserialize(SafeDataInput dataInput) {
 		var isPresent = dataInput.readBoolean();
 		if (!isPresent) {
 			return Nullablechar.empty();

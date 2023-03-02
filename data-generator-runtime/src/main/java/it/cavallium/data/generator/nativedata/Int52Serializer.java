@@ -1,9 +1,8 @@
 package it.cavallium.data.generator.nativedata;
 
 import it.cavallium.data.generator.DataSerializer;
-import java.io.DataInput;
-import java.io.DataOutput;
-import java.io.IOException;
+import it.cavallium.stream.SafeDataInput;
+import it.cavallium.stream.SafeDataOutput;
 import org.jetbrains.annotations.NotNull;
 
 public class Int52Serializer implements DataSerializer<Int52> {
@@ -11,17 +10,17 @@ public class Int52Serializer implements DataSerializer<Int52> {
 	public static final Int52Serializer INSTANCE = new Int52Serializer();
 
 	@Override
-	public void serialize(DataOutput dataOutput, @NotNull Int52 data) throws IOException {
+	public void serialize(SafeDataOutput dataOutput, @NotNull Int52 data) {
 		serializeValue(dataOutput, data);
 	}
 
 	@NotNull
 	@Override
-	public Int52 deserialize(DataInput dataInput) throws IOException {
+	public Int52 deserialize(SafeDataInput dataInput) {
 		return deserializeValue(dataInput);
 	}
 
-	public static void serializeValue(DataOutput dataOutput, @NotNull Int52 data) throws IOException {
+	public static void serializeValue(SafeDataOutput dataOutput, @NotNull Int52 data) {
 		long value = data.getValue();
 
 		for(int i = 0; i < 7; i++) {
@@ -29,18 +28,9 @@ public class Int52Serializer implements DataSerializer<Int52> {
 		}
 	}
 
-	public static Int52 deserializeValue(DataInput dataInput) throws IOException {
-		long value = 0;
-
-		return Int52.fromLong(
-				((long) dataInput.readUnsignedByte() & 0b00001111) << 48
-						| ((long) dataInput.readUnsignedByte()) << 40
-						| ((long) dataInput.readUnsignedByte() << 32)
-						| ((long) dataInput.readUnsignedByte() << 24)
-						| ((long) dataInput.readUnsignedByte()) << 16
-						| ((long) dataInput.readUnsignedByte()) << 8
-						| ((long) dataInput.readUnsignedByte())
-		);
+	public static Int52 deserializeValue(SafeDataInput dataInput) {
+		long value = dataInput.readInt52();
+		return Int52.fromLong(value);
 	}
 
 	public static byte[] toByteArray(long value) {

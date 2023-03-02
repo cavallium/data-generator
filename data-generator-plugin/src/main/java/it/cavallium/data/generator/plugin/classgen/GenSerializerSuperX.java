@@ -11,8 +11,8 @@ import it.cavallium.data.generator.plugin.ClassGenerator;
 import it.cavallium.data.generator.plugin.ComputedType;
 import it.cavallium.data.generator.plugin.ComputedTypeSuper;
 import it.cavallium.data.generator.plugin.ComputedVersion;
-import java.io.DataInput;
-import java.io.DataOutput;
+import it.cavallium.stream.SafeDataInput;
+import it.cavallium.stream.SafeDataOutput;
 import java.io.IOException;
 import java.io.NotSerializableException;
 import java.util.Objects;
@@ -61,11 +61,10 @@ public class GenSerializerSuperX extends ClassGenerator {
 		int max = typeSuper.subTypes().size();
 		var method = MethodSpec.methodBuilder("checkIdValidity");
 		method.addModifiers(Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL);
-		method.addException(IOException.class);
 		method.addParameter(ParameterSpec.builder(int.class, "id").build());
 
 		method.beginControlFlow("if (id < 0 || id >= $L)", max);
-		method.addStatement("throw new $T(new $T(id))", IOException.class, IndexOutOfBoundsException.class);
+		method.addStatement("throw new new $T(id)", IndexOutOfBoundsException.class);
 		method.endControlFlow();
 
 		classBuilder.addMethod(method.build());
@@ -75,9 +74,8 @@ public class GenSerializerSuperX extends ClassGenerator {
 		var method = MethodSpec.methodBuilder("serialize");
 
 		method.addModifiers(Modifier.PUBLIC, Modifier.FINAL);
-		method.addException(IOException.class);
 
-		method.addParameter(ParameterSpec.builder(DataOutput.class, "out").build());
+		method.addParameter(ParameterSpec.builder(SafeDataOutput.class, "out").build());
 		method.addParameter(ParameterSpec
 				.builder(typeSuper.getJTypeName(basePackageName), "data")
 				.addAnnotation(NotNull.class)
@@ -118,13 +116,12 @@ public class GenSerializerSuperX extends ClassGenerator {
 		var method = MethodSpec.methodBuilder("deserialize");
 
 		method.addModifiers(Modifier.PUBLIC, Modifier.FINAL);
-		method.addException(IOException.class);
 
 		ClassName typeSuperClassName = typeSuper.getJTypeName(basePackageName);
 		method.returns(typeSuperClassName);
 		method.addAnnotation(NotNull.class);
 
-		method.addParameter(ParameterSpec.builder(DataInput.class, "in").build());
+		method.addParameter(ParameterSpec.builder(SafeDataInput.class, "in").build());
 
 		method.addStatement("int id = in.readUnsignedByte()");
 		method.beginControlFlow("return switch (id)");

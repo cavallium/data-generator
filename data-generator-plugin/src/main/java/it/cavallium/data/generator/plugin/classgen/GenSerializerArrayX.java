@@ -14,9 +14,8 @@ import it.cavallium.data.generator.plugin.ComputedTypeArray;
 import it.cavallium.data.generator.plugin.ComputedTypeArrayFixed;
 import it.cavallium.data.generator.plugin.ComputedTypeArrayVersioned;
 import it.cavallium.data.generator.plugin.ComputedVersion;
-import java.io.DataInput;
-import java.io.DataOutput;
-import java.io.IOException;
+import it.cavallium.stream.SafeDataInput;
+import it.cavallium.stream.SafeDataOutput;
 import java.io.NotSerializableException;
 import java.util.Objects;
 import java.util.stream.Stream;
@@ -63,9 +62,8 @@ public class GenSerializerArrayX extends ClassGenerator {
 		var method = MethodSpec.methodBuilder("serialize");
 
 		method.addModifiers(Modifier.PUBLIC, Modifier.FINAL);
-		method.addException(IOException.class);
 
-		method.addParameter(ParameterSpec.builder(DataOutput.class, "out").build());
+		method.addParameter(ParameterSpec.builder(SafeDataOutput.class, "out").build());
 		method.addParameter(ParameterSpec
 				.builder(typeArray.getJTypeName(basePackageName), "data")
 				.addAnnotation(NotNull.class)
@@ -96,13 +94,12 @@ public class GenSerializerArrayX extends ClassGenerator {
 		var method = MethodSpec.methodBuilder("deserialize");
 
 		method.addModifiers(Modifier.PUBLIC, Modifier.FINAL);
-		method.addException(IOException.class);
 
 		var typeArrayClassName = typeArray.getJTypeName(basePackageName);
 		method.returns(typeArrayClassName);
 		method.addAnnotation(NotNull.class);
 
-		method.addParameter(ParameterSpec.builder(DataInput.class, "in").build());
+		method.addParameter(ParameterSpec.builder(SafeDataInput.class, "in").build());
 
 		method.addStatement("int sz = in.readInt()");
 		var arrayTypeName = ArrayTypeName.of(typeArray.getBase().getJTypeName(basePackageName));

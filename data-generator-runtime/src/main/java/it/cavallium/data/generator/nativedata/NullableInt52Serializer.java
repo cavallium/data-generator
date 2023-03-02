@@ -1,9 +1,8 @@
 package it.cavallium.data.generator.nativedata;
 
 import it.cavallium.data.generator.DataSerializer;
-import java.io.DataInput;
-import java.io.DataOutput;
-import java.io.IOException;
+import it.cavallium.stream.SafeDataInput;
+import it.cavallium.stream.SafeDataOutput;
 import org.jetbrains.annotations.NotNull;
 
 public class NullableInt52Serializer implements DataSerializer<NullableInt52> {
@@ -11,7 +10,7 @@ public class NullableInt52Serializer implements DataSerializer<NullableInt52> {
 	public static final NullableInt52Serializer INSTANCE = new NullableInt52Serializer();
 
 	@Override
-	public void serialize(DataOutput dataOutput, @NotNull NullableInt52 data) throws IOException {
+	public void serialize(SafeDataOutput dataOutput, @NotNull NullableInt52 data) {
 		// 0b10000000 = empty, 0b00000000 = with value
 		if (data.isEmpty()) {
 			dataOutput.writeByte(0b10000000);
@@ -22,7 +21,7 @@ public class NullableInt52Serializer implements DataSerializer<NullableInt52> {
 
 	@NotNull
 	@Override
-	public NullableInt52 deserialize(DataInput dataInput) throws IOException {
+	public NullableInt52 deserialize(SafeDataInput dataInput) {
 		// 0b10000000 = empty, 0b00000000 = with value
 		byte firstByteAndIsPresent = dataInput.readByte();
 		if ((firstByteAndIsPresent & 0b10000000) != 0) {

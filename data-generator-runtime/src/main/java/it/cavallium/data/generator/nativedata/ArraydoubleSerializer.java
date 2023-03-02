@@ -1,16 +1,15 @@
 package it.cavallium.data.generator.nativedata;
 
 import it.cavallium.data.generator.DataSerializer;
+import it.cavallium.stream.SafeDataInput;
+import it.cavallium.stream.SafeDataOutput;
 import it.unimi.dsi.fastutil.doubles.DoubleList;
-import java.io.DataInput;
-import java.io.DataOutput;
-import java.io.IOException;
 import org.jetbrains.annotations.NotNull;
 
 public class ArraydoubleSerializer implements DataSerializer<DoubleList> {
 
 	@Override
-	public void serialize(DataOutput dataOutput, @NotNull DoubleList data) throws IOException {
+	public void serialize(SafeDataOutput dataOutput, @NotNull DoubleList data) {
 		dataOutput.writeInt(data.size());
 		for (int i = 0; i < data.size(); i++) {
 			dataOutput.writeDouble(data.getDouble(i));
@@ -19,7 +18,7 @@ public class ArraydoubleSerializer implements DataSerializer<DoubleList> {
 
 	@NotNull
 	@Override
-	public DoubleList deserialize(DataInput dataInput) throws IOException {
+	public DoubleList deserialize(SafeDataInput dataInput) {
 		var data = new double[dataInput.readInt()];
 		for (int i = 0; i < data.length; i++) {
 			data[i] = dataInput.readDouble();

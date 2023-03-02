@@ -13,7 +13,6 @@ import it.cavallium.data.generator.plugin.ComputedType;
 import it.cavallium.data.generator.plugin.ComputedType.VersionedComputedType;
 import it.cavallium.data.generator.plugin.ComputedTypeSuper;
 import it.cavallium.data.generator.plugin.ComputedVersion;
-import java.io.IOException;
 import java.util.stream.Stream;
 import javax.lang.model.element.Modifier;
 import org.jetbrains.annotations.NotNull;
@@ -61,7 +60,6 @@ public class GenUpgraderSuperX extends ClassGenerator {
 		var method = MethodSpec.methodBuilder("upgrade");
 
 		method.addModifiers(Modifier.PUBLIC, Modifier.FINAL);
-		method.addException(IOException.class);
 
 		ClassName typeSuperClassName = typeSuper.getJTypeName(basePackageName);
 		ClassName nextTypeSuperClassName = nextTypeSuper.getJTypeName(basePackageName);

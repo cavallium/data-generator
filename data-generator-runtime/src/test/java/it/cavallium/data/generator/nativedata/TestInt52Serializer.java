@@ -1,9 +1,9 @@
 package it.cavallium.data.generator.nativedata;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
+import it.cavallium.stream.SafeByteArrayInputStream;
+import it.cavallium.stream.SafeByteArrayOutputStream;
+import it.cavallium.stream.SafeDataInputStream;
+import it.cavallium.stream.SafeDataOutputStream;
 import java.io.IOException;
 import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.Assertions;
@@ -24,15 +24,15 @@ public class TestInt52Serializer {
 	public void testInt52Serialization(long n) throws IOException {
 		var serializer = new Int52Serializer();
 		byte[] out;
-		try (var baos = new ByteArrayOutputStream()) {
-			try (var dos = new DataOutputStream(baos)) {
+		try (var baos = new SafeByteArrayOutputStream()) {
+			try (var dos = new SafeDataOutputStream(baos)) {
 				serializer.serialize(dos, Int52.fromLong(n));
 			}
 			out = baos.toByteArray();
 		}
 
-		var bais = new ByteArrayInputStream(out);
-		var dis = new DataInputStream(bais);
+		var bais = new SafeByteArrayInputStream(out);
+		var dis = new SafeDataInputStream(bais);
 		Assertions.assertEquals(n, serializer.deserialize(dis).longValue(), "Deserialized number differ");
 	}
 
@@ -48,8 +48,8 @@ public class TestInt52Serializer {
 	public void testInt52OptionalSerialization(@Nullable Long n) throws IOException {
 		var serializer = new NullableInt52Serializer();
 		byte[] out;
-		try (var baos = new ByteArrayOutputStream()) {
-			try (var dos = new DataOutputStream(baos)) {
+		try (var baos = new SafeByteArrayOutputStream()) {
+			try (var dos = new SafeDataOutputStream(baos)) {
 				if (n == null) {
 					serializer.serialize(dos, NullableInt52.empty());
 				} else {
@@ -59,8 +59,8 @@ public class TestInt52Serializer {
 			out = baos.toByteArray();
 		}
 
-		var bais = new ByteArrayInputStream(out);
-		var dis = new DataInputStream(bais);
+		var bais = new SafeByteArrayInputStream(out);
+		var dis = new SafeDataInputStream(bais);
 		if (n == null) {
 			Assertions.assertNull(serializer.deserialize(dis).getNullable(), "Deserialized number is not empty");
 		} else {

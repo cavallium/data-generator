@@ -11,9 +11,8 @@ import it.cavallium.data.generator.DataSerializer;
 import it.cavallium.data.generator.plugin.ClassGenerator;
 import it.cavallium.data.generator.plugin.ComputedTypeBase;
 import it.cavallium.data.generator.plugin.ComputedVersion;
-import java.io.DataInput;
-import java.io.DataOutput;
-import java.io.IOException;
+import it.cavallium.stream.SafeDataInput;
+import it.cavallium.stream.SafeDataOutput;
 import java.io.NotSerializableException;
 import java.util.Objects;
 import java.util.stream.Stream;
@@ -60,9 +59,8 @@ public class GenSerializerBaseX extends ClassGenerator {
 		var method = MethodSpec.methodBuilder("serialize");
 
 		method.addModifiers(Modifier.PUBLIC, Modifier.FINAL);
-		method.addException(IOException.class);
 
-		method.addParameter(ParameterSpec.builder(DataOutput.class, "out").build());
+		method.addParameter(ParameterSpec.builder(SafeDataOutput.class, "out").build());
 		method.addParameter(ParameterSpec
 				.builder(typeBase.getJTypeName(basePackageName), "data")
 				.addAnnotation(NotNull.class)
@@ -95,13 +93,12 @@ public class GenSerializerBaseX extends ClassGenerator {
 		var method = MethodSpec.methodBuilder("deserialize");
 
 		method.addModifiers(Modifier.PUBLIC, Modifier.FINAL);
-		method.addException(IOException.class);
 
 		ClassName typeBaseClassName = typeBase.getJTypeName(basePackageName);
 		method.returns(typeBaseClassName);
 		method.addAnnotation(NotNull.class);
 
-		method.addParameter(ParameterSpec.builder(DataInput.class, "in").build());
+		method.addParameter(ParameterSpec.builder(SafeDataInput.class, "in").build());
 
 		method.addCode("return new $T(\n$>", typeBaseClassName);
 		typeBase.getData().entrySet().stream().flatMap(entry -> {

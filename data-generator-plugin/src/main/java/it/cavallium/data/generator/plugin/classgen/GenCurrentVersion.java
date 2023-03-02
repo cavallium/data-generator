@@ -14,7 +14,7 @@ import com.squareup.javapoet.WildcardTypeName;
 import it.cavallium.data.generator.plugin.ClassGenerator;
 import it.cavallium.data.generator.plugin.ComputedType;
 import it.cavallium.data.generator.plugin.ComputedVersion;
-import java.io.DataInput;
+import it.cavallium.stream.SafeDataInput;
 import java.io.IOException;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -119,8 +119,8 @@ public class GenCurrentVersion extends ClassGenerator {
 					.addModifiers(Modifier.PUBLIC).addModifiers(Modifier.STATIC).addModifiers(Modifier.FINAL).returns(TypeVariableName.get("U"))
 					.addParameter(ParameterSpec.builder(TypeName.INT, "oldVersion").build()).addParameter(
 							ParameterSpec.builder(ClassName.get(dataModel.getRootPackage(basePackageName), "BaseType"), "type").build())
-					.addParameter(ParameterSpec.builder(DataInput.class, "oldDataInput").build())
-					.addException(IOException.class).beginControlFlow("return upgradeDataToLatestVersion(oldVersion, switch (oldVersion)");
+					.addParameter(ParameterSpec.builder(SafeDataInput.class, "oldDataInput").build())
+					.beginControlFlow("return upgradeDataToLatestVersion(oldVersion, switch (oldVersion)");
 			for (var versionConfiguration : dataModel.getVersionsSet()) {
 // Add a case in which the data version deserializes the serialized data and upgrades it
 				var versions = ClassName.get(dataModel.getRootPackage(basePackageName), "Versions");
@@ -131,7 +131,7 @@ public class GenCurrentVersion extends ClassGenerator {
 				);
 			}
 			var upgradeDataToLatestVersion1Method = upgradeDataToLatestVersion1MethodBuilder
-					.addStatement("default -> throw new $T(\"Unknown version: \" + oldVersion)", IOException.class)
+					.addStatement("default -> throw new $T(\"Unknown version: \" + oldVersion)", UnsupportedOperationException.class)
 					.addCode(CodeBlock.of("$<});"))
 					.build();
 			currentVersionClass.addMethod(upgradeDataToLatestVersion1Method);
@@ -145,7 +145,6 @@ public class GenCurrentVersion extends ClassGenerator {
 					.returns(TypeVariableName.get("U"))
 					.addParameter(ParameterSpec.builder(TypeName.INT, "oldVersion").build())
 					.addParameter(ParameterSpec.builder(TypeVariableName.get("T"), "oldData").build())
-					.addException(IOException.class)
 					.addStatement("$T data = oldData", Object.class);
 			upgradeDataToLatestVersion2MethodBuilder.beginControlFlow("switch (oldVersion)");
 			for (var versionConfiguration : dataModel.getVersionsSet()) {
@@ -168,7 +167,7 @@ public class GenCurrentVersion extends ClassGenerator {
 							);
 				}
 			}
-			upgradeDataToLatestVersion2MethodBuilder.addStatement("default: throw new $T(\"Unknown version: \" + oldVersion)", IOException.class);
+			upgradeDataToLatestVersion2MethodBuilder.addStatement("default: throw new $T(\"Unknown version: \" + oldVersion)", UnsupportedOperationException.class);
 			upgradeDataToLatestVersion2MethodBuilder.endControlFlow();
 			currentVersionClass.addMethod(upgradeDataToLatestVersion2MethodBuilder.build());
 		}

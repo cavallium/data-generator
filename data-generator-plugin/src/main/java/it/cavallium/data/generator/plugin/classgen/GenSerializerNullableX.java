@@ -12,9 +12,8 @@ import it.cavallium.data.generator.plugin.ComputedTypeNullable;
 import it.cavallium.data.generator.plugin.ComputedTypeNullableFixed;
 import it.cavallium.data.generator.plugin.ComputedTypeNullableVersioned;
 import it.cavallium.data.generator.plugin.ComputedVersion;
-import java.io.DataInput;
-import java.io.DataOutput;
-import java.io.IOException;
+import it.cavallium.stream.SafeDataInput;
+import it.cavallium.stream.SafeDataOutput;
 import java.io.NotSerializableException;
 import java.util.Objects;
 import java.util.stream.Stream;
@@ -66,9 +65,8 @@ public class GenSerializerNullableX extends ClassGenerator {
 		var baseSerializerInstance = base.getJSerializerInstance(basePackageName);
 
 		method.addModifiers(Modifier.PUBLIC, Modifier.FINAL);
-		method.addException(IOException.class);
 
-		method.addParameter(ParameterSpec.builder(DataOutput.class, "out").build());
+		method.addParameter(ParameterSpec.builder(SafeDataOutput.class, "out").build());
 		method.addParameter(ParameterSpec
 				.builder(typeNullable.getJTypeName(basePackageName), "data")
 				.addAnnotation(NotNull.class)
@@ -101,13 +99,12 @@ public class GenSerializerNullableX extends ClassGenerator {
 		var baseSerializerInstance = base.getJSerializerInstance(basePackageName);
 
 		method.addModifiers(Modifier.PUBLIC, Modifier.FINAL);
-		method.addException(IOException.class);
 
 		var typeNullableClassName = typeNullable.getJTypeName(basePackageName);
 		method.returns(typeNullableClassName);
 		method.addAnnotation(NotNull.class);
 
-		method.addParameter(ParameterSpec.builder(DataInput.class, "in").build());
+		method.addParameter(ParameterSpec.builder(SafeDataInput.class, "in").build());
 
 		method.addStatement("return in.readBoolean() ? new $T(($T) $T.$N.deserialize(in)) : $T.empty()",
 				typeNullableClassName,

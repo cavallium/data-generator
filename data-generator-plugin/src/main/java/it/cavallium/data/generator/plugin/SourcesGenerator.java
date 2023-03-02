@@ -33,6 +33,8 @@ import it.cavallium.data.generator.plugin.classgen.GenUpgraderBaseX;
 import it.cavallium.data.generator.plugin.classgen.GenUpgraderSuperX;
 import it.cavallium.data.generator.plugin.classgen.GenVersion;
 import it.cavallium.data.generator.plugin.classgen.GenVersions;
+import it.cavallium.stream.SafeDataInput;
+import it.cavallium.stream.SafeDataOutput;
 import it.unimi.dsi.fastutil.booleans.BooleanList;
 import it.unimi.dsi.fastutil.bytes.ByteList;
 import it.unimi.dsi.fastutil.chars.CharList;
@@ -41,8 +43,6 @@ import it.unimi.dsi.fastutil.floats.FloatList;
 import it.unimi.dsi.fastutil.ints.IntList;
 import it.unimi.dsi.fastutil.longs.LongList;
 import it.unimi.dsi.fastutil.shorts.ShortList;
-import java.io.DataInput;
-import java.io.DataOutput;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -282,10 +282,9 @@ public class SourcesGenerator {
 		serializeMethod.addModifiers(Modifier.PUBLIC);
 		serializeMethod.addModifiers(Modifier.FINAL);
 		serializeMethod.returns(TypeName.VOID);
-		serializeMethod.addParameter(ParameterSpec.builder(DataOutput.class, "dataOutput").build());
+		serializeMethod.addParameter(ParameterSpec.builder(SafeDataOutput.class, "dataOutput").build());
 		serializeMethod
 				.addParameter(ParameterSpec.builder(classType, "data").addAnnotation(NotNull.class).build());
-		serializeMethod.addException(IOException.class);
 		serializeMethod.addStatement("$T.requireNonNull(data)", Objects.class);
 		return serializeMethod;
 	}
@@ -297,8 +296,7 @@ public class SourcesGenerator {
 		deserializeMethod.addModifiers(Modifier.PUBLIC);
 		deserializeMethod.addModifiers(Modifier.FINAL);
 		deserializeMethod.returns(classType);
-		deserializeMethod.addParameter(ParameterSpec.builder(DataInput.class, "dataInput").build());
-		deserializeMethod.addException(IOException.class);
+		deserializeMethod.addParameter(ParameterSpec.builder(SafeDataInput.class, "dataInput").build());
 		return deserializeMethod;
 	}
 

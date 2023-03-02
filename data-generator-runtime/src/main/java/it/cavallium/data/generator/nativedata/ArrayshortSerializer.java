@@ -1,16 +1,15 @@
 package it.cavallium.data.generator.nativedata;
 
 import it.cavallium.data.generator.DataSerializer;
+import it.cavallium.stream.SafeDataInput;
+import it.cavallium.stream.SafeDataOutput;
 import it.unimi.dsi.fastutil.shorts.ShortList;
-import java.io.DataInput;
-import java.io.DataOutput;
-import java.io.IOException;
 import org.jetbrains.annotations.NotNull;
 
 public class ArrayshortSerializer implements DataSerializer<ShortList> {
 
 	@Override
-	public void serialize(DataOutput dataOutput, @NotNull ShortList data) throws IOException {
+	public void serialize(SafeDataOutput dataOutput, @NotNull ShortList data) {
 		dataOutput.writeInt(data.size());
 		for (int i = 0; i < data.size(); i++) {
 			dataOutput.writeShort(data.getShort(i));
@@ -19,7 +18,7 @@ public class ArrayshortSerializer implements DataSerializer<ShortList> {
 
 	@NotNull
 	@Override
-	public ShortList deserialize(DataInput dataInput) throws IOException {
+	public ShortList deserialize(SafeDataInput dataInput) {
 		var data = new short[dataInput.readInt()];
 		for (int i = 0; i < data.length; i++) {
 			data[i] = dataInput.readShort();

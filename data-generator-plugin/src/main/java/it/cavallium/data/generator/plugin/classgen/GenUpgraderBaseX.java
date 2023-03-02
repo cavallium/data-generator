@@ -79,7 +79,6 @@ public class GenUpgraderBaseX extends ClassGenerator {
 		var method = MethodSpec.methodBuilder("upgrade");
 
 		method.addModifiers(Modifier.PUBLIC, Modifier.FINAL);
-		method.addException(IOException.class);
 
 		ClassName typeBaseClassName = typeBase.getJTypeName(basePackageName);
 		ClassName nextTypeBaseClassName = nextTypeBase.getJTypeName(basePackageName);
