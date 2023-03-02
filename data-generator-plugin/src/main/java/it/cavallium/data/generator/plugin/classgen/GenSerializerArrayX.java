@@ -77,9 +77,9 @@ public class GenSerializerArrayX extends ClassGenerator {
 			method.addStatement("final int sz = data.size()");
 			method.addStatement("out.writeInt(sz)");
 			method.addCode("\n");
-			method.beginControlFlow("for (int i = 0; i < sz; ++i)");
+			method.beginControlFlow("for (var item : data)");
 			var baseSerializerInstance = typeArray.getBase().getJSerializerInstance(basePackageName);
-			method.addStatement("$T.$N.serialize(out, ($T) data.get(i))",
+			method.addStatement("$T.$N.serialize(out, ($T) item)",
 					baseSerializerInstance.className(),
 					baseSerializerInstance.fieldName(),
 					typeArray.getBase().getJTypeName(basePackageName)

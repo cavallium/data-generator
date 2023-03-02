@@ -12,8 +12,8 @@ public class ArrayStringSerializer implements DataSerializer<List<String>> {
 	@Override
 	public void serialize(DataOutput dataOutput, @NotNull List<String> data) throws IOException {
 		dataOutput.writeInt(data.size());
-		for (int i = 0; i < data.size(); i++) {
-			dataOutput.writeUTF(data.get(i));
+		for (String item : data) {
+			dataOutput.writeUTF(item);
 		}
 	}
 
