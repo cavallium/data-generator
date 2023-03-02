@@ -68,6 +68,7 @@ public class SourcesGenerator {
 
 	private static final Logger logger = LoggerFactory.getLogger(SourcesGenerator.class);
 	private static final boolean OVERRIDE_ALL_NULLABLE_METHODS = false;
+	private static final String SERIAL_VERSION = "1";
 
 	private final DataModel dataModel;
 
@@ -113,18 +114,20 @@ public class SourcesGenerator {
 		var curHash = dataModel.computeHash();
 		if (Files.isRegularFile(hashPath) && Files.isReadable(hashPath)) {
 			var lines = Files.readAllLines(hashPath, StandardCharsets.UTF_8);
-			if (lines.size() >= 5) {
+			if (lines.size() >= 6) {
 				var prevBasePackageName = lines.get(0);
 				var prevRecordBuilders = lines.get(1);
 				var prevHash = lines.get(2);
 				var prevDeepCheckBeforeCreatingNewEqualInstances = lines.get(3);
 				var prevGenerateOldSerializers = lines.get(4);
+				var prevSerialVersion = lines.get(5);
 
 				if (!force
 						&& prevBasePackageName.equals(basePackageName)
 						&& (prevRecordBuilders.equalsIgnoreCase("true") == useRecordBuilders)
 						&& (prevDeepCheckBeforeCreatingNewEqualInstances.equalsIgnoreCase("true") == deepCheckBeforeCreatingNewEqualInstances)
 						&& (prevGenerateOldSerializers.equalsIgnoreCase("true") == generateOldSerializers)
+						&& (prevSerialVersion.equals(SERIAL_VERSION))
 						&& prevHash.equals(Integer.toString(curHash))) {
 					logger.info("Skipped sources generation because it didn't change");
 					return;
