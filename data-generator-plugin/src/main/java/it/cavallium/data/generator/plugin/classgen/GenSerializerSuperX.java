@@ -13,7 +13,6 @@ import it.cavallium.data.generator.plugin.ComputedTypeSuper;
 import it.cavallium.data.generator.plugin.ComputedVersion;
 import it.cavallium.stream.SafeDataInput;
 import it.cavallium.stream.SafeDataOutput;
-import java.io.IOException;
 import java.io.NotSerializableException;
 import java.util.Objects;
 import java.util.stream.Stream;
@@ -64,7 +63,7 @@ public class GenSerializerSuperX extends ClassGenerator {
 		method.addParameter(ParameterSpec.builder(int.class, "id").build());
 
 		method.beginControlFlow("if (id < 0 || id >= $L)", max);
-		method.addStatement("throw new new $T(id)", IndexOutOfBoundsException.class);
+		method.addStatement("throw new $T(id)", IndexOutOfBoundsException.class);
 		method.endControlFlow();
 
 		classBuilder.addMethod(method.build());
