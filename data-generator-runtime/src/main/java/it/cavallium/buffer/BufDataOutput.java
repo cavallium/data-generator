@@ -4,14 +4,14 @@ import static it.cavallium.stream.SafeDataOutputStream.strLen;
 import static it.cavallium.stream.SafeDataOutputStream.utfLen;
 
 import it.cavallium.stream.SafeByteArrayOutputStream;
+import it.cavallium.stream.SafeDataOutput;
 import it.cavallium.stream.SafeDataOutputStream;
 import it.unimi.dsi.fastutil.Arrays;
-import java.io.DataOutput;
 import java.io.IOException;
 import java.util.Objects;
 import org.jetbrains.annotations.NotNull;
 
-public class BufDataOutput implements DataOutput {
+public class BufDataOutput implements SafeDataOutput {
 
 	private final SafeByteArrayOutputStream buf;
 	private final SafeDataOutputStream dOut;
