@@ -68,7 +68,7 @@ public class SourcesGenerator {
 
 	private static final Logger logger = LoggerFactory.getLogger(SourcesGenerator.class);
 	private static final boolean OVERRIDE_ALL_NULLABLE_METHODS = false;
-	private static final String SERIAL_VERSION = "1";
+	private static final String SERIAL_VERSION = "2";
 
 	private final DataModel dataModel;
 
