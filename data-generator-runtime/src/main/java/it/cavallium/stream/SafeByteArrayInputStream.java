@@ -126,8 +126,9 @@ public class SafeByteArrayInputStream extends SafeMeasurableInputStream implemen
 		if (this.available() < length) {
 			throw new IndexOutOfBoundsException(this.length);
 		}
+		var result = new String(this.array, offset + position, length, charset);
 		position += length;
-		return new String(this.array, position, length, charset);
+		return result;
 	}
 
 	@Override
