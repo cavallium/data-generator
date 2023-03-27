@@ -3,6 +3,7 @@ package it.cavallium.stream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -124,6 +125,10 @@ public abstract class SafeInputStream extends InputStream {
 			n += count;
 		}
 		return n;
+	}
+
+	public String readString(int length, Charset charset) {
+		return new String(readNBytes(length), charset);
 	}
 
 	public long skip(long n) {

@@ -16,6 +16,8 @@
 
 package it.cavallium.stream;
 
+import java.nio.charset.Charset;
+
 /** Simple, fast and repositionable byte-array input stream.
  *
  * <p><strong>Warning</strong>: this class implements the correct semantics
@@ -117,6 +119,15 @@ public class SafeByteArrayInputStream extends SafeMeasurableInputStream implemen
 		System.arraycopy(array, this.offset + this.position, b, offset, n);
 		this.position += n;
 		return n;
+	}
+
+	@Override
+	public String readString(int length, Charset charset) {
+		if (this.available() < length) {
+			throw new IndexOutOfBoundsException(this.length);
+		}
+		position += length;
+		return new String(this.array, position, length, charset);
 	}
 
 	@Override

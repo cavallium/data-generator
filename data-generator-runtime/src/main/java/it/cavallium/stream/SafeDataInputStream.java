@@ -25,6 +25,7 @@
 
 package it.cavallium.stream;
 
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import org.jetbrains.annotations.NotNull;
 
@@ -122,6 +123,11 @@ public class SafeDataInputStream extends SafeFilterInputStream implements SafeDa
 		}
 
 		return total;
+	}
+
+	@Override
+	public String readString(int length, Charset charset) {
+		return in.readString(length, charset);
 	}
 
 	/**
@@ -429,7 +435,7 @@ public class SafeDataInputStream extends SafeFilterInputStream implements SafeDa
 	 * @see        SafeDataInputStream#readUTF(SafeDataInputStream)
 	 */
 	@Override
-	public final @NotNull String readUTF() {
+	public @NotNull String readUTF() {
 		return readUTF(this);
 	}
 

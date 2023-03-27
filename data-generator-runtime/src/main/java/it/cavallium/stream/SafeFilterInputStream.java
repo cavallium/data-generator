@@ -1,5 +1,7 @@
 package it.cavallium.stream;
 
+import java.nio.charset.Charset;
+
 /**
  * A {@code FilterInputStream} contains
  * some other input stream, which it uses as
@@ -206,5 +208,10 @@ public class SafeFilterInputStream extends SafeInputStream {
 	 */
 	public boolean markSupported() {
 		return in.markSupported();
+	}
+
+	@Override
+	public String readString(int length, Charset charset) {
+		return in.readString(length, charset);
 	}
 }
