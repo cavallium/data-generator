@@ -460,6 +460,6 @@ public class SafeDataInputStream extends SafeFilterInputStream implements SafeDa
 			data = new byte[utflen];
 		}
 		in.readFully(data, 0, utflen);
-		return new String(data, StandardCharsets.UTF_8);
+		return new String(data, 0, utflen, StandardCharsets.UTF_8);
 	}
 }
