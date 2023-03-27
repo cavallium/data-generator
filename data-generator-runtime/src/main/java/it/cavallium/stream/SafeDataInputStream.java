@@ -25,10 +25,6 @@
 
 package it.cavallium.stream;
 
-import java.nio.ByteBuffer;
-import java.nio.charset.CharacterCodingException;
-import java.nio.charset.CharsetDecoder;
-import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import org.jetbrains.annotations.NotNull;
 
@@ -45,11 +41,9 @@ public class SafeDataInputStream extends SafeFilterInputStream implements SafeDa
 	}
 
 	/**
-	 * working arrays initialized on demand by readUTF
+	 * working data initialized on demand by readUTF
 	 */
 	private byte[] bytearr;
-	private char[] chararr;
-	private CharsetDecoder utfdec;
 
 	@Override
 	public final int read(byte[] b) {
@@ -454,18 +448,18 @@ public class SafeDataInputStream extends SafeFilterInputStream implements SafeDa
 	 * @see        SafeDataInputStream#readUnsignedShort()
 	 */
 	public static String readUTF(SafeDataInputStream in) {
-		if (in.bytearr == null) in.bytearr = new byte[80];
-		if (in.chararr == null) in.chararr = new char[80];
-		if (in.utfdec == null) in.utfdec = StandardCharsets.UTF_8.newDecoder()
-				.onUnmappableCharacter(CodingErrorAction.REPORT)
-				.onMalformedInput(CodingErrorAction.REPORT);
 		int utflen = in.readUnsignedShort();
-		var data = new byte[utflen];
-		in.readFully(data);
-		try {
-			return in.utfdec.reset().decode(ByteBuffer.wrap(data)).toString();
-		} catch (CharacterCodingException e) {
-			throw new IllegalArgumentException("malformed input string", e);
+		byte[] data;
+		if (utflen <= 80) {
+			if (in.bytearr == null) {
+				data = in.bytearr = new byte[80];
+			} else {
+				data = in.bytearr;
+			}
+		} else {
+			data = new byte[utflen];
 		}
+		in.readFully(data, 0, utflen);
+		return new String(data, StandardCharsets.UTF_8);
 	}
 }
