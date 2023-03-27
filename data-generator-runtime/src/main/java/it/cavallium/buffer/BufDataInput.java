@@ -45,7 +45,6 @@ public class BufDataInput extends SafeDataInputStream {
 	@Override
 	public @NotNull String readUTF() {
 		var length = this.readUnsignedShort();
-		this.skipNBytes(length);
 		return this.in.readString(length, StandardCharsets.UTF_8);
 	}
 
