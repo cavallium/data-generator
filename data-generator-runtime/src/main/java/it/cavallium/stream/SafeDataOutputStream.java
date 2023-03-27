@@ -26,6 +26,7 @@
 package it.cavallium.stream;
 
 import java.io.DataOutputStream;
+import java.nio.charset.StandardCharsets;
 
 /**
  * A data output stream lets an application write primitive Java data
@@ -326,102 +327,15 @@ public class SafeDataOutputStream extends SafeFilterOutputStream implements Safe
 	 * @see        #writeChars(String)
 	 */
 	public final void writeUTF(String str) {
-		writeUTF(str, this);
-	}
-
-	public final void writeUTF(int strlen, int utflen, String str) {
-		writeUTF(strlen, utflen, str, this);
-	}
-
-	/**
-	 * Writes a string to the specified DataOutput using
-	 * <a href="DataInput.html#modified-utf-8">modified UTF-8</a>
-	 * encoding in a machine-independent manner.
-	 * <p>
-	 * First, two bytes are written to out as if by the {@code writeShort}
-	 * method giving the number of bytes to follow. This value is the number of
-	 * bytes actually written out, not the length of the string. Following the
-	 * length, each character of the string is output, in sequence, using the
-	 * modified UTF-8 encoding for the character. If no exception is thrown, the
-	 * counter {@code written} is incremented by the total number of
-	 * bytes written to the output stream. This will be at least two
-	 * plus the length of {@code str}, and at most two plus
-	 * thrice the length of {@code str}.
-	 *
-	 * @param      str   a string to be written.
-	 * @param      out   destination to write to
-	 * @return     The number of bytes written out.
-	 */
-	static int writeUTF(String str, SafeDataOutput out) {
-		int strlen = strLen(str);
-		int utflen = utfLen(str, strlen);
-		return writeUTF(strlen, utflen, str, out);
-	}
-
-	public static int strLen(String str) {
-		return str.length();
-	}
-
-	public static int utfLen(String str, int strLen) {
-		int utflen = strLen; // optimized for ASCII
-
-		for (int i = 0; i < strLen; i++) {
-			int c = str.charAt(i);
-			if (c >= 0x80 || c == 0)
-				utflen += (c >= 0x800) ? 2 : 1;
+		var outString = str.getBytes(StandardCharsets.UTF_8);
+		if (outString.length > Short.MAX_VALUE) {
+			throw new IndexOutOfBoundsException("String too long: " + outString.length + " bytes");
 		}
-
-		if (utflen > 65535 || /* overflow */ utflen < strLen)
-			throw new IllegalArgumentException(tooLongMsg(str, utflen));
-		return utflen;
-	}
-
-	static int writeUTF(int strlen, int utflen, String str, SafeDataOutput out) {
-		final byte[] bytearr;
-		if (out instanceof SafeDataOutputStream dos) {
-			if (dos.bytearr == null || (dos.bytearr.length < (utflen + 2)))
-				dos.bytearr = new byte[(utflen*2) + 2];
-			bytearr = dos.bytearr;
-		} else {
-			bytearr = new byte[utflen + 2];
-		}
-
-		int count = 0;
-		bytearr[count++] = (byte) ((utflen >>> 8) & 0xFF);
-		bytearr[count++] = (byte) ((utflen) & 0xFF);
-
-		int i;
-		for (i = 0; i < strlen; i++) { // optimized for initial run of ASCII
-			int c = str.charAt(i);
-			if (c >= 0x80 || c == 0) break;
-			bytearr[count++] = (byte) c;
-		}
-
-		for (; i < strlen; i++) {
-			int c = str.charAt(i);
-			if (c < 0x80 && c != 0) {
-				bytearr[count++] = (byte) c;
-			} else if (c >= 0x800) {
-				bytearr[count++] = (byte) (0xE0 | ((c >> 12) & 0x0F));
-				bytearr[count++] = (byte) (0x80 | ((c >>  6) & 0x3F));
-				bytearr[count++] = (byte) (0x80 | ((c) & 0x3F));
-			} else {
-				bytearr[count++] = (byte) (0xC0 | ((c >>  6) & 0x1F));
-				bytearr[count++] = (byte) (0x80 | ((c) & 0x3F));
-			}
-		}
-		out.write(bytearr, 0, utflen + 2);
-		return utflen + 2;
-	}
-
-	private static String tooLongMsg(String s, int bits32) {
-		int slen = s.length();
-		String head = s.substring(0, 8);
-		String tail = s.substring(slen - 8, slen);
-		// handle int overflow with max 3x expansion
-		long actualLength = (long)slen + Integer.toUnsignedLong(bits32 - slen);
-		return "encoded string (" + head + "..." + tail + ") too long: "
-				+ actualLength + " bytes";
+		var v = outString.length;
+		out.write((v >>> 8) & 0xFF);
+		out.write((v) & 0xFF);
+		out.write(outString);
+		incCount(2 + outString.length);
 	}
 
 	/**

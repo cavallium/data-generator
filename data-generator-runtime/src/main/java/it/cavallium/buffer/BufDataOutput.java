@@ -1,13 +1,11 @@
 package it.cavallium.buffer;
 
-import static it.cavallium.stream.SafeDataOutputStream.strLen;
-import static it.cavallium.stream.SafeDataOutputStream.utfLen;
-
 import it.cavallium.stream.SafeByteArrayOutputStream;
 import it.cavallium.stream.SafeDataOutput;
 import it.cavallium.stream.SafeDataOutputStream;
 import it.unimi.dsi.fastutil.Arrays;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 import org.jetbrains.annotations.NotNull;
 
@@ -205,11 +203,13 @@ public class BufDataOutput implements SafeDataOutput {
 
 	@Override
 	public void writeUTF(@NotNull String str) {
-		var strlen = strLen(str);
-		var utflen = utfLen(str, strlen);
-		var bytes = Short.BYTES + utflen;
-		checkOutOfBounds(bytes);
-		dOut.writeUTF(strlen, utflen, str);
+		var out = str.getBytes(StandardCharsets.UTF_8);
+		if (out.length > Short.MAX_VALUE) {
+			throw new IndexOutOfBoundsException("String too long: " + out.length + " bytes");
+		}
+		checkOutOfBounds(Short.BYTES + out.length);
+		dOut.writeShort(out.length);
+		dOut.write(out);
 	}
 
 	public Buf asList() {
