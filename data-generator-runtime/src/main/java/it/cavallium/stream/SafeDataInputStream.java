@@ -25,6 +25,11 @@
 
 package it.cavallium.stream;
 
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CharsetDecoder;
+import java.nio.charset.CodingErrorAction;
+import java.nio.charset.StandardCharsets;
 import org.jetbrains.annotations.NotNull;
 
 public class SafeDataInputStream extends SafeFilterInputStream implements SafeDataInput {
@@ -42,8 +47,9 @@ public class SafeDataInputStream extends SafeFilterInputStream implements SafeDa
 	/**
 	 * working arrays initialized on demand by readUTF
 	 */
-	private byte[] bytearr = new byte[80];
-	private char[] chararr = new char[80];
+	private byte[] bytearr;
+	private char[] chararr;
+	private CharsetDecoder utfdec;
 
 	@Override
 	public final int read(byte[] b) {
@@ -448,64 +454,18 @@ public class SafeDataInputStream extends SafeFilterInputStream implements SafeDa
 	 * @see        SafeDataInputStream#readUnsignedShort()
 	 */
 	public static String readUTF(SafeDataInputStream in) {
+		if (in.bytearr == null) in.bytearr = new byte[80];
+		if (in.chararr == null) in.chararr = new char[80];
+		if (in.utfdec == null) in.utfdec = StandardCharsets.UTF_8.newDecoder()
+				.onUnmappableCharacter(CodingErrorAction.REPORT)
+				.onMalformedInput(CodingErrorAction.REPORT);
 		int utflen = in.readUnsignedShort();
-		byte[] bytearr;
-		char[] chararr;
-		if (in.bytearr.length < utflen){
-			in.bytearr = new byte[utflen*2];
-			in.chararr = new char[utflen*2];
+		var data = new byte[utflen];
+		in.readFully(data);
+		try {
+			return in.utfdec.reset().decode(ByteBuffer.wrap(data)).toString();
+		} catch (CharacterCodingException e) {
+			throw new IllegalArgumentException("malformed input string", e);
 		}
-		chararr = in.chararr;
-		bytearr = in.bytearr;
-
-		int c, char2, char3;
-		int count = 0;
-		int chararr_count=0;
-
-		in.readFully(bytearr, 0, utflen);
-
-		while (count < utflen) {
-			c = (int) bytearr[count] & 0xff;
-			if (c > 127) break;
-			count++;
-			chararr[chararr_count++]=(char)c;
-		}
-
-		while (count < utflen) {
-			c = (int) bytearr[count] & 0xff;
-			switch (c >> 4) {
-				case 0, 1, 2, 3, 4, 5, 6, 7 -> {
-					/* 0xxxxxxx*/
-					count++;
-					chararr[chararr_count++] = (char) c;
-				}
-				case 12, 13 -> {
-					/* 110x xxxx   10xx xxxx*/
-					count += 2;
-					if (count > utflen)
-						throw new IllegalArgumentException("malformed input: partial character at end");
-					char2 = bytearr[count - 1];
-					if ((char2 & 0xC0) != 0x80)
-						throw new IllegalArgumentException("malformed input around byte " + count);
-					chararr[chararr_count++] = (char) (((c & 0x1F) << 6) | (char2 & 0x3F));
-				}
-				case 14 -> {
-					/* 1110 xxxx  10xx xxxx  10xx xxxx */
-					count += 3;
-					if (count > utflen)
-						throw new IllegalArgumentException("malformed input: partial character at end");
-					char2 = bytearr[count - 2];
-					char3 = bytearr[count - 1];
-					if (((char2 & 0xC0) != 0x80) || ((char3 & 0xC0) != 0x80))
-						throw new IllegalArgumentException("malformed input around byte " + (count - 1));
-					chararr[chararr_count++] = (char) (((c & 0x0F) << 12) | ((char2 & 0x3F) << 6) | ((char3 & 0x3F)));
-				}
-				default ->
-					/* 10xx xxxx,  1111 xxxx */
-						throw new IllegalArgumentException("malformed input around byte " + count);
-			}
-		}
-		// The number of chars produced may be less than utflen
-		return new String(chararr, 0, chararr_count);
 	}
 }
