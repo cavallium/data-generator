@@ -3,16 +3,8 @@ package it.cavallium.buffer;
 import it.cavallium.stream.SafeByteArrayInputStream;
 import it.cavallium.stream.SafeByteArrayOutputStream;
 import it.cavallium.stream.SafeDataOutput;
-import it.unimi.dsi.fastutil.bytes.AbstractByteList;
-import it.unimi.dsi.fastutil.bytes.ByteArrayList;
-import it.unimi.dsi.fastutil.bytes.ByteCollection;
-import it.unimi.dsi.fastutil.bytes.ByteConsumer;
-import it.unimi.dsi.fastutil.bytes.ByteIterator;
-import it.unimi.dsi.fastutil.bytes.ByteIterators;
-import it.unimi.dsi.fastutil.bytes.ByteList;
-import it.unimi.dsi.fastutil.bytes.ByteListIterator;
-import it.unimi.dsi.fastutil.bytes.ByteSpliterator;
-import it.unimi.dsi.fastutil.bytes.ByteSpliterators;
+import it.unimi.dsi.fastutil.bytes.*;
+
 import java.io.Serial;
 import java.nio.charset.Charset;
 import java.util.Arrays;
@@ -21,6 +13,8 @@ import java.util.Iterator;
 import java.util.NoSuchElementException;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+
+import static it.unimi.dsi.fastutil.Arrays.ensureFromTo;
 
 class ByteListBuf extends ByteArrayList implements Buf {
 
@@ -77,7 +71,7 @@ class ByteListBuf extends ByteArrayList implements Buf {
 	 * @return a new array list of the given size, wrapping the given array.
 	 */
 	public static ByteListBuf wrap(final byte[] a, final int length) {
-		if (length > a.length) throw new IllegalArgumentException("The specified length (" + length + ") is greater than the array size (" + a.length + ")");
+		ByteArrays.ensureFromTo(a, 0, length);
 		final ByteListBuf l = new ByteListBuf(a, true);
 		l.size = length;
 		return l;
@@ -137,7 +131,7 @@ class ByteListBuf extends ByteArrayList implements Buf {
 	}
 
 	@Override
-	public byte @Nullable [] asUnboundedArray() {
+	public byte[] asUnboundedArray() {
 		return a;
 	}
 
@@ -152,24 +146,30 @@ class ByteListBuf extends ByteArrayList implements Buf {
 	}
 
 	@Override
-	public void freeze() {
+	public ByteListBuf freeze() {
 		mutable = false;
+		return this;
 	}
 
 	@Override
 	public Buf subList(int from, int to) {
 		if (from == 0 && to == size()) return this;
-		ensureIndex(from);
-		ensureIndex(to);
-		if (from > to) throw new IndexOutOfBoundsException("Start index (" + from + ") is greater than end index (" + to + ")");
+		ensureFromTo(this.size(), from, to);
 		return new SubList(from, to);
 	}
 
 	@Override
+	public Buf copyOfRange(int from, int to) {
+		if (from == 0 && to == size()) {
+			return copy();
+		} else {
+			return ByteListBuf.wrap(Arrays.copyOfRange(this.a, from, to), to - from);
+		}
+	}
+
+	@Override
 	public Buf copy() {
-		var copied = ByteListBuf.wrap(this.a.clone());
-		copied.size = this.size;
-		return copied;
+		return ByteListBuf.wrap(this.a.clone(), this.size);
 	}
 
 	@Override
@@ -184,7 +184,7 @@ class ByteListBuf extends ByteArrayList implements Buf {
 
 	@Override
 	public SafeByteArrayOutputStream binaryOutputStream(int from, int to) {
-		it.unimi.dsi.fastutil.Arrays.ensureFromTo(size, from, to);
+		ensureFromTo(size, from, to);
 		return new SafeByteArrayOutputStream(a, from, to);
 	}
 
@@ -207,11 +207,9 @@ class ByteListBuf extends ByteArrayList implements Buf {
 		return new String(a, 0, size, charset);
 	}
 
-	private class SubList extends AbstractByteList.ByteRandomAccessSubList implements Buf {
+	class SubList extends AbstractByteList.ByteRandomAccessSubList implements Buf {
 		@Serial
 		private static final long serialVersionUID = -3185226345314976296L;
-
-		private boolean subMutable = true;
 
 		protected SubList(int from, int to) {
 			super(ByteListBuf.this, from, to);
@@ -226,11 +224,21 @@ class ByteListBuf extends ByteArrayList implements Buf {
 
 		@Override
 		public @NotNull Buf subList(int from, int to) {
-			it.unimi.dsi.fastutil.Arrays.ensureFromTo(a.length, from, to);
-			if (from > to) throw new IllegalArgumentException("Start index (" + from + ") is greater than end index (" + to + ")");
+			ensureFromTo(this.to, from, to);
+			var fromAbs = this.from + from;
+			var toAbs = this.from + to;
 			// Sadly we have to rewrap this, because if there is a sublist of a sublist, and the
 			// subsublist adds, both sublists need to update their "to" value.
-			return new SubList(from, to);
+			return new SubList(fromAbs, toAbs);
+		}
+
+		@Override
+		public Buf copyOfRange(int from, int to) {
+			if (from == 0 && to == size()) {
+				return copy();
+			} else {
+				return Buf.wrap(Arrays.copyOfRange(a, this.from + from, this.from + to));
+			}
 		}
 
 		@Override
@@ -250,7 +258,7 @@ class ByteListBuf extends ByteArrayList implements Buf {
 
 		@Override
 		public SafeByteArrayOutputStream binaryOutputStream(int from, int to) {
-			it.unimi.dsi.fastutil.Arrays.ensureFromTo(size(), from, to);
+			ensureFromTo(size(), from, to);
 			return new SafeByteArrayOutputStream(a, from + this.from, to + this.from);
 		}
 
@@ -279,7 +287,7 @@ class ByteListBuf extends ByteArrayList implements Buf {
 			if (this.from == 0 && this.to == a.length) {
 				return a;
 			} else {
-				return toByteArray();
+				return SubList.this.toByteArray();
 			}
 		}
 
@@ -293,7 +301,7 @@ class ByteListBuf extends ByteArrayList implements Buf {
 		}
 
 		@Override
-		public byte @Nullable [] asUnboundedArray() {
+		public byte[] asUnboundedArray() {
 			if (from == 0) {
 				return a;
 			} else {
@@ -312,12 +320,13 @@ class ByteListBuf extends ByteArrayList implements Buf {
 
 		@Override
 		public boolean isMutable() {
-			return mutable && subMutable;
+			return mutable;
 		}
 
 		@Override
-		public void freeze() {
-			subMutable = false;
+		public SubList freeze() {
+			mutable = false;
+			return this;
 		}
 
 		private final class SubListIterator extends ByteIterators.AbstractIndexBasedListIterator {

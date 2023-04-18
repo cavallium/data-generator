@@ -72,7 +72,7 @@ public interface Buf extends ByteList, RandomAccess {
 	 * Get this element as an array with equal or bigger size, converting it if needed
 	 * The returned array may be bigger than expected!
 	 */
-	byte @Nullable[] asUnboundedArray();
+	byte[] asUnboundedArray();
 
 	/**
 	 * Get this element as an array with equal or bigger size, only if it's already an array, otherwise return null
@@ -82,10 +82,12 @@ public interface Buf extends ByteList, RandomAccess {
 
 	boolean isMutable();
 
-	void freeze();
+	Buf freeze();
 
 	@Override
 	Buf subList(int from, int to);
+
+	Buf copyOfRange(int from, int to);
 
 	Buf copy();
 
