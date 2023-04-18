@@ -95,6 +95,9 @@ public interface Buf extends ByteList, RandomAccess {
 
 	void writeTo(SafeDataOutput dataOutput);
 
+	/**
+	 * @param i byte offset
+	 */
 	default long getLong(int i) {
 		byte b1 = getByte(i);
 		byte b2 = getByte(i + 1);
@@ -114,6 +117,9 @@ public interface Buf extends ByteList, RandomAccess {
 				| (b8 & 0xFFL);
 	}
 
+	/**
+	 * @param i byte offset
+	 */
 	default int getInt(int i) {
 		byte b1 = getByte(i);
 		byte b2 = getByte(i + 1);
@@ -122,26 +128,44 @@ public interface Buf extends ByteList, RandomAccess {
 		return b1 << 24 | (b2 & 0xFF) << 16 | (b3 & 0xFF) << 8 | (b4 & 0xFF);
 	}
 
+	/**
+	 * @param i byte offset
+	 */
 	default float getFloat(int i) {
 		return Float.intBitsToFloat(getInt(i));
 	}
 
+	/**
+	 * @param i byte offset
+	 */
 	default double getDouble(int i) {
 		return Double.longBitsToDouble(getLong(i));
 	}
 
+	/**
+	 * @param i byte offset
+	 */
 	default boolean getBoolean(int i) {
 		return getByte(i) != 0;
 	}
 
+	/**
+	 * @param i byte offset
+	 */
 	default void setBoolean(int i, boolean val) {
 		set(i, val ? (byte) 1 : 0);
 	}
 
+	/**
+	 * @param i byte offset
+	 */
 	default void setByte(int i, byte val) {
 		set(i, val);
 	}
 
+	/**
+	 * @param i byte offset
+	 */
 	default void setInt(int i, int val) {
 		set(i, (byte) (val >> 24));
 		set(i + 1, (byte) (val >> 16));
@@ -149,6 +173,9 @@ public interface Buf extends ByteList, RandomAccess {
 		set(i + 3, (byte) val);
 	}
 
+	/**
+	 * @param i byte offset
+	 */
 	default void setLong(int i, long val) {
 		set(i, (byte) (val >> 56));
 		set(i + 1, (byte) (val >> 48));
@@ -160,10 +187,16 @@ public interface Buf extends ByteList, RandomAccess {
 		set(i + 7, (byte) val);
 	}
 
+	/**
+	 * @param i byte offset
+	 */
 	default void setFloat(int i, float val) {
 		setInt(i, Float.floatToRawIntBits(val));
 	}
 
+	/**
+	 * @param i byte offset
+	 */
 	default void setDouble(int i, double val) {
 		setLong(i, Double.doubleToRawLongBits(val));
 	}
@@ -182,7 +215,5 @@ public interface Buf extends ByteList, RandomAccess {
 
 	boolean equals(int aStartIndex, byte[] b, int bStartIndex, int length);
 
-	default String toString(Charset charset) {
-		return new String(this.asArray(), charset);
-	}
+	String toString(Charset charset);
 }

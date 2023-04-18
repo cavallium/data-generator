@@ -1,10 +1,21 @@
 package it.cavallium.buffer;
 
+import static it.unimi.dsi.fastutil.Arrays.ensureFromTo;
+
 import it.cavallium.stream.SafeByteArrayInputStream;
 import it.cavallium.stream.SafeByteArrayOutputStream;
 import it.cavallium.stream.SafeDataOutput;
-import it.unimi.dsi.fastutil.bytes.*;
-
+import it.unimi.dsi.fastutil.bytes.AbstractByteList;
+import it.unimi.dsi.fastutil.bytes.ByteArrayList;
+import it.unimi.dsi.fastutil.bytes.ByteArrays;
+import it.unimi.dsi.fastutil.bytes.ByteCollection;
+import it.unimi.dsi.fastutil.bytes.ByteConsumer;
+import it.unimi.dsi.fastutil.bytes.ByteIterator;
+import it.unimi.dsi.fastutil.bytes.ByteIterators;
+import it.unimi.dsi.fastutil.bytes.ByteList;
+import it.unimi.dsi.fastutil.bytes.ByteListIterator;
+import it.unimi.dsi.fastutil.bytes.ByteSpliterator;
+import it.unimi.dsi.fastutil.bytes.ByteSpliterators;
 import java.io.Serial;
 import java.nio.charset.Charset;
 import java.util.Arrays;
@@ -13,8 +24,6 @@ import java.util.Iterator;
 import java.util.NoSuchElementException;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-
-import static it.unimi.dsi.fastutil.Arrays.ensureFromTo;
 
 class ByteListBuf extends ByteArrayList implements Buf {
 
@@ -470,7 +479,7 @@ class ByteListBuf extends ByteArrayList implements Buf {
 
 		@Override
 		public String toString(Charset charset) {
-			return new String(a, from, to, charset);
+			return new String(a, from, size(), charset);
 		}
 	}
 }

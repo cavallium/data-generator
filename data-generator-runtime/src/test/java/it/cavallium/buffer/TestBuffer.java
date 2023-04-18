@@ -1,16 +1,25 @@
 package it.cavallium.buffer;
 
-import it.unimi.dsi.fastutil.bytes.ByteList;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.MethodSource;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.google.common.primitives.Longs;
+import it.cavallium.stream.SafeByteArrayOutputStream;
+import it.unimi.dsi.fastutil.bytes.ByteArrayList;
+import it.unimi.dsi.fastutil.bytes.ByteCollections;
+import it.unimi.dsi.fastutil.bytes.ByteList;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.stream.Stream;
-
-import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 public class TestBuffer {
 
@@ -62,6 +71,8 @@ public class TestBuffer {
 
     public static List<BufArg> createPrimaryBufs() {
         var emptyBuf = new BufArg("create()", Buf.create(), 0, new byte[0]);
+        var byteListBuf = new BufArg("createByteListBuf()", ByteListBuf.of(), 0, new byte[0]);
+        var byteListBufOf = new BufArg("createByteListBuf(0, 1, 2, 3, 4)", ByteListBuf.of((byte) 0, (byte) 1, (byte) 2, (byte) 3, (byte) 4), 5, new byte[] {0, 1, 2, 3, 4});
         var def0Buf = new BufArg("create(0)", Buf.create(0), 0, new byte[0]);
         var def10Buf = new BufArg("create(10)", Buf.create(10), 0, new byte[0]);
         var def10000Buf = new BufArg("create(10000)", Buf.create(10000), 0, new byte[0]);
@@ -75,32 +86,37 @@ public class TestBuffer {
         for (int i = 0; i < big.length; i++) {
             big[i] = (byte) (i * i);
         }
-        var copyOfBig = new BufArg("copyOfBig(big)", Buf.copyOf(big), big.length, big);
-        var wrapSmallArray = new BufArg("wrap(small array)", Buf.wrap(small.clone()), small.length, small);
-        var wrapBigArray = new BufArg("wrap(big array)", Buf.wrap(big.clone()), big.length, big);
-        var wrapSmallByteList = new BufArg("wrap(small byte list)", Buf.wrap(ByteList.of(small)), small.length, small);
-        var wrapBigByteList = new BufArg("wrap(big byte list)", Buf.wrap(ByteList.of(big)), big.length, big);
+        var copyOfBig = new BufArg("copyOfBig(big)", Buf.copyOf(big), big.length, big.clone());
+        var wrapByteArrayList = new BufArg("wrap(byte array list)", Buf.wrap(ByteArrayList.of(small)), small.length, small.clone());
+        var wrapBufSmall = new BufArg("wrap(wrap(small array))", Buf.wrap(Buf.wrap(small.clone())), small.length, small.clone());
+        var wrapSmallArray = new BufArg("wrap(small array)", Buf.wrap(small.clone()), small.length, small.clone());
+        var wrapBigArray = new BufArg("wrap(big array)", Buf.wrap(big.clone()), big.length, big.clone());
+        var wrapSmallByteList = new BufArg("wrap(small byte list)", Buf.wrap(ByteList.of(small)), small.length, small.clone());
+        var wrapBigByteList = new BufArg("wrap(big byte list)", Buf.wrap(ByteList.of(big)), big.length, big.clone());
         var wrapSmallCapped = new BufArg("wrap(small array, 10)", Buf.wrap(small.clone(), 10), 10, Arrays.copyOf(small, 10));
         var wrapBigCapped = new BufArg("wrap(big array, 10)", Buf.wrap(big.clone(), 10), 10, Arrays.copyOf(big, 10));
-        var wrapSmallCappedSame = new BufArg("wrap(small array, same)", Buf.wrap(small.clone(), small.length), small.length, small);
-        var wrapBigCappedSame = new BufArg("wrap(big array, same)", Buf.wrap(big.clone(), big.length), big.length, big);
+        var wrapSmallCappedSame = new BufArg("wrap(small array, same)", Buf.wrap(small.clone(), small.length), small.length, small.clone());
+        var wrapBigCappedSame = new BufArg("wrap(big array, same)", Buf.wrap(big.clone(), big.length), big.length, big.clone());
         var wrapSmallCappedMinusOne = new BufArg("wrap(small array, same-1)", Buf.wrap(small.clone(), small.length - 1), small.length - 1, Arrays.copyOf(small, small.length - 1));
         var wrapBigCappedMinusOne = new BufArg("wrap(big array, same-1)", Buf.wrap(big.clone(), big.length - 1), big.length - 1, Arrays.copyOf(big, big.length - 1));
-        var wrapSmallCappedRangeSame = new BufArg("wrap(small array, 0, same)", Buf.wrap(small.clone(), 0, small.length), small.length, small);
-        var wrapBigCappedRangeSame = new BufArg("wrap(big array, 0, same)", Buf.wrap(big.clone(), 0, big.length), big.length, big);
+        var wrapSmallCappedRangeSame = new BufArg("wrap(small array, 0, same)", Buf.wrap(small.clone(), 0, small.length), small.length, small.clone());
+        var wrapBigCappedRangeSame = new BufArg("wrap(big array, 0, same)", Buf.wrap(big.clone(), 0, big.length), big.length, big.clone());
         var wrapSmallCappedRangeOffset = new BufArg("wrap(small array, 5, same)", Buf.wrap(small.clone(), 5, small.length), small.length - 5, Arrays.copyOfRange(small, 5, small.length));
         var wrapBigCappedRangeOffset = new BufArg("wrap(big array, 500, same)", Buf.wrap(big.clone(), 500, big.length), big.length - 500, Arrays.copyOfRange(big, 500, big.length));
         var wrapSmallCappedRangeOffsetAndLen = new BufArg("wrap(small array, 5, same-3)", Buf.wrap(small.clone(), 5, small.length - 3), small.length - 5 - 3, Arrays.copyOfRange(small, 5, small.length - 3));
         var wrapBigCappedRangeOffsetAndLen = new BufArg("wrap(big array, 500, same-100)", Buf.wrap(big.clone(), 500, big.length - 100), big.length - 500 - 100, Arrays.copyOfRange(big, 500, big.length - 100));
         var wrapSmallCappedRangeLen = new BufArg("wrap(small array, 0, same-5)", Buf.wrap(small.clone(), 0, small.length - 5), small.length - 5, Arrays.copyOf(small, small.length - 5));
         var wrapBigCappedRangeLen = new BufArg("wrap(big array, 0, same-500)", Buf.wrap(big.clone(), 0, big.length - 500), big.length - 500, Arrays.copyOf(big, big.length - 500));
+        var wrapSmallBufCappedRangeOffsetAndLen = new BufArg("wrap(wrap(small byte array list), 5, same-3)", Buf.wrap(Buf.wrap(small.clone()), 5, small.length - 3), small.length - 5 - 3, Arrays.copyOfRange(small, 5, small.length - 3));
+        var wrapSmallByteArrayListCappedRangeOffsetAndLen = new BufArg("wrap(small byte array list, 5, same-3)", Buf.wrap(ByteArrayList.of(small.clone()), 5, small.length - 3), small.length - 5 - 3, Arrays.copyOfRange(small, 5, small.length - 3));
+        var wrapSmallByteListCappedRangeOffsetAndLen = new BufArg("wrap(small byte list, 5, same-3)", Buf.wrap(ByteList.of(small.clone()), 5, small.length - 3), small.length - 5 - 3, Arrays.copyOfRange(small, 5, small.length - 3));
 
-        return List.of(emptyBuf, def0Buf, def10Buf, def10000Buf, zeroedBuf, zeroed10Buf, zeroed10000Buf, copyOfEmpty,
-                copyOfSmall, copyOfBig, wrapSmallArray, wrapBigArray, wrapSmallByteList, wrapBigByteList,
+        return List.of(emptyBuf, byteListBuf, byteListBufOf, def0Buf, def10Buf, def10000Buf, zeroedBuf, zeroed10Buf, zeroed10000Buf, copyOfEmpty,
+                copyOfSmall, copyOfBig, wrapByteArrayList, wrapBufSmall, wrapSmallArray, wrapBigArray, wrapSmallByteList, wrapBigByteList,
                 wrapSmallCapped, wrapBigCapped, wrapSmallCappedSame, wrapBigCappedSame, wrapSmallCappedMinusOne,
                 wrapBigCappedMinusOne, wrapSmallCappedRangeSame, wrapBigCappedRangeSame, wrapSmallCappedRangeOffset,
                 wrapBigCappedRangeOffset, wrapSmallCappedRangeOffsetAndLen, wrapBigCappedRangeOffsetAndLen,
-                wrapSmallCappedRangeLen, wrapBigCappedRangeLen);
+                wrapSmallCappedRangeLen, wrapBigCappedRangeLen, wrapSmallByteArrayListCappedRangeOffsetAndLen, wrapSmallByteListCappedRangeOffsetAndLen);
     }
 
     public static List<BufArg> createSubListBufs() {
@@ -208,7 +224,7 @@ public class TestBuffer {
     }
 
     @ParameterizedTest
-    @MethodSource("generateWrapped")
+    @MethodSource("provideWrappedArgs")
     public void testWrapSubList(BufArg bufArg) {
         testInitialValidity(bufArg);
         testAsArray(bufArg.subList(0, 5));
@@ -219,7 +235,7 @@ public class TestBuffer {
     }
 
     @ParameterizedTest
-    @MethodSource("generateWrapped")
+    @MethodSource("provideWrappedArgs")
     public void testWrapCopyOfRange(BufArg bufArg) {
         testInitialValidity(bufArg);
         testAsArray(bufArg.copyOfRange(0, 5));
@@ -227,15 +243,203 @@ public class TestBuffer {
         testAsArray(bufArg.copyOfRange(3, 5));
         testAsArray(bufArg.copyOfRange(3, 4));
         testAsArray(bufArg.copyOfRange(3, 3));
+        testAsArray(bufArg.copyOfRange(0, bufArg.initialSize));
     }
 
-    public static Stream<BufArg> generateWrapped() {
+    public static Stream<BufArg> provideWrappedArgs() {
         byte[] source = new byte[] {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
         return Stream.of(
-                new BufArg("0-len", Buf.wrap(source), source.length, source),
-                new BufArg("2-len", Buf.wrap(source, 2, source.length), source.length - 2, Arrays.copyOfRange(source, 2, source.length)),
-                new BufArg("2-9", Buf.wrap(source, 2, 9), 9 - 2, Arrays.copyOfRange(source, 2, 9)),
-                new BufArg("0-9", Buf.wrap(source, 0, 9), 9, Arrays.copyOfRange(source, 0, 9))
+                new BufArg("0-len", Buf.wrap(source.clone()), source.length, source.clone()),
+                new BufArg("2-len", Buf.wrap(source.clone(), 2, source.length), source.length - 2, Arrays.copyOfRange(source, 2, source.length)),
+                new BufArg("2-9", Buf.wrap(source.clone(), 2, 9), 9 - 2, Arrays.copyOfRange(source, 2, 9)),
+                new BufArg("0-9", Buf.wrap(source.clone(), 0, 9), 9, Arrays.copyOfRange(source, 0, 9))
         );
+    }
+
+    @ParameterizedTest
+    @MethodSource
+    public void testLongs(BufArg bufArg) {
+        var long1 = bufArg.b.getLong(0);
+        assertEquals(Longs.fromByteArray(bufArg.initialContent), long1);
+        var long2 = bufArg.b.getLong(Long.BYTES);
+        assertEquals(Longs.fromByteArray(Arrays.copyOfRange(bufArg.initialContent, Long.BYTES, Long.BYTES * 2)), long2);
+
+        var expected1 = long1 + 1;
+        bufArg.b.setLong(0, expected1);
+        var expected2 = long2 + 1;
+        bufArg.b.setLong(Long.BYTES, expected2);
+        assertEquals(expected1, bufArg.b.getLong(0));
+        assertEquals(expected2, bufArg.b.getLong(Long.BYTES));
+    }
+
+    public static Stream<BufArg> testLongs() {
+        return provideBufs().filter(ba -> ba.initialSize >= Long.BYTES * 2);
+    }
+
+    @ParameterizedTest
+    @MethodSource
+    public void testInts(BufArg bufArg) {
+        var ib = ByteBuffer.wrap(bufArg.initialContent).asIntBuffer();
+        var int1 = bufArg.b.getInt(0);
+        assertEquals(ib.get(0), int1);
+        var int2 = bufArg.b.getInt(Integer.BYTES);
+        assertEquals(ib.get(1), int2);
+
+        var expected1 = int1 + 1;
+        bufArg.b.setInt(0, expected1);
+        var expected2 = int2 + 1;
+        bufArg.b.setInt(Integer.BYTES, expected2);
+        assertEquals(expected1, bufArg.b.getInt(0));
+        assertEquals(expected2, bufArg.b.getInt(Integer.BYTES));
+    }
+
+    public static Stream<BufArg> testInts() {
+        return provideBufs().filter(ba -> ba.initialSize >= Integer.BYTES * 2);
+    }
+
+    @ParameterizedTest
+    @MethodSource
+    public void testDoubles(BufArg bufArg) {
+        var ib = ByteBuffer.wrap(bufArg.initialContent).asDoubleBuffer();
+        var double1 = bufArg.b.getDouble(0);
+        assertEquals(ib.get(0), double1);
+        var double2 = bufArg.b.getDouble(Double.BYTES);
+        assertEquals(ib.get(1), double2);
+
+        var expected1 = double1 + 1;
+        bufArg.b.setDouble(0, expected1);
+        var expected2 = double2 + 1;
+        bufArg.b.setDouble(Double.BYTES, expected2);
+        assertEquals(expected1, bufArg.b.getDouble(0));
+        assertEquals(expected2, bufArg.b.getDouble(Double.BYTES));
+    }
+
+    public static Stream<BufArg> testDoubles() {
+        return provideBufs().filter(ba -> ba.initialSize >= Double.BYTES * 2);
+    }
+
+    @ParameterizedTest
+    @MethodSource
+    public void testFloats(BufArg bufArg) {
+        var ib = ByteBuffer.wrap(bufArg.initialContent).asFloatBuffer();
+        var float1 = bufArg.b.getFloat(0);
+        assertEquals(ib.get(0), float1);
+        var float2 = bufArg.b.getFloat(Float.BYTES);
+        assertEquals(ib.get(1), float2);
+
+        var expected1 = float1 + 1;
+        bufArg.b.setFloat(0, expected1);
+        var expected2 = float2 + 1;
+        bufArg.b.setFloat(Float.BYTES, expected2);
+        assertEquals(expected1, bufArg.b.getFloat(0));
+        assertEquals(expected2, bufArg.b.getFloat(Float.BYTES));
+    }
+
+    public static Stream<BufArg> testFloats() {
+        return provideBufs().filter(ba -> ba.initialSize >= Float.BYTES * 2);
+    }
+
+    @ParameterizedTest
+    @MethodSource
+    public void testBooleans(BufArg bufArg) {
+        var boolean1 = bufArg.b.getBoolean(0);
+        assertEquals(bufArg.initialContent[0] != 0, boolean1);
+        var boolean2 = bufArg.b.getBoolean(1);
+        assertEquals(bufArg.initialContent[1] != 0, boolean2);
+
+        var expected1 = !boolean1;
+        bufArg.b.setBoolean(0, expected1);
+        var expected2 = !boolean2;
+        bufArg.b.setBoolean(1, expected2);
+        assertEquals(expected1, bufArg.b.getBoolean(0));
+        assertEquals(expected2, bufArg.b.getBoolean(1));
+    }
+
+    public static Stream<BufArg> testBooleans() {
+        return provideBufs().filter(ba -> ba.initialSize >= 2);
+    }
+
+    @ParameterizedTest
+    @MethodSource
+    public void testBytes(BufArg bufArg) {
+        var byte1 = bufArg.b.getByte(0);
+        assertEquals(bufArg.initialContent[0], byte1);
+        var byte2 = bufArg.b.getByte(1);
+        assertEquals(bufArg.initialContent[1], byte2);
+        var byte3 = bufArg.b.getByte(bufArg.initialSize - 1);
+        assertEquals(bufArg.initialContent[bufArg.initialSize - 1], byte3);
+
+        var expected1 = (byte) (byte1 + 1);
+        bufArg.b.setByte(0, expected1);
+        var expected2 = (byte) (byte2 + 1);
+        bufArg.b.setByte(1, expected2);
+        var expected3 = (byte) (byte3 + 1);
+        bufArg.b.setByte(bufArg.initialSize - 1, expected3);
+        assertEquals(expected1, bufArg.b.getByte(0));
+        assertEquals(expected2, bufArg.b.getByte(1));
+        assertEquals(expected3, bufArg.b.getByte(bufArg.initialSize - 1));
+    }
+
+    public static Stream<BufArg> testBytes() {
+        return provideBufs().filter(ba -> ba.initialSize >= 2);
+    }
+
+    @ParameterizedTest
+    @MethodSource("provideBufs")
+    public void testString(BufArg bufArg) {
+        var s = new String(bufArg.b.toByteArray(), StandardCharsets.UTF_8);
+        assertEquals(s, bufArg.b.toString(StandardCharsets.UTF_8));
+    }
+
+    @ParameterizedTest
+    @MethodSource("provideBufs")
+    public void testBufBinaryOutputStream(BufArg bufArg) {
+        testBinaryOutputStream(bufArg.b.binaryOutputStream());
+        testBinaryOutputStream(bufArg.b.binaryOutputStream(0));
+        testBinaryOutputStream(bufArg.b.binaryOutputStream(0, 0));
+        if (bufArg.initialSize > 10) {
+            testBinaryOutputStream(bufArg.b.binaryOutputStream(0, 1));
+            testBinaryOutputStream(bufArg.b.binaryOutputStream(5));
+            testBinaryOutputStream(bufArg.b.binaryOutputStream(10));
+            testBinaryOutputStream(bufArg.b.binaryOutputStream(11));
+            testBinaryOutputStream(bufArg.b.binaryOutputStream(0, bufArg.initialSize));
+            testBinaryOutputStream(bufArg.b.binaryOutputStream(bufArg.initialSize, bufArg.initialSize));
+        }
+    }
+
+    private void testBinaryOutputStream(SafeByteArrayOutputStream bos) {
+
+    }
+
+    @Test
+    public void testByteListBufConstructor() {
+        ByteListBuf blb1 = new ByteListBuf();
+        blb1.add((byte) 0);
+        blb1.add((byte) 1);
+        blb1.add((byte) 2);
+        blb1.add((byte) 3);
+
+        ByteListBuf blb2 = new ByteListBuf(List.of((byte) 0, (byte) 1, (byte) 2, (byte) 3));
+
+        ByteListBuf blb3 = new ByteListBuf(ByteCollections.unmodifiable(ByteList.of((byte) 0, (byte) 1, (byte) 2, (byte) 3)));
+
+        ByteListBuf blb4 = new ByteListBuf(ByteList.of((byte) 0, (byte) 1, (byte) 2, (byte) 3));
+
+        ByteListBuf blb5 = new ByteListBuf(new byte[] {(byte) 0, (byte) 1, (byte) 2, (byte) 3});
+
+        ByteListBuf blb6 = new ByteListBuf(new byte[] {(byte) -1, (byte) 0, (byte) 1, (byte) 2, (byte) 3, (byte) 4, (byte) 5, (byte) 6}, 1, 4);
+
+        ByteListBuf blb7 = new ByteListBuf(List.of((byte) 0, (byte) 1, (byte) 2, (byte) 3).iterator());
+
+        ByteListBuf blb8 = new ByteListBuf(ByteList.of((byte) 0, (byte) 1, (byte) 2, (byte) 3).iterator());
+
+        assertEquals(blb1, blb2);
+        assertEquals(blb1, blb3);
+        assertEquals(blb1, blb4);
+        assertEquals(blb1, blb5);
+        assertEquals(blb1, blb6);
+        assertEquals(blb1, blb7);
+        assertEquals(blb1, blb8);
+
     }
 }
