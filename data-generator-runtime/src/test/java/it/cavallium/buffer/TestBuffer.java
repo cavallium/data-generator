@@ -54,13 +54,13 @@ public class TestBuffer {
         }
     }
 
-    static Stream<BufArg> provideBufs() {
+    public static Stream<BufArg> provideBufs() {
         List<BufArg> primaryBufs = createPrimaryBufs();
         List<BufArg> subListBufs = createSubListBufs();
         return Stream.concat(primaryBufs.stream(), subListBufs.stream());
     }
 
-    private static List<BufArg> createPrimaryBufs() {
+    public static List<BufArg> createPrimaryBufs() {
         var emptyBuf = new BufArg("create()", Buf.create(), 0, new byte[0]);
         var def0Buf = new BufArg("create(0)", Buf.create(0), 0, new byte[0]);
         var def10Buf = new BufArg("create(10)", Buf.create(10), 0, new byte[0]);
@@ -103,7 +103,7 @@ public class TestBuffer {
                 wrapSmallCappedRangeLen, wrapBigCappedRangeLen);
     }
 
-    private static List<BufArg> createSubListBufs() {
+    public static List<BufArg> createSubListBufs() {
         var sameSizeArgs = createPrimaryBufs().stream().filter(b -> b.initialSize > 0).map(bufArg -> new BufArg(bufArg.name + ".subList(0, same)", bufArg.b.subList(0, bufArg.initialSize), bufArg.initialSize, bufArg.initialContent)).toList();
         var firstHalfArgs = createPrimaryBufs().stream().filter(b -> b.initialSize > 0).map(bufArg -> new BufArg(bufArg.name + ".subList(0, half)", bufArg.b.subList(0, bufArg.initialSize/2), bufArg.initialSize/2, Arrays.copyOfRange(bufArg.initialContent, 0, bufArg.initialSize/2))).toList();
         var lastHalfArgs = createPrimaryBufs().stream().filter(b -> b.initialSize > 0).map(bufArg -> new BufArg(bufArg.name + ".subList(half, same)", bufArg.b.subList(bufArg.initialSize/2, bufArg.initialSize), bufArg.initialSize - bufArg.initialSize/2, Arrays.copyOfRange(bufArg.initialContent, bufArg.initialSize/2, bufArg.initialSize))).toList();
