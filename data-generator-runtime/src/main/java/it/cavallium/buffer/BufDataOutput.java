@@ -5,9 +5,12 @@ import it.cavallium.stream.SafeDataOutput;
 import it.cavallium.stream.SafeDataOutputStream;
 import it.unimi.dsi.fastutil.Arrays;
 import java.io.IOException;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 import org.jetbrains.annotations.NotNull;
+
+import static java.util.Objects.checkFromToIndex;
 
 public class BufDataOutput implements SafeDataOutput {
 
@@ -60,7 +63,7 @@ public class BufDataOutput implements SafeDataOutput {
 	}
 
 	public static BufDataOutput wrap(Buf buf, int from, int to) {
-		Arrays.ensureFromTo(buf.size(), from, to);
+		checkFromToIndex(from, to, buf.size());
 		if (buf.isEmpty()) {
 			return createLimited(0);
 		} else {
@@ -201,14 +204,28 @@ public class BufDataOutput implements SafeDataOutput {
 				+ actualLength + " bytes";
 	}
 
+	@Deprecated
 	@Override
 	public void writeUTF(@NotNull String str) {
-		var out = str.getBytes(StandardCharsets.UTF_8);
+		writeShortText(str, StandardCharsets.UTF_8);
+	}
+
+	@Override
+	public void writeShortText(String s, Charset charset) {
+		var out = s.getBytes(charset);
 		if (out.length > Short.MAX_VALUE) {
 			throw new IndexOutOfBoundsException("String too long: " + out.length + " bytes");
 		}
 		checkOutOfBounds(Short.BYTES + out.length);
 		dOut.writeShort(out.length);
+		dOut.write(out);
+	}
+
+	@Override
+	public void writeMediumText(String s, Charset charset) {
+		var out = s.getBytes(charset);
+		checkOutOfBounds(Integer.BYTES + out.length);
+		dOut.writeInt(out.length);
 		dOut.write(out);
 	}
 

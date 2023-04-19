@@ -1,5 +1,8 @@
 package it.cavallium.stream;
 
+import it.cavallium.buffer.IgnoreCoverage;
+import org.jetbrains.annotations.NotNull;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -20,11 +23,12 @@ public abstract class SafeInputStream extends InputStream {
 	@Override
 	public abstract int read();
 
-	public int read(byte b[]) {
+	public int read(byte @NotNull [] b) {
 		return read(b, 0, b.length);
 	}
 
-	public int read(byte b[], int off, int len) {
+	@IgnoreCoverage
+	public int read(byte[] b, int off, int len) {
 		Objects.checkFromIndexSize(off, len, b.length);
 		if (len == 0) {
 			return 0;
@@ -34,15 +38,16 @@ public abstract class SafeInputStream extends InputStream {
 		if (c == -1) {
 			return -1;
 		}
-		b[off] = (byte)c;
+		b[off] = (byte) c;
 
 		int i = 1;
-		for (; i < len ; i++) {
+		while (i < len) {
 			c = read();
 			if (c == -1) {
 				break;
 			}
-			b[off + i] = (byte)c;
+			b[off + i] = (byte) c;
+			i++;
 		}
 		return i;
 	}
@@ -53,47 +58,49 @@ public abstract class SafeInputStream extends InputStream {
 
 	private static final int MAX_BUFFER_SIZE = Integer.MAX_VALUE - 8;
 
+	@IgnoreCoverage
 	public byte[] readNBytes(int len) {
 		if (len < 0) {
 			throw new IllegalArgumentException("len < 0");
 		}
 
-		List<byte[]> bufs = null;
+		List<byte[]> buffers = null;
 		byte[] result = null;
 		int total = 0;
 		int remaining = len;
 		int n;
+		//noinspection NonStrictComparisonCanBeEquality
 		do {
 			byte[] buf = new byte[Math.min(remaining, DEFAULT_BUFFER_SIZE)];
-			int nread = 0;
+			int numRead = 0;
 
 			// read to EOF which may read more or less than buffer size
-			while ((n = read(buf, nread,
-					Math.min(buf.length - nread, remaining))) > 0) {
-				nread += n;
+			while ((n = read(buf, numRead,
+					Math.min(buf.length - numRead, remaining))) > 0) {
+				numRead += n;
 				remaining -= n;
 			}
 
-			if (nread > 0) {
-				if (MAX_BUFFER_SIZE - total < nread) {
+			if (numRead > 0) {
+				if (MAX_BUFFER_SIZE - total < numRead) {
 					throw new OutOfMemoryError("Required array size too large");
 				}
-				total += nread;
+				total += numRead;
 				if (result == null) {
 					result = buf;
 				} else {
-					if (bufs == null) {
-						bufs = new ArrayList<>();
-						bufs.add(result);
+					if (buffers == null) {
+						buffers = new ArrayList<>();
+						buffers.add(result);
 					}
-					bufs.add(buf);
+					buffers.add(buf);
 				}
 			}
 			// if the last call to read returned -1 or the number of bytes
 			// requested have been read then break
 		} while (n >= 0 && remaining > 0);
 
-		if (bufs == null) {
+		if (buffers == null) {
 			if (result == null) {
 				return new byte[0];
 			}
@@ -104,7 +111,7 @@ public abstract class SafeInputStream extends InputStream {
 		result = new byte[total];
 		int offset = 0;
 		remaining = total;
-		for (byte[] b : bufs) {
+		for (byte[] b : buffers) {
 			int count = Math.min(b.length, remaining);
 			System.arraycopy(b, 0, result, offset, count);
 			offset += count;
@@ -155,6 +162,7 @@ public abstract class SafeInputStream extends InputStream {
 	public void skipNBytes(long n) {
 		if (n > 0) {
 			long ns = skip(n);
+			//noinspection ConstantValue
 			if (ns >= 0 && ns < n) { // skipped too few bytes
 				// adjust number to skip
 				n -= ns;
@@ -162,7 +170,7 @@ public abstract class SafeInputStream extends InputStream {
 				while (n > 0 && read() != -1) {
 					n--;
 				}
-				// if not enough skipped, then EOFE
+				// if not enough skipped, then EOF E
 				if (n != 0) {
 					throw new IndexOutOfBoundsException();
 				}
@@ -172,20 +180,17 @@ public abstract class SafeInputStream extends InputStream {
 		}
 	}
 
+	@IgnoreCoverage
 	public int available() {
 		return 0;
 	}
-	
+
+	@IgnoreCoverage
 	public void close() {}
 
-	public void mark(int readlimit) {}
-
+	@IgnoreCoverage
 	public void reset() {
 		throw new UnsupportedOperationException("mark/reset not supported");
-	}
-	
-	public boolean markSupported() {
-		return false;
 	}
 
 	public long transferTo(OutputStream out) {

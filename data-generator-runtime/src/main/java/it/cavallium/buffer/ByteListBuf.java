@@ -1,33 +1,29 @@
 package it.cavallium.buffer;
 
 import static it.unimi.dsi.fastutil.Arrays.ensureFromTo;
+import static java.util.Objects.checkFromToIndex;
 
 import it.cavallium.stream.SafeByteArrayInputStream;
 import it.cavallium.stream.SafeByteArrayOutputStream;
 import it.cavallium.stream.SafeDataOutput;
-import it.unimi.dsi.fastutil.bytes.AbstractByteList;
-import it.unimi.dsi.fastutil.bytes.ByteArrayList;
-import it.unimi.dsi.fastutil.bytes.ByteArrays;
-import it.unimi.dsi.fastutil.bytes.ByteCollection;
-import it.unimi.dsi.fastutil.bytes.ByteConsumer;
-import it.unimi.dsi.fastutil.bytes.ByteIterator;
-import it.unimi.dsi.fastutil.bytes.ByteIterators;
-import it.unimi.dsi.fastutil.bytes.ByteList;
-import it.unimi.dsi.fastutil.bytes.ByteListIterator;
-import it.unimi.dsi.fastutil.bytes.ByteSpliterator;
-import it.unimi.dsi.fastutil.bytes.ByteSpliterators;
+import it.unimi.dsi.fastutil.bytes.*;
+
 import java.io.Serial;
 import java.nio.charset.Charset;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Iterator;
-import java.util.NoSuchElementException;
+import java.util.*;
+import java.util.function.IntPredicate;
+import java.util.function.IntUnaryOperator;
+import java.util.function.Predicate;
+import java.util.function.UnaryOperator;
+
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.VisibleForTesting;
 
 class ByteListBuf extends ByteArrayList implements Buf {
 
-	private boolean mutable = true;
+	private static final String IMMUTABLE_ERROR = "The buffer is immutable";
+	private boolean immutable;
 
 	protected ByteListBuf(byte[] a, boolean wrapped) {
 		super(a, wrapped);
@@ -151,19 +147,24 @@ class ByteListBuf extends ByteArrayList implements Buf {
 
 	@Override
 	public boolean isMutable() {
-		return mutable;
+		return !immutable;
 	}
 
 	@Override
 	public ByteListBuf freeze() {
-		mutable = false;
+		immutable = true;
 		return this;
 	}
 
 	@Override
 	public Buf subList(int from, int to) {
 		if (from == 0 && to == size()) return this;
-		ensureFromTo(this.size(), from, to);
+		return subListForced(from, to);
+	}
+
+	@VisibleForTesting
+	public Buf subListForced(int from, int to) {
+		checkFromToIndex(from, to, this.size());
 		return new SubList(from, to);
 	}
 
@@ -193,12 +194,15 @@ class ByteListBuf extends ByteArrayList implements Buf {
 
 	@Override
 	public SafeByteArrayOutputStream binaryOutputStream(int from, int to) {
-		ensureFromTo(size, from, to);
+		checkFromToIndex(from, to, size);
 		return new SafeByteArrayOutputStream(a, from, to);
 	}
 
 	@Override
 	public boolean equals(int aStartIndex, Buf b, int bStartIndex, int length) {
+		if (aStartIndex + length > size()) {
+			return false;
+		}
 		return b.equals(bStartIndex, this.a, aStartIndex, length);
 	}
 
@@ -206,6 +210,9 @@ class ByteListBuf extends ByteArrayList implements Buf {
 	public boolean equals(int aStartIndex, byte[] b, int bStartIndex, int length) {
 		if (aStartIndex < 0) return false;
 		if (aStartIndex + length > this.size) {
+			return false;
+		}
+		if (bStartIndex + length > b.length) {
 			return false;
 		}
 		return Arrays.equals(a, aStartIndex, aStartIndex + length, b, bStartIndex, bStartIndex + length);
@@ -227,13 +234,21 @@ class ByteListBuf extends ByteArrayList implements Buf {
 		// Most of the inherited methods should be fine, but we can override a few of them for performance.
 		// Needed because we can't access the parent class' instance variables directly in a different
 		// instance of SubList.
+		@IgnoreCoverage
 		private byte[] getParentArray() {
 			return a;
 		}
 
 		@Override
 		public @NotNull Buf subList(int from, int to) {
-			ensureFromTo(this.to, from, to);
+			// Sadly we have to rewrap this, because if there is a sublist of a sublist, and the
+			// subsublist adds, both sublists need to update their "to" value.
+			return subListForced(from, to);
+		}
+
+		@Override
+		public Buf subListForced(int from, int to) {
+			checkFromToIndex(from, to, this.to);
 			var fromAbs = this.from + from;
 			var toAbs = this.from + to;
 			// Sadly we have to rewrap this, because if there is a sublist of a sublist, and the
@@ -267,12 +282,15 @@ class ByteListBuf extends ByteArrayList implements Buf {
 
 		@Override
 		public SafeByteArrayOutputStream binaryOutputStream(int from, int to) {
-			ensureFromTo(size(), from, to);
+			checkFromToIndex(from, to, size());
 			return new SafeByteArrayOutputStream(a, from + this.from, to + this.from);
 		}
 
 		@Override
 		public boolean equals(int aStartIndex, Buf b, int bStartIndex, int length) {
+			if (aStartIndex + length > size()) {
+				return false;
+			}
 			return b.equals(bStartIndex, a, aStartIndex + from, length);
 		}
 
@@ -280,9 +298,11 @@ class ByteListBuf extends ByteArrayList implements Buf {
 		public boolean equals(int aStartIndex, byte[] b, int bStartIndex, int length) {
 			var aFrom = from + aStartIndex;
 			var aTo = from + aStartIndex + length;
+			var bTo = bStartIndex + length;
 			if (aFrom < from) return false;
 			if (aTo > to) return false;
-			return Arrays.equals(a, aFrom, aTo, b, bStartIndex, bStartIndex + length);
+			if (bTo > b.length) return false;
+			return Arrays.equals(a, aFrom, aTo, b, bStartIndex, bTo);
 		}
 
 		@Override
@@ -329,12 +349,12 @@ class ByteListBuf extends ByteArrayList implements Buf {
 
 		@Override
 		public boolean isMutable() {
-			return mutable;
+			return ByteListBuf.this.isMutable();
 		}
 
 		@Override
 		public SubList freeze() {
-			mutable = false;
+			immutable = true;
 			return this;
 		}
 
@@ -345,23 +365,30 @@ class ByteListBuf extends ByteArrayList implements Buf {
 				super(0, index);
 			}
 
+			@IgnoreCoverage
 			@Override
 			protected byte get(int i) {
-				return a[from + i];
+				return ByteListBuf.SubList.this.getByte(i);
 			}
 
+			@IgnoreCoverage
 			@Override
 			protected void add(int i, byte k) {
+				assert isMutable() : IMMUTABLE_ERROR;
 				ByteListBuf.SubList.this.add(i, k);
 			}
 
+			@IgnoreCoverage
 			@Override
 			protected void set(int i, byte k) {
+				assert isMutable() : IMMUTABLE_ERROR;
 				ByteListBuf.SubList.this.set(i, k);
 			}
 
+			@IgnoreCoverage
 			@Override
 			protected void remove(int i) {
+				assert isMutable() : IMMUTABLE_ERROR;
 				ByteListBuf.SubList.this.removeByte(i);
 			}
 
@@ -411,6 +438,7 @@ class ByteListBuf extends ByteArrayList implements Buf {
 				return to;
 			}
 
+			@IgnoreCoverage
 			@Override
 			protected byte get(int i) {
 				return a[i];
@@ -480,6 +508,338 @@ class ByteListBuf extends ByteArrayList implements Buf {
 		@Override
 		public String toString(Charset charset) {
 			return new String(a, from, size(), charset);
+		}
+	}
+
+	@IgnoreCoverage
+	@Override
+	public void add(int index, byte k) {
+		assert isMutable() : IMMUTABLE_ERROR;
+		super.add(index, k);
+	}
+
+	@IgnoreCoverage
+	@Override
+	public boolean add(byte k) {
+		assert isMutable() : IMMUTABLE_ERROR;
+		return super.add(k);
+	}
+
+	@IgnoreCoverage
+	@Override
+	public byte removeByte(int index) {
+		assert isMutable() : IMMUTABLE_ERROR;
+		return super.removeByte(index);
+	}
+
+	@IgnoreCoverage
+	@Override
+	public boolean rem(byte k) {
+		assert isMutable() : IMMUTABLE_ERROR;
+		return super.rem(k);
+	}
+
+	@IgnoreCoverage
+	@Override
+	public byte set(int index, byte k) {
+		assert isMutable() : IMMUTABLE_ERROR;
+		return super.set(index, k);
+	}
+
+	@IgnoreCoverage
+	@Override
+	public void clear() {
+		assert isMutable() : IMMUTABLE_ERROR;
+		super.clear();
+	}
+
+	@IgnoreCoverage
+	@Override
+	public void trim() {
+		assert isMutable() : IMMUTABLE_ERROR;
+		super.trim();
+	}
+
+	@IgnoreCoverage
+	@Override
+	public void trim(int n) {
+		assert isMutable() : IMMUTABLE_ERROR;
+		super.trim(n);
+	}
+
+	@IgnoreCoverage
+	@Override
+	public void removeElements(int from, int to) {
+		assert isMutable() : IMMUTABLE_ERROR;
+		super.removeElements(from, to);
+	}
+
+	@IgnoreCoverage
+	@Override
+	public void addElements(int index, byte[] a, int offset, int length) {
+		assert isMutable() : IMMUTABLE_ERROR;
+		super.addElements(index, a, offset, length);
+	}
+
+	@IgnoreCoverage
+	@Override
+	public void setElements(int index, byte[] a, int offset, int length) {
+		assert isMutable() : IMMUTABLE_ERROR;
+		super.setElements(index, a, offset, length);
+	}
+
+	@IgnoreCoverage
+	@Override
+	public boolean addAll(int index, ByteCollection c) {
+		assert isMutable() : IMMUTABLE_ERROR;
+		return super.addAll(index, c);
+	}
+
+	@IgnoreCoverage
+	@Override
+	public boolean addAll(int index, ByteList l) {
+		assert isMutable() : IMMUTABLE_ERROR;
+		return super.addAll(index, l);
+	}
+
+	@IgnoreCoverage
+	@Override
+	public boolean removeAll(ByteCollection c) {
+		assert isMutable() : IMMUTABLE_ERROR;
+		return super.removeAll(c);
+	}
+
+	@IgnoreCoverage
+	@Override
+	public boolean addAll(int index, @NotNull Collection<? extends Byte> c) {
+		assert isMutable() : IMMUTABLE_ERROR;
+		return super.addAll(index, c);
+	}
+
+	@IgnoreCoverage
+	@Override
+	public boolean addAll(@NotNull Collection<? extends Byte> c) {
+		assert isMutable() : IMMUTABLE_ERROR;
+		return super.addAll(c);
+	}
+
+	@IgnoreCoverage
+	@Override
+	public void addElements(int index, byte[] a) {
+		assert isMutable() : IMMUTABLE_ERROR;
+		super.addElements(index, a);
+	}
+
+	@IgnoreCoverage
+	@Override
+	public void push(byte o) {
+		assert isMutable() : IMMUTABLE_ERROR;
+		super.push(o);
+	}
+
+	@IgnoreCoverage
+	@Override
+	public byte popByte() {
+		assert isMutable() : IMMUTABLE_ERROR;
+		return super.popByte();
+	}
+
+	@IgnoreCoverage
+	@Override
+	public byte topByte() {
+		assert isMutable() : IMMUTABLE_ERROR;
+		return super.topByte();
+	}
+
+	@IgnoreCoverage
+	@Override
+	public boolean addAll(ByteCollection c) {
+		assert isMutable() : IMMUTABLE_ERROR;
+		return super.addAll(c);
+	}
+
+	@IgnoreCoverage
+	@SuppressWarnings("deprecation")
+	@Deprecated
+	@Override
+	public boolean add(Byte key) {
+		assert isMutable() : IMMUTABLE_ERROR;
+		return super.add(key);
+	}
+
+	@IgnoreCoverage
+	@SuppressWarnings("deprecation")
+	@Deprecated
+	@Override
+	public boolean remove(Object key) {
+		assert isMutable() : IMMUTABLE_ERROR;
+		return super.remove(key);
+	}
+
+	@IgnoreCoverage
+	@Override
+	public boolean removeAll(@NotNull Collection<?> c) {
+		assert isMutable() : IMMUTABLE_ERROR;
+		return super.removeAll(c);
+	}
+
+	@IgnoreCoverage
+	@Override
+	public boolean retainAll(ByteCollection c) {
+		assert isMutable() : IMMUTABLE_ERROR;
+		return super.retainAll(c);
+	}
+
+	@IgnoreCoverage
+	@Override
+	public boolean retainAll(@NotNull Collection<?> c) {
+		assert isMutable() : IMMUTABLE_ERROR;
+		return super.retainAll(c);
+	}
+
+	@IgnoreCoverage
+	@Override
+	public void setElements(byte[] a) {
+		assert isMutable() : IMMUTABLE_ERROR;
+		super.setElements(a);
+	}
+
+	@IgnoreCoverage
+	@Override
+	public void setElements(int index, byte[] a) {
+		assert isMutable() : IMMUTABLE_ERROR;
+		super.setElements(index, a);
+	}
+
+	@IgnoreCoverage
+	@SuppressWarnings("deprecation")
+	@Deprecated
+	@Override
+	public void add(int index, Byte key) {
+		assert isMutable() : IMMUTABLE_ERROR;
+		super.add(index, key);
+	}
+
+	@IgnoreCoverage
+	@Override
+	public void replaceAll(ByteUnaryOperator operator) {
+		assert isMutable() : IMMUTABLE_ERROR;
+		super.replaceAll(operator);
+	}
+
+	@IgnoreCoverage
+	@Override
+	public void replaceAll(IntUnaryOperator operator) {
+		assert isMutable() : IMMUTABLE_ERROR;
+		super.replaceAll(operator);
+	}
+
+	@IgnoreCoverage
+	@SuppressWarnings("deprecation")
+	@Deprecated
+	@Override
+	public void replaceAll(UnaryOperator<Byte> operator) {
+		assert isMutable() : IMMUTABLE_ERROR;
+		super.replaceAll(operator);
+	}
+
+	@IgnoreCoverage
+	@SuppressWarnings("deprecation")
+	@Deprecated
+	@Override
+	public Byte remove(int index) {
+		assert isMutable() : IMMUTABLE_ERROR;
+		return super.remove(index);
+	}
+
+	@IgnoreCoverage
+	@SuppressWarnings("deprecation")
+	@Deprecated
+	@Override
+	public Byte set(int index, Byte k) {
+		assert isMutable() : IMMUTABLE_ERROR;
+		return super.set(index, k);
+	}
+
+	@IgnoreCoverage
+	@Override
+	public boolean addAll(ByteList l) {
+		assert isMutable() : IMMUTABLE_ERROR;
+		return super.addAll(l);
+	}
+
+	@IgnoreCoverage
+	@SuppressWarnings("deprecation")
+	@Deprecated
+	@Override
+	public void sort(Comparator<? super Byte> comparator) {
+		assert isMutable() : IMMUTABLE_ERROR;
+		super.sort(comparator);
+	}
+
+	@IgnoreCoverage
+	@SuppressWarnings("deprecation")
+	@Deprecated
+	@Override
+	public void unstableSort(Comparator<? super Byte> comparator) {
+		assert isMutable() : IMMUTABLE_ERROR;
+		super.unstableSort(comparator);
+	}
+
+	@IgnoreCoverage
+	@SuppressWarnings("deprecation")
+	@Deprecated
+	@Override
+	public boolean removeIf(Predicate<? super Byte> filter) {
+		assert isMutable() : IMMUTABLE_ERROR;
+		return super.removeIf(filter);
+	}
+
+	@IgnoreCoverage
+	@Override
+	public boolean removeIf(BytePredicate filter) {
+		assert isMutable() : IMMUTABLE_ERROR;
+		return super.removeIf(filter);
+	}
+
+	@IgnoreCoverage
+	@Override
+	public boolean removeIf(IntPredicate filter) {
+		assert isMutable() : IMMUTABLE_ERROR;
+		return super.removeIf(filter);
+	}
+
+	@IgnoreCoverage
+	@SuppressWarnings("deprecation")
+	@Deprecated
+	@Override
+	public void push(Byte o) {
+		assert isMutable() : IMMUTABLE_ERROR;
+		super.push(o);
+	}
+
+	@IgnoreCoverage
+	@SuppressWarnings("deprecation")
+	@Deprecated
+	@Override
+	public Byte pop() {
+		assert isMutable() : IMMUTABLE_ERROR;
+		return super.pop();
+	}
+
+	@IgnoreCoverage
+	@SuppressWarnings("deprecation")
+	@Deprecated
+	@Override
+	public Byte top() {
+		assert isMutable() : IMMUTABLE_ERROR;
+		return super.top();
+	}
+
+	@IgnoreCoverage
+	private void ensureMutable() {
+		if (!isMutable()) {
+			throw new UnsupportedOperationException(IMMUTABLE_ERROR);
 		}
 	}
 }

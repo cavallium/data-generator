@@ -1,5 +1,8 @@
 package it.cavallium.stream;
 
+import it.cavallium.buffer.IgnoreCoverage;
+import org.jetbrains.annotations.NotNull;
+
 import java.nio.charset.Charset;
 
 /**
@@ -23,7 +26,7 @@ public class SafeFilterInputStream extends SafeInputStream {
 	/**
 	 * The input stream to be filtered.
 	 */
-	protected volatile SafeInputStream in;
+	protected final SafeInputStream in;
 
 	/**
 	 * Creates a {@code FilterInputStream}
@@ -54,6 +57,7 @@ public class SafeFilterInputStream extends SafeInputStream {
 	 *             stream is reached.
 	 * @see        SafeFilterInputStream#in
 	 */
+	@IgnoreCoverage
 	public int read() {
 		return in.read();
 	}
@@ -77,7 +81,8 @@ public class SafeFilterInputStream extends SafeInputStream {
 	 *             the stream has been reached.
 	 * @see        SafeFilterInputStream#read(byte[], int, int)
 	 */
-	public int read(byte b[]) {
+	@IgnoreCoverage
+	public int read(byte @NotNull [] b) {
 		return read(b, 0, b.length);
 	}
 
@@ -102,7 +107,8 @@ public class SafeFilterInputStream extends SafeInputStream {
 	 *             {@code b.length - off}
 	 * @see        SafeFilterInputStream#in
 	 */
-	public int read(byte b[], int off, int len) {
+	@IgnoreCoverage
+	public final int read(byte[] b, int off, int len) {
 		return in.read(b, off, len);
 	}
 
@@ -118,7 +124,8 @@ public class SafeFilterInputStream extends SafeInputStream {
 	 * @param      n   the number of bytes to be skipped.
 	 * @return     the actual number of bytes skipped.
 	 */
-	public long skip(long n) {
+	@IgnoreCoverage
+	public final long skip(long n) {
 		return in.skip(n);
 	}
 
@@ -134,7 +141,8 @@ public class SafeFilterInputStream extends SafeInputStream {
 	 * @return     an estimate of the number of bytes that can be read (or skipped
 	 *             over) from this input stream without blocking.
 	 */
-	public int available() {
+	@IgnoreCoverage
+	public final int available() {
 		return in.available();
 	}
 
@@ -146,6 +154,7 @@ public class SafeFilterInputStream extends SafeInputStream {
 	 *
 	 * @see        SafeFilterInputStream#in
 	 */
+	@IgnoreCoverage
 	public void close() {
 		in.close();
 	}
@@ -166,6 +175,7 @@ public class SafeFilterInputStream extends SafeInputStream {
 	 * @see     SafeFilterInputStream#in
 	 * @see     SafeFilterInputStream#reset()
 	 */
+	@IgnoreCoverage
 	public void mark(int readlimit) {
 		in.mark(readlimit);
 	}
@@ -189,6 +199,7 @@ public class SafeFilterInputStream extends SafeInputStream {
 	 * @see        SafeFilterInputStream#in
 	 * @see        SafeFilterInputStream#mark(int)
 	 */
+	@IgnoreCoverage
 	public void reset() {
 		in.reset();
 	}
@@ -206,10 +217,12 @@ public class SafeFilterInputStream extends SafeInputStream {
 	 * @see     java.io.InputStream#mark(int)
 	 * @see     java.io.InputStream#reset()
 	 */
+	@IgnoreCoverage
 	public boolean markSupported() {
 		return in.markSupported();
 	}
 
+	@IgnoreCoverage
 	@Override
 	public String readString(int length, Charset charset) {
 		return in.readString(length, charset);

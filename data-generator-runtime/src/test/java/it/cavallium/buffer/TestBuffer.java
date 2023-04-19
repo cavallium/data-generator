@@ -1,22 +1,20 @@
 package it.cavallium.buffer;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 import com.google.common.primitives.Longs;
+import it.cavallium.stream.SafeByteArrayInputStream;
 import it.cavallium.stream.SafeByteArrayOutputStream;
-import it.unimi.dsi.fastutil.bytes.ByteArrayList;
-import it.unimi.dsi.fastutil.bytes.ByteCollections;
-import it.unimi.dsi.fastutil.bytes.ByteList;
+import it.cavallium.stream.SafeDataOutputStream;
+import it.unimi.dsi.fastutil.bytes.*;
+
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
-import java.util.HexFormat;
-import java.util.List;
+import java.util.*;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -121,9 +119,10 @@ public class TestBuffer {
 
     public static List<BufArg> createSubListBufs() {
         var sameSizeArgs = createPrimaryBufs().stream().filter(b -> b.initialSize > 0).map(bufArg -> new BufArg(bufArg.name + ".subList(0, same)", bufArg.b.subList(0, bufArg.initialSize), bufArg.initialSize, bufArg.initialContent)).toList();
+        var sameSizeArgsBug = createPrimaryBufs().stream().filter(b -> b.initialSize > 0).map(bufArg -> new BufArg(bufArg.name + ".subList(0, same)", bufArg.b.subListForced(0, bufArg.initialSize), bufArg.initialSize, bufArg.initialContent)).toList();
         var firstHalfArgs = createPrimaryBufs().stream().filter(b -> b.initialSize > 0).map(bufArg -> new BufArg(bufArg.name + ".subList(0, half)", bufArg.b.subList(0, bufArg.initialSize/2), bufArg.initialSize/2, Arrays.copyOfRange(bufArg.initialContent, 0, bufArg.initialSize/2))).toList();
         var lastHalfArgs = createPrimaryBufs().stream().filter(b -> b.initialSize > 0).map(bufArg -> new BufArg(bufArg.name + ".subList(half, same)", bufArg.b.subList(bufArg.initialSize/2, bufArg.initialSize), bufArg.initialSize - bufArg.initialSize/2, Arrays.copyOfRange(bufArg.initialContent, bufArg.initialSize/2, bufArg.initialSize))).toList();
-        return Stream.concat(Stream.concat(sameSizeArgs.stream(), firstHalfArgs.stream()), lastHalfArgs.stream()).toList();
+        return Stream.concat(Stream.concat(Stream.concat(sameSizeArgs.stream(), sameSizeArgsBug.stream()), firstHalfArgs.stream()), lastHalfArgs.stream()).toList();
     }
 
     @Test
@@ -407,8 +406,145 @@ public class TestBuffer {
         }
     }
 
+    //todo:
     private void testBinaryOutputStream(SafeByteArrayOutputStream bos) {
 
+    }
+
+    @ParameterizedTest
+    @MethodSource("provideBufs")
+    public void testBinaryInputStream(BufArg bufArg) {
+        testBinaryInputStream(bufArg.b.binaryInputStream());
+    }
+
+    //todo:
+    private void testBinaryInputStream(SafeByteArrayInputStream bis) {
+
+    }
+
+    @ParameterizedTest
+    @MethodSource("provideBufs")
+    public void testWriteTo(BufArg bufArg) {
+        try (var safeBaOs = new SafeByteArrayOutputStream()) {
+            try (var safeDaOs = new SafeDataOutputStream(safeBaOs)) {
+                bufArg.b.writeTo(safeDaOs);
+            }
+            assertArrayEquals(bufArg.initialContent, safeBaOs.toByteArray());
+        }
+    }
+
+    @ParameterizedTest
+    @MethodSource("provideBufs")
+    public void testEquals(BufArg bufArg) {
+        var b2 = Buf.copyOf(bufArg.initialContent);
+        testEquals(bufArg.b, b2);
+        testEquals(b2, bufArg.b);
+    }
+
+    private void testEquals(Buf a, Buf b) {
+        assertEquals(a, b);
+        assertArrayEquals(a.toByteArray(), b.toByteArray());
+        //noinspection SimplifiableAssertion
+        assertTrue(a.equals(b.subListForced(0, b.size())));
+        //noinspection SimplifiableAssertion
+        assertTrue(a.equals(new ByteArrayList(b)));
+        //noinspection SimplifiableAssertion
+        assertTrue(a.equals(new ArrayList<>(b)));
+        assertTrue(a.equals(0, b, 0, a.size()));
+        assertTrue(a.equals(0, b.toByteArray(), 0, a.size()));
+        assertTrue(a.equals(0, b, 0, a.size() / 2));
+        assertTrue(a.equals(0, b.toByteArray(), 0, a.size() / 2));
+        if (a.size() > 5) {
+            assertTrue(a.equals(5, b, 5, a.size() - 5));
+            assertTrue(a.equals(5, b.toByteArray(), 5, a.size() - 5));
+            assertTrue(a.equals(5, b, 5, 0));
+            assertTrue(a.equals(5, b.toByteArray(), 5, 0));
+            assertFalse(a.equals(0, new byte[1], 100, 1));
+        }
+        if (a.size() >= 10) {
+            assertTrue(a.equals(5, b, 5, a.size() - 5 - 3));
+            assertTrue(a.equals(5, b.toByteArray(), 5, a.size() - 5 - 3));
+            assertFalse(a.equals(5, b.toByteArray(), 5, a.size()));
+        }
+        assertFalse(a.equals(a.size(), b, 0, 1));
+        assertFalse(a.equals(a.size(), b.toByteArray(), 0, 1));
+    }
+
+    @ParameterizedTest
+    @MethodSource("provideBufs")
+    public void testCompareTo(BufArg bufArg) {
+        if (bufArg.initialSize > 0) {
+            var bigger = Arrays.copyOf(bufArg.initialContent, bufArg.initialSize + 1);
+            assertTrue(bufArg.b.compareTo(Buf.wrap(bigger)) < 0);
+            assertTrue(bufArg.b.compareTo(Buf.wrap(bigger).subListForced(0, bigger.length)) < 0);
+            assertTrue(bufArg.b.compareTo(new ByteArrayList(bigger)) < 0);
+            var smaller = Arrays.copyOf(bufArg.initialContent, bufArg.initialSize - 1);
+            assertTrue(bufArg.b.compareTo(Buf.wrap(smaller)) > 0);
+            var equal = Arrays.copyOf(bufArg.initialContent, bufArg.initialSize);
+            assertEquals(0, bufArg.b.compareTo(Buf.wrap(equal)));
+            var bigger2 = Arrays.copyOf(bufArg.initialContent, bufArg.initialSize);
+            if (bigger2[bigger2.length - 1] < 127) {
+                bigger2[bigger2.length - 1]++;
+                assertTrue(bufArg.b.compareTo(Buf.wrap(bigger2)) < 0);
+            }
+            var smaller2 = Arrays.copyOf(bufArg.initialContent, bufArg.initialSize);
+            if (smaller2[smaller2.length - 1] > 0) {
+                smaller2[smaller2.length - 1]--;
+                assertTrue(bufArg.b.compareTo(Buf.wrap(smaller2)) > 0);
+            };
+            assertTrue(bufArg.b.compareTo(Buf.create()) > 0);
+        }
+    }
+
+    @ParameterizedTest
+    @MethodSource("provideBufs")
+    public void testIterator(BufArg bufArg) {
+        var it1 = ByteList.of(bufArg.initialContent).iterator();
+        var it2 = bufArg.b.iterator();
+        var it3 = bufArg.b.listIterator();
+        var it4 = bufArg.b.iterator();
+        while (it1.hasNext() && it2.hasNext() && it3.hasNext() && it4.hasNext()) {
+            Byte a = it1.nextByte();
+            byte b = it4.nextByte();
+            //noinspection deprecation
+            byte b2 = it2.next();
+            //noinspection deprecation
+            byte b3 = it3.next();
+            //noinspection deprecation
+            it3.previous();
+            byte b4 = it3.nextByte();
+            assertEquals(a, b);
+            assertEquals(a, b2);
+            assertEquals(a, b3);
+            assertEquals(a, b4);
+        }
+        assertFalse(it1.hasNext());
+        assertFalse(it2.hasNext());
+        assertFalse(it3.hasNext());
+        assertFalse(it4.hasNext());
+
+        // Test list iterator
+        {
+            var fei = bufArg.b.iterator();
+            LongAdder adder = new LongAdder();
+            bufArg.b.listIterator().forEachRemaining(b -> {
+                assertEquals(fei.nextByte(), b);
+                adder.increment();
+            });
+            assertEquals(bufArg.initialSize, adder.sum());
+        }
+
+        // Test list iterator with initial index
+        if (bufArg.initialSize > 0) {
+            assertEquals(bufArg.b.getByte(bufArg.initialSize - 1), bufArg.b.listIterator(bufArg.initialSize).previousByte());
+        }
+
+        // Test spliterator
+        //noinspection SimplifyStreamApiCallChains
+        assertArrayEquals(bufArg.initialContent, new ByteArrayList(StreamSupport.stream(bufArg.b.spliterator(), true).toList()).toByteArray());
+        //noinspection SimplifyStreamApiCallChains
+        assertArrayEquals(bufArg.initialContent, new ByteArrayList(StreamSupport.stream(bufArg.b.spliterator(), false).peek(c -> {}).toList()).toByteArray());
+        assertArrayEquals(bufArg.initialContent, new ByteArrayList(Spliterators.iterator(bufArg.b.spliterator())).toByteArray());
     }
 
     @Test
@@ -440,6 +576,5 @@ public class TestBuffer {
         assertEquals(blb1, blb6);
         assertEquals(blb1, blb7);
         assertEquals(blb1, blb8);
-
     }
 }

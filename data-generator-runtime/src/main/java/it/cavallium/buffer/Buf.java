@@ -9,6 +9,7 @@ import java.nio.charset.Charset;
 import java.util.RandomAccess;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.VisibleForTesting;
 
 public interface Buf extends ByteList, RandomAccess {
 	static Buf wrap(ByteList bytes) {
@@ -30,7 +31,7 @@ public interface Buf extends ByteList, RandomAccess {
 		}
 	}
 
-	static Buf wrap(byte[] bytes) {
+	static Buf wrap(byte... bytes) {
 		return ByteListBuf.wrap(bytes);
 	}
 
@@ -86,6 +87,9 @@ public interface Buf extends ByteList, RandomAccess {
 
 	@Override
 	Buf subList(int from, int to);
+
+	@VisibleForTesting
+	Buf subListForced(int from, int to);
 
 	Buf copyOfRange(int from, int to);
 

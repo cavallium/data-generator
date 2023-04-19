@@ -25,6 +25,10 @@
 
 package it.cavallium.stream;
 
+import org.jetbrains.annotations.NotNull;
+
+import java.nio.charset.Charset;
+
 /**
  * The {@code SafeDataOutput} interface provides
  * for converting data from any of the Java
@@ -69,7 +73,7 @@ public interface SafeDataOutput {
 	 *
 	 * @param      b   the data.
 	 */
-	void write(byte b[]);
+	void write(byte[] b);
 
 	/**
 	 * Writes {@code len} bytes from array
@@ -90,7 +94,7 @@ public interface SafeDataOutput {
 	 * @param      off   the start offset in the data.
 	 * @param      len   the number of bytes to write.
 	 */
-	void write(byte b[], int off, int len);
+	void write(byte[] b, int off, int len);
 
 	/**
 	 * Writes a {@code boolean} value to this output stream.
@@ -359,5 +363,10 @@ public interface SafeDataOutput {
 	 *
 	 * @param      s   the string value to be written.
 	 */
+	@Deprecated
 	void writeUTF(String s);
+
+	void writeShortText(String s, Charset charset);
+
+	void writeMediumText(String s, Charset charset);
 }

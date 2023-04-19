@@ -31,13 +31,13 @@ import java.nio.charset.Charset;
 public class SafeByteArrayInputStream extends SafeMeasurableInputStream implements SafeRepositionableStream {
 
 	/** The array backing the input stream. */
-	public byte[] array;
+	public final byte[] array;
 
 	/** The first valid entry. */
-	public int offset;
+	public final int offset;
 
 	/** The number of valid bytes in {@link #array} starting from {@link #offset}. */
-	public int length;
+	public final int length;
 
 	/** The current position as a distance from {@link #offset}. */
 	private int position;
@@ -81,6 +81,9 @@ public class SafeByteArrayInputStream extends SafeMeasurableInputStream implemen
 
 	@Override
 	public void mark(final int dummy) {
+		if (dummy < 0) {
+			throw new IllegalArgumentException();
+		}
 		mark = position;
 	}
 
@@ -113,7 +116,7 @@ public class SafeByteArrayInputStream extends SafeMeasurableInputStream implemen
 	 */
 
 	@Override
-	public int read(final byte b[], final int offset, final int length) {
+	public int read(final byte[] b, final int offset, final int length) {
 		if (this.length == this.position) return length == 0 ? 0 : -1;
 		final int n = Math.min(length, this.length - this.position);
 		System.arraycopy(array, this.offset + this.position, b, offset, n);

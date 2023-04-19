@@ -27,6 +27,8 @@ package it.cavallium.stream;
 
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+
+import it.cavallium.buffer.IgnoreCoverage;
 import org.jetbrains.annotations.NotNull;
 
 public class SafeDataInputStream extends SafeFilterInputStream implements SafeDataInput {
@@ -41,19 +43,9 @@ public class SafeDataInputStream extends SafeFilterInputStream implements SafeDa
 		super(in);
 	}
 
-	/**
-	 * working data initialized on demand by readUTF
-	 */
-	private byte[] bytearr;
-
 	@Override
-	public final int read(byte[] b) {
+	public final int read(byte @NotNull[] b) {
 		return in.read(b, 0, b.length);
-	}
-
-	@Override
-	public final int read(byte[] b, int off, int len) {
-		return in.read(b, off, len);
 	}
 
 	/**
@@ -123,11 +115,6 @@ public class SafeDataInputStream extends SafeFilterInputStream implements SafeDa
 		}
 
 		return total;
-	}
-
-	@Override
-	public String readString(int length, Charset charset) {
-		return in.readString(length, charset);
 	}
 
 	/**
@@ -349,78 +336,11 @@ public class SafeDataInputStream extends SafeFilterInputStream implements SafeDa
 		return Double.longBitsToDouble(readLong());
 	}
 
-	private char[] lineBuffer;
-
-	/**
-	 * See the general contract of the {@code readLine}
-	 * method of {@code DataInput}.
-	 * <p>
-	 * Bytes
-	 * for this operation are read from the contained
-	 * input stream.
-	 *
-	 * @deprecated This method does not properly convert bytes to characters.
-	 * As of JDK&nbsp;1.1, the preferred way to read lines of text is via the
-	 * {@code BufferedReader.readLine()} method.  Programs that use the
-	 * {@code DataInputStream} class to read lines can be converted to use
-	 * the {@code BufferedReader} class by replacing code of the form:
-	 * <blockquote><pre>
-	 *     DataInputStream d =&nbsp;new&nbsp;DataInputStream(in);
-	 * </pre></blockquote>
-	 * with:
-	 * <blockquote><pre>
-	 *     BufferedReader d
-	 *          =&nbsp;new&nbsp;BufferedReader(new&nbsp;InputStreamReader(in));
-	 * </pre></blockquote>
-	 *
-	 * @return     the next line of text from this input stream.
-	 * @see        java.io.BufferedReader#readLine()
-	 * @see        SafeFilterInputStream#in
-	 */
+	@IgnoreCoverage
 	@Override
 	@Deprecated
 	public final String readLine() {
-		char[] buf = lineBuffer;
-
-		if (buf == null) {
-			buf = lineBuffer = new char[128];
-		}
-
-		int room = buf.length;
-		int offset = 0;
-		int c;
-
-		loop:   while (true) {
-			switch (c = in.read()) {
-				case -1:
-				case '\n':
-					break loop;
-
-				case '\r':
-					int c2 = in.read();
-					if ((c2 != '\n') && (c2 != -1)) {
-						if (!(in instanceof SafePushbackInputStream)) {
-							this.in = new SafePushbackInputStream(in);
-						}
-						((SafePushbackInputStream)in).unread(c2);
-					}
-					break loop;
-
-				default:
-					if (--room < 0) {
-						buf = new char[offset + 128];
-						room = buf.length - offset - 1;
-						System.arraycopy(lineBuffer, 0, buf, 0, offset);
-						lineBuffer = buf;
-					}
-					buf[offset++] = (char) c;
-					break;
-			}
-		}
-		if ((c == -1) && (offset == 0)) {
-			return null;
-		}
-		return String.copyValueOf(buf, 0, offset);
+		throw new UnsupportedOperationException();
 	}
 
 	/**
@@ -432,40 +352,25 @@ public class SafeDataInputStream extends SafeFilterInputStream implements SafeDa
 	 * input stream.
 	 *
 	 * @return     a Unicode string.
-	 * @see        SafeDataInputStream#readUTF(SafeDataInputStream)
 	 */
+	@Deprecated
+	@IgnoreCoverage
 	@Override
 	public @NotNull String readUTF() {
-		return readUTF(this);
+		return readShortText(StandardCharsets.UTF_8);
 	}
 
-	/**
-	 * Reads from the
-	 * stream {@code in} a representation
-	 * of a Unicode  character string encoded in
-	 * <a href="DataInput.html#modified-utf-8">modified UTF-8</a> format;
-	 * this string of characters is then returned as a {@code String}.
-	 * The details of the modified UTF-8 representation
-	 * are  exactly the same as for the {@code readUTF}
-	 * method of {@code DataInput}.
-	 *
-	 * @param      in   a data input stream.
-	 * @return     a Unicode string.
-	 * @see        SafeDataInputStream#readUnsignedShort()
-	 */
-	public static String readUTF(SafeDataInputStream in) {
-		int utflen = in.readUnsignedShort();
-		byte[] data;
-		if (utflen <= 80) {
-			if (in.bytearr == null) {
-				data = in.bytearr = new byte[80];
-			} else {
-				data = in.bytearr;
-			}
-		} else {
-			data = new byte[utflen];
-		}
-		in.readFully(data, 0, utflen);
-		return new String(data, 0, utflen, StandardCharsets.UTF_8);
+	@IgnoreCoverage
+	@Override
+	public @NotNull String readShortText(Charset charset) {
+		int utfLength = this.readUnsignedShort();
+		return in.readString(utfLength, charset);
+	}
+
+	@IgnoreCoverage
+	@Override
+	public @NotNull String readMediumText(Charset charset) {
+		int utfLength = this.readInt();
+		return in.readString(utfLength, charset);
 	}
 }

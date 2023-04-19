@@ -26,6 +26,7 @@
 package it.cavallium.stream;
 
 import java.io.DataOutputStream;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 
 /**
@@ -43,11 +44,6 @@ public class SafeDataOutputStream extends SafeFilterOutputStream implements Safe
 	 * If this counter overflows, it will be wrapped to Integer.MAX_VALUE.
 	 */
 	protected int written;
-
-	/**
-	 * bytearr is initialized on demand by writeUTF
-	 */
-	private byte[] bytearr = null;
 
 	/**
 	 * Creates a new data output stream to write data to the specified
@@ -326,8 +322,14 @@ public class SafeDataOutputStream extends SafeFilterOutputStream implements Safe
 	 * @param      str   a string to be written.
 	 * @see        #writeChars(String)
 	 */
+	@Deprecated
 	public final void writeUTF(String str) {
-		var outString = str.getBytes(StandardCharsets.UTF_8);
+		writeShortText(str, StandardCharsets.UTF_8);
+	}
+
+	@Override
+	public void writeShortText(String s, Charset charset) {
+		var outString = s.getBytes(charset);
 		if (outString.length > Short.MAX_VALUE) {
 			throw new IndexOutOfBoundsException("String too long: " + outString.length + " bytes");
 		}
@@ -335,7 +337,19 @@ public class SafeDataOutputStream extends SafeFilterOutputStream implements Safe
 		out.write((v >>> 8) & 0xFF);
 		out.write((v) & 0xFF);
 		out.write(outString);
-		incCount(2 + outString.length);
+		incCount(Short.BYTES + outString.length);
+	}
+
+	@Override
+	public void writeMediumText(String s, Charset charset) {
+		var outString = s.getBytes(charset);
+		var v = outString.length;
+		out.write((v >>> 24) & 0xFF);
+		out.write((v >>> 16) & 0xFF);
+		out.write((v >>>  8) & 0xFF);
+		out.write((v) & 0xFF);
+		out.write(outString);
+		incCount(Integer.BYTES + outString.length);
 	}
 
 	/**

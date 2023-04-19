@@ -5,6 +5,8 @@ import it.cavallium.stream.SafeDataInput;
 import it.cavallium.stream.SafeDataOutput;
 import org.jetbrains.annotations.NotNull;
 
+import java.nio.charset.StandardCharsets;
+
 public class NullableStringSerializer implements DataSerializer<NullableString> {
 
 	public static final NullableStringSerializer INSTANCE = new NullableStringSerializer();
@@ -27,7 +29,7 @@ public class NullableStringSerializer implements DataSerializer<NullableString> 
 		if (!isPresent) {
 			return NullableString.empty();
 		} else {
-			return NullableString.of(dataInput.readUTF());
+			return NullableString.of(dataInput.readShortText(StandardCharsets.UTF_8));
 		}
 	}
 }

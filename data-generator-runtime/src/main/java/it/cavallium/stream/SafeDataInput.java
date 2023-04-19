@@ -2,6 +2,8 @@ package it.cavallium.stream;
 
 import java.io.Closeable;
 import java.io.DataInput;
+import java.nio.charset.Charset;
+
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -142,5 +144,10 @@ public interface SafeDataInput extends Closeable, DataInput {
 	@Deprecated
 	String readLine();
 
+	@Deprecated
 	@NotNull String readUTF();
+
+	@NotNull String readShortText(Charset charset);
+
+	@NotNull String readMediumText(Charset charset);
 }

@@ -25,6 +25,7 @@ public class BufDataInput extends SafeDataInputStream {
 	@Deprecated
 	@Override
 	public void close() {
+		super.close();
 	}
 
 	@Override
@@ -42,14 +43,21 @@ public class BufDataInput extends SafeDataInputStream {
 		return false;
 	}
 
+	@Deprecated
 	@Override
 	public @NotNull String readUTF() {
-		var length = this.readUnsignedShort();
-		return this.in.readString(length, StandardCharsets.UTF_8);
+		return readShortText(StandardCharsets.UTF_8);
 	}
 
 	@Override
-	public String readString(int length, Charset charset) {
-		return in.readString(length, charset);
+	public @NotNull String readShortText(Charset charset) {
+		var length = this.readUnsignedShort();
+		return this.readString(length, charset);
+	}
+
+	@Override
+	public @NotNull String readMediumText(Charset charset) {
+		var length = this.readInt();
+		return this.readString(length, charset);
 	}
 }

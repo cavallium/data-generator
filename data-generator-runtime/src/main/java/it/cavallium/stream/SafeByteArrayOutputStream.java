@@ -16,8 +16,14 @@
 
 package it.cavallium.stream;
 
-import it.unimi.dsi.fastutil.Arrays;
+import it.cavallium.buffer.IgnoreCoverage;
 import it.unimi.dsi.fastutil.bytes.ByteArrays;
+
+import java.util.Arrays;
+import java.util.HexFormat;
+import java.util.Objects;
+
+import static java.util.Objects.checkFromToIndex;
 
 /** Simple, fast byte-array output stream that exposes the backing array.
  *
@@ -36,9 +42,13 @@ public class SafeByteArrayOutputStream extends SafeMeasurableOutputStream implem
 
 	/** The array backing the output stream. */
 	public static final int DEFAULT_INITIAL_CAPACITY = 16;
+	private static final HexFormat HEX = HexFormat.of();
+	private static final int MAX_PREVIEW_LENGTH = 128;
 	private final boolean wrapped;
 	private final int initialPosition;
 	private final int initialLength;
+	private final int wrappedFrom;
+	private final int wrappedTo;
 
 	/** The array backing the output stream. */
 	public byte[] array;
@@ -47,7 +57,7 @@ public class SafeByteArrayOutputStream extends SafeMeasurableOutputStream implem
 	public int length;
 
 	/** The current writing position. */
-	private int position;
+	private int arrayPosition;
 
 	/** Creates a new array output stream with an initial capacity of {@link #DEFAULT_INITIAL_CAPACITY} bytes. */
 	public SafeByteArrayOutputStream() {
@@ -61,19 +71,17 @@ public class SafeByteArrayOutputStream extends SafeMeasurableOutputStream implem
 	public SafeByteArrayOutputStream(final int initialCapacity) {
 		array = new byte[initialCapacity];
 		wrapped = false;
-		initialPosition = 0;
-		initialLength = 0;
+		initialPosition = wrappedFrom = length = initialLength = 0;
+		wrappedTo = Integer.MAX_VALUE;
 	}
 
 	/** Creates a new array output stream wrapping a given byte array.
 	 *
 	 * @param a the byte array to wrap.
 	 */
+	@IgnoreCoverage
 	public SafeByteArrayOutputStream(final byte[] a) {
-		array = a;
-		wrapped = true;
-		initialPosition = 0;
-		initialLength = a.length;
+		this(a, 0, a.length);
 	}
 
 	/** Creates a new array output stream wrapping a given byte array.
@@ -81,19 +89,22 @@ public class SafeByteArrayOutputStream extends SafeMeasurableOutputStream implem
 	 * @param a the byte array to wrap.
 	 */
 	public SafeByteArrayOutputStream(final byte[] a, int from, int to) {
-		Arrays.ensureFromTo(a.length, from, to);
+		checkFromToIndex(from, to, a.length);
 		wrapped = true;
 		array = a;
-		initialPosition = from;
-		initialLength = to;
-		position = from;
-		length = to - from;
+		initialPosition = wrappedFrom = arrayPosition = from;
+		initialLength = length = to - from;
+		wrappedTo = to;
+	}
+
+	private void ensureWrappedBounds(int fromArrayPosition, int toArrayPosition) {
+		Objects.checkFromToIndex(fromArrayPosition - wrappedFrom, toArrayPosition - wrappedFrom, wrappedTo - wrappedFrom);
 	}
 
 	/** Marks this array output stream as empty. */
 	public void reset() {
 		length = initialLength;
-		position = initialPosition;
+		arrayPosition = initialPosition;
 	}
 
 	/** Ensures that the length of the backing array is equal to {@link #length}. */
@@ -109,43 +120,55 @@ public class SafeByteArrayOutputStream extends SafeMeasurableOutputStream implem
 
 	@Override
 	public void write(final int b) {
-		if (position >= array.length) {
-			if (wrapped) {
-				throw new ArrayIndexOutOfBoundsException(position);
-			} else {
-				array = ByteArrays.grow(array, position + 1, length);
-			}
+		if (wrapped) {
+			ensureWrappedBounds(arrayPosition, arrayPosition + 1);
+		} else if (arrayPosition >= array.length) {
+			array = ByteArrays.grow(array, arrayPosition + 1, length);
 		}
-		array[position++] = (byte)b;
-		if (length < position) length = position;
+		array[arrayPosition++] = (byte)b;
+		if (length < arrayPosition) length = arrayPosition;
 	}
 
 	@Override
 	public void write(final byte[] b, final int off, final int len) {
-		ByteArrays.ensureOffsetLength(b, off, len);
+		if (wrapped) {
+			ensureWrappedBounds(arrayPosition, arrayPosition + len);
+		}
+		Objects.checkFromIndexSize(off, len, b.length);
 		growBy(len);
-		System.arraycopy(b, off, array, position, len);
-		if (position + len > length) length = position += len;
+		System.arraycopy(b, off, array, arrayPosition, len);
+		if (arrayPosition + len > length) length = arrayPosition += len;
 	}
 
 	private void growBy(int len) {
-		if (position + len > array.length) {
+		if (wrapped) {
+			ensureWrappedBounds(arrayPosition, arrayPosition + len);
+		}
+		if (arrayPosition + len > array.length) {
 			if (wrapped) {
-				throw new ArrayIndexOutOfBoundsException(position + len - 1);
+				throw new ArrayIndexOutOfBoundsException(arrayPosition + len - 1);
 			} else {
-				array = ByteArrays.grow(array, position + len, position);
+				array = ByteArrays.grow(array, arrayPosition + len, arrayPosition);
 			}
 		}
 	}
 
 	@Override
 	public void position(final long newPosition) {
-		position = (int)newPosition;
+		if (wrapped) {
+			arrayPosition = (int) (newPosition + wrappedFrom);
+		} else {
+			arrayPosition = (int)newPosition;
+		}
 	}
 
 	@Override
 	public long position() {
-		return position;
+		if (wrapped) {
+			return arrayPosition - wrappedFrom;
+		} else {
+			return arrayPosition;
+		}
 	}
 
 	@Override
@@ -157,6 +180,31 @@ public class SafeByteArrayOutputStream extends SafeMeasurableOutputStream implem
 	 * This method copies the array
 	 */
 	public byte[] toByteArray() {
-		return java.util.Arrays.copyOf(array, length);
+		if (wrapped) {
+			return Arrays.copyOfRange(array, wrappedFrom, wrappedTo);
+		} else {
+			return java.util.Arrays.copyOf(array, length);
+		}
+	}
+
+	@Override
+	public String toString() {
+		return "SafeByteArrayOutputStream[" + toHexPreview() + "]";
+	}
+
+	private String toHexPreview() {
+		int len;
+		int from;
+		String prefix;
+		if (wrapped) {
+			prefix = "(wrapped from " + wrappedFrom + " to " + wrappedTo + ") ";
+			from = wrappedFrom;
+			len = wrappedTo - wrappedFrom;
+		} else {
+			prefix = "";
+			from = 0;
+			len = length;
+		}
+		return prefix + HEX.formatHex(this.array, from, (Math.min(len, MAX_PREVIEW_LENGTH) + from)) + ((len > MAX_PREVIEW_LENGTH) ? "..." : "");
 	}
 }
