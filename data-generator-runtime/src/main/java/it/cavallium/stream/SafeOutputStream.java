@@ -1,5 +1,6 @@
 package it.cavallium.stream;
 
+import it.cavallium.buffer.IgnoreCoverage;
 import java.io.Closeable;
 import java.io.Flushable;
 import java.io.OutputStream;
@@ -47,32 +48,8 @@ public abstract class SafeOutputStream extends OutputStream implements Closeable
 	 *
 	 * @since 11
 	 */
-	public static OutputStream nullOutputStream() {
-		return new OutputStream() {
-			private volatile boolean closed;
-
-			private void ensureOpen() {
-				if (closed) {
-					throw new IllegalStateException("Stream closed");
-				}
-			}
-
-			@Override
-			public void write(int b) {
-				ensureOpen();
-			}
-
-			@Override
-			public void write(byte @NotNull [] b, int off, int len) {
-				Objects.checkFromIndexSize(off, len, b.length);
-				ensureOpen();
-			}
-
-			@Override
-			public void close() {
-				closed = true;
-			}
-		};
+	public static SafeOutputStream nullOutputStream() {
+		return new NullOutputStream();
 	}
 
 	/**
@@ -127,6 +104,7 @@ public abstract class SafeOutputStream extends OutputStream implements Closeable
 	 * @param      off   the start offset in the data.
 	 * @param      len   the number of bytes to write.
 	 */
+	@IgnoreCoverage
 	public void write(byte[] b, int off, int len) {
 		Objects.checkFromIndexSize(off, len, b.length);
 		// len == 0 condition implicitly handled by loop bounds
@@ -152,6 +130,7 @@ public abstract class SafeOutputStream extends OutputStream implements Closeable
 	 * The {@code flush} method of {@code OutputStream} does nothing.
 	 *
 	 */
+	@IgnoreCoverage
 	public void flush() {
 	}
 
@@ -166,4 +145,5 @@ public abstract class SafeOutputStream extends OutputStream implements Closeable
 	 */
 	public void close() {
 	}
+
 }

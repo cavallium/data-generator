@@ -25,8 +25,6 @@
 
 package it.cavallium.stream;
 
-import org.jetbrains.annotations.NotNull;
-
 import java.nio.charset.Charset;
 
 /**
@@ -291,6 +289,7 @@ public interface SafeDataOutput {
 	 *
 	 * @param      s   the string of bytes to be written.
 	 */
+	@Deprecated
 	void writeBytes(String s);
 
 	/**
@@ -310,6 +309,7 @@ public interface SafeDataOutput {
 	 *
 	 * @param      s   the string value to be written.
 	 */
+	@Deprecated
 	void writeChars(String s);
 
 	/**

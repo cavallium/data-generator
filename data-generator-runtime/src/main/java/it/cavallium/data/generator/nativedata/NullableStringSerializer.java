@@ -18,7 +18,7 @@ public class NullableStringSerializer implements DataSerializer<NullableString> 
 		} else {
 			dataOutput.writeBoolean(true);
 			String dataContent = data.get();
-			dataOutput.writeUTF(dataContent);
+			dataOutput.writeShortText(dataContent, StandardCharsets.UTF_8);
 		}
 	}
 

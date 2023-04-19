@@ -1,20 +1,31 @@
 package it.cavallium.buffer;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.google.common.primitives.Chars;
 import com.google.common.primitives.Longs;
+import com.google.common.primitives.Shorts;
+import it.cavallium.data.generator.nativedata.Int52;
 import it.cavallium.stream.SafeByteArrayInputStream;
 import it.cavallium.stream.SafeByteArrayOutputStream;
 import it.cavallium.stream.SafeDataOutputStream;
-import it.unimi.dsi.fastutil.bytes.*;
-
+import it.unimi.dsi.fastutil.bytes.ByteArrayList;
+import it.unimi.dsi.fastutil.bytes.ByteCollections;
+import it.unimi.dsi.fastutil.bytes.ByteList;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HexFormat;
+import java.util.List;
+import java.util.Spliterators;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
-
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -109,12 +120,14 @@ public class TestBuffer {
         var wrapSmallByteArrayListCappedRangeOffsetAndLen = new BufArg("wrap(small byte array list, 5, same-3)", Buf.wrap(ByteArrayList.of(small.clone()), 5, small.length - 3), small.length - 5 - 3, Arrays.copyOfRange(small, 5, small.length - 3));
         var wrapSmallByteListCappedRangeOffsetAndLen = new BufArg("wrap(small byte list, 5, same-3)", Buf.wrap(ByteList.of(small.clone()), 5, small.length - 3), small.length - 5 - 3, Arrays.copyOfRange(small, 5, small.length - 3));
 
-        return List.of(emptyBuf, byteListBuf, byteListBufOf, def0Buf, def10Buf, def10000Buf, zeroedBuf, zeroed10Buf, zeroed10000Buf, copyOfEmpty,
-                copyOfSmall, copyOfBig, wrapByteArrayList, wrapBufSmall, wrapSmallArray, wrapBigArray, wrapSmallByteList, wrapBigByteList,
-                wrapSmallCapped, wrapBigCapped, wrapSmallCappedSame, wrapBigCappedSame, wrapSmallCappedMinusOne,
-                wrapBigCappedMinusOne, wrapSmallCappedRangeSame, wrapBigCappedRangeSame, wrapSmallCappedRangeOffset,
-                wrapBigCappedRangeOffset, wrapSmallCappedRangeOffsetAndLen, wrapBigCappedRangeOffsetAndLen,
-                wrapSmallCappedRangeLen, wrapBigCappedRangeLen, wrapSmallByteArrayListCappedRangeOffsetAndLen, wrapSmallByteListCappedRangeOffsetAndLen);
+        return List.of(emptyBuf, byteListBuf, byteListBufOf, def0Buf, def10Buf, def10000Buf, zeroedBuf, zeroed10Buf,
+            zeroed10000Buf, copyOfEmpty, copyOfSmall, copyOfBig, wrapByteArrayList, wrapBufSmall, wrapSmallArray,
+            wrapBigArray, wrapSmallByteList, wrapBigByteList, wrapSmallCapped, wrapBigCapped, wrapSmallCappedSame,
+            wrapBigCappedSame, wrapSmallCappedMinusOne, wrapBigCappedMinusOne, wrapSmallCappedRangeSame,
+            wrapBigCappedRangeSame, wrapSmallCappedRangeOffset, wrapBigCappedRangeOffset,
+            wrapSmallCappedRangeOffsetAndLen, wrapBigCappedRangeOffsetAndLen, wrapSmallCappedRangeLen,
+            wrapBigCappedRangeLen, wrapSmallBufCappedRangeOffsetAndLen, wrapSmallByteArrayListCappedRangeOffsetAndLen,
+            wrapSmallByteListCappedRangeOffsetAndLen);
     }
 
     public static List<BufArg> createSubListBufs() {
@@ -277,6 +290,46 @@ public class TestBuffer {
 
     @ParameterizedTest
     @MethodSource
+    public void testShorts(BufArg bufArg) {
+        var short1 = bufArg.b.getShort(0);
+        assertEquals(Shorts.fromByteArray(bufArg.initialContent), short1);
+        var short2 = bufArg.b.getShort(Short.BYTES);
+        assertEquals(Shorts.fromByteArray(Arrays.copyOfRange(bufArg.initialContent, Short.BYTES, Short.BYTES * 2)), short2);
+
+        var expected1 = (short) (short1 + 1);
+        bufArg.b.setShort(0, expected1);
+        var expected2 = (short) (short2 + 1);
+        bufArg.b.setShort(Short.BYTES, expected2);
+        assertEquals(expected1, bufArg.b.getShort(0));
+        assertEquals(expected2, bufArg.b.getShort(Short.BYTES));
+    }
+
+    public static Stream<BufArg> testShorts() {
+        return provideBufs().filter(ba -> ba.initialSize >= Short.BYTES * 2);
+    }
+
+    @ParameterizedTest
+    @MethodSource
+    public void testChars(BufArg bufArg) {
+        var char1 = bufArg.b.getChar(0);
+        assertEquals(Chars.fromByteArray(bufArg.initialContent), char1);
+        var char2 = bufArg.b.getChar(Character.BYTES);
+        assertEquals(Chars.fromByteArray(Arrays.copyOfRange(bufArg.initialContent, Character.BYTES, Character.BYTES * 2)), char2);
+
+        var expected1 = (char) (char1 + 1);
+        bufArg.b.setChar(0, expected1);
+        var expected2 = (char) (char2 + 1);
+        bufArg.b.setChar(Character.BYTES, expected2);
+        assertEquals(expected1, bufArg.b.getChar(0));
+        assertEquals(expected2, bufArg.b.getChar(Character.BYTES));
+    }
+
+    public static Stream<BufArg> testChars() {
+        return provideBufs().filter(ba -> ba.initialSize >= Character.BYTES * 2);
+    }
+
+    @ParameterizedTest
+    @MethodSource
     public void testInts(BufArg bufArg) {
         var ib = ByteBuffer.wrap(bufArg.initialContent).asIntBuffer();
         var int1 = bufArg.b.getInt(0);
@@ -381,6 +434,26 @@ public class TestBuffer {
 
     public static Stream<BufArg> testBytes() {
         return provideBufs().filter(ba -> ba.initialSize >= 2);
+    }
+
+    @ParameterizedTest
+    @MethodSource
+    public void testInt52s(BufArg bufArg) {
+        var int521 = bufArg.b.getInt52(0);
+        assertEquals(Int52.fromByteArrayL(bufArg.initialContent), int521);
+        var int522 = bufArg.b.getInt52(Int52.BYTES);
+        assertEquals(Int52.fromByteArrayL(Arrays.copyOf(Arrays.copyOfRange(bufArg.initialContent, Int52.BYTES, Int52.BYTES * 2), Long.BYTES)), int522);
+
+        var expected1 = (int521 * 3) % Int52.MAX_VALUE_L;
+        bufArg.b.setInt52(0, expected1);
+        var expected2 = (int522 * 3) % Int52.MAX_VALUE_L;
+        bufArg.b.setInt52(Int52.BYTES, expected2);
+        assertEquals(expected1, bufArg.b.getInt52(0));
+        assertEquals(expected2, bufArg.b.getInt52(Int52.BYTES));
+    }
+
+    public static Stream<BufArg> testInt52s() {
+        return provideBufs().filter(ba -> ba.initialSize >= Int52.BYTES * 2);
     }
 
     @ParameterizedTest

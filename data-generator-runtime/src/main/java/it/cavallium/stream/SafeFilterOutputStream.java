@@ -1,6 +1,9 @@
 package it.cavallium.stream;
 
 
+import it.cavallium.buffer.IgnoreCoverage;
+import org.jetbrains.annotations.NotNull;
+
 /**
  * This class is the superclass of all classes that filter output
  * streams. These streams sit on top of an already existing output
@@ -21,17 +24,7 @@ public class SafeFilterOutputStream extends SafeOutputStream {
 	/**
 	 * The underlying output stream to be filtered.
 	 */
-	protected SafeOutputStream out;
-
-	/**
-	 * Whether the stream is closed; implicitly initialized to false.
-	 */
-	private volatile boolean closed;
-
-	/**
-	 * Object used to prevent a race on the 'closed' instance variable.
-	 */
-	private final Object closeLock = new Object();
+	protected final SafeOutputStream out;
 
 	/**
 	 * Creates an output stream filter built on top of the specified
@@ -58,6 +51,7 @@ public class SafeFilterOutputStream extends SafeOutputStream {
 	 * @param      b   the {@code byte}.
 	 */
 	@Override
+	@IgnoreCoverage
 	public void write(int b) {
 		out.write(b);
 	}
@@ -77,9 +71,10 @@ public class SafeFilterOutputStream extends SafeOutputStream {
 	 * @param      b   the data to be written.
 	 * @see        SafeFilterOutputStream#write(byte[], int, int)
 	 */
+	@IgnoreCoverage
 	@Override
-	public void write(byte b[]) {
-		write(b, 0, b.length);
+	public void write(byte @NotNull [] b) {
+		out.write(b);
 	}
 
 	/**
@@ -101,14 +96,10 @@ public class SafeFilterOutputStream extends SafeOutputStream {
 	 * @param      len   the number of bytes to write.
 	 * @see        SafeFilterOutputStream#write(int)
 	 */
+	@IgnoreCoverage
 	@Override
-	public void write(byte b[], int off, int len) {
-		if ((off | len | (b.length - (len + off)) | (off + len)) < 0)
-			throw new IndexOutOfBoundsException();
-
-		for (int i = 0 ; i < len ; i++) {
-			write(b[off + i]);
-		}
+	public void write(byte[] b, int off, int len) {
+		out.write(b, off, len);
 	}
 
 	/**
@@ -120,6 +111,7 @@ public class SafeFilterOutputStream extends SafeOutputStream {
 	 *
 	 * @see        SafeFilterOutputStream#out
 	 */
+	@IgnoreCoverage
 	@Override
 	public void flush() {
 		out.flush();
@@ -136,45 +128,9 @@ public class SafeFilterOutputStream extends SafeOutputStream {
 	 * @see        SafeFilterOutputStream#flush()
 	 * @see        SafeFilterOutputStream#out
 	 */
+	@IgnoreCoverage
 	@Override
 	public void close() {
-		if (closed) {
-			return;
-		}
-		synchronized (closeLock) {
-			if (closed) {
-				return;
-			}
-			closed = true;
-		}
-
-		Throwable flushException = null;
-		try {
-			flush();
-		} catch (Throwable e) {
-			flushException = e;
-			throw e;
-		} finally {
-			if (flushException == null) {
-				out.close();
-			} else {
-				try {
-					out.close();
-				} catch (Throwable closeException) {
-					// evaluate possible precedence of flushException over closeException
-					if ((flushException instanceof ThreadDeath) &&
-							!(closeException instanceof ThreadDeath)) {
-						flushException.addSuppressed(closeException);
-						throw (ThreadDeath) flushException;
-					}
-
-					if (flushException != closeException) {
-						closeException.addSuppressed(flushException);
-					}
-
-					throw closeException;
-				}
-			}
-		}
+		out.close();
 	}
 }

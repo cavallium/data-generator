@@ -25,7 +25,7 @@
 
 package it.cavallium.stream;
 
-import java.io.DataOutputStream;
+import it.cavallium.buffer.IgnoreCoverage;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 
@@ -63,11 +63,7 @@ public class SafeDataOutputStream extends SafeFilterOutputStream implements Safe
 	 * until it reaches Integer.MAX_VALUE.
 	 */
 	private void incCount(int value) {
-		int temp = written + value;
-		if (temp < 0) {
-			temp = Integer.MAX_VALUE;
-		}
-		written = temp;
+		written = Math.addExact(written, value);
 	}
 
 	/**
@@ -113,6 +109,7 @@ public class SafeDataOutputStream extends SafeFilterOutputStream implements Safe
 	 * @see        SafeFilterOutputStream#out
 	 * @see        java.io.OutputStream#flush()
 	 */
+	@IgnoreCoverage
 	public void flush() {
 		out.flush();
 	}
@@ -274,6 +271,8 @@ public class SafeDataOutputStream extends SafeFilterOutputStream implements Safe
 	 * @param      s   a string of bytes to be written.
 	 * @see        SafeFilterOutputStream#out
 	 */
+	@Deprecated
+	@IgnoreCoverage
 	public final void writeBytes(String s) {
 		int len = s.length();
 		for (int i = 0 ; i < len ; i++) {
@@ -293,6 +292,8 @@ public class SafeDataOutputStream extends SafeFilterOutputStream implements Safe
 	 * @see        SafeDataOutputStream#writeChar(int)
 	 * @see        SafeFilterOutputStream#out
 	 */
+	@Deprecated
+	@IgnoreCoverage
 	public final void writeChars(String s) {
 		int len = s.length();
 		for (int i = 0 ; i < len ; i++) {
@@ -322,6 +323,7 @@ public class SafeDataOutputStream extends SafeFilterOutputStream implements Safe
 	 * @param      str   a string to be written.
 	 * @see        #writeChars(String)
 	 */
+	@IgnoreCoverage
 	@Deprecated
 	public final void writeUTF(String str) {
 		writeShortText(str, StandardCharsets.UTF_8);
@@ -362,9 +364,5 @@ public class SafeDataOutputStream extends SafeFilterOutputStream implements Safe
 	 */
 	public final int size() {
 		return written;
-	}
-
-	public DataOutputStream asDataOutputStream() {
-		return new DataOutputStream(this.out);
 	}
 }

@@ -17,12 +17,13 @@ package it.cavallium.stream;
  */
 
 
+import it.cavallium.buffer.IgnoreCoverage;
 import java.io.InputStream;
 
 /** An {@link InputStream} that implements also the {@link SafeMeasurableStream} interface.
  *
  * @since 5.0.4
  */
-
+@IgnoreCoverage
 public abstract class SafeMeasurableInputStream extends SafeInputStream implements SafeMeasurableStream {
 }

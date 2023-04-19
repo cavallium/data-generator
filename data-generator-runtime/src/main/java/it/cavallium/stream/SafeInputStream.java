@@ -52,6 +52,7 @@ public abstract class SafeInputStream extends InputStream {
 		return i;
 	}
 
+	@IgnoreCoverage
 	public byte[] readAllBytes() {
 		return readNBytes(Integer.MAX_VALUE);
 	}
@@ -121,6 +122,7 @@ public abstract class SafeInputStream extends InputStream {
 		return result;
 	}
 
+	@IgnoreCoverage
 	public int readNBytes(byte[] b, int off, int len) {
 		Objects.checkFromIndexSize(off, len, b.length);
 
@@ -134,10 +136,12 @@ public abstract class SafeInputStream extends InputStream {
 		return n;
 	}
 
+	@IgnoreCoverage
 	public String readString(int length, Charset charset) {
 		return new String(readNBytes(length), charset);
 	}
 
+	@IgnoreCoverage
 	public long skip(long n) {
 		long remaining = n;
 		int nr;
@@ -159,6 +163,7 @@ public abstract class SafeInputStream extends InputStream {
 		return n - remaining;
 	}
 
+	@IgnoreCoverage
 	public void skipNBytes(long n) {
 		if (n > 0) {
 			long ns = skip(n);
@@ -193,6 +198,7 @@ public abstract class SafeInputStream extends InputStream {
 		throw new UnsupportedOperationException("mark/reset not supported");
 	}
 
+	@IgnoreCoverage
 	public long transferTo(OutputStream out) {
 		Objects.requireNonNull(out, "out");
 		long transferred = 0;

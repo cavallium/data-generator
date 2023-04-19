@@ -14,7 +14,7 @@ public class ArrayStringSerializer implements DataSerializer<List<String>> {
 	public void serialize(SafeDataOutput dataOutput, @NotNull List<String> data) {
 		dataOutput.writeInt(data.size());
 		for (String item : data) {
-			dataOutput.writeUTF(item);
+			dataOutput.writeShortText(item, StandardCharsets.UTF_8);
 		}
 	}
 

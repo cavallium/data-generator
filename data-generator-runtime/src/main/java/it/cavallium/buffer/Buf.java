@@ -1,5 +1,6 @@
 package it.cavallium.buffer;
 
+import it.cavallium.data.generator.nativedata.Int52;
 import it.cavallium.stream.SafeByteArrayInputStream;
 import it.cavallium.stream.SafeByteArrayOutputStream;
 import it.cavallium.stream.SafeDataOutput;
@@ -102,6 +103,49 @@ public interface Buf extends ByteList, RandomAccess {
 	/**
 	 * @param i byte offset
 	 */
+	default float getFloat(int i) {
+		return Float.intBitsToFloat(getInt(i));
+	}
+
+	/**
+	 * @param i byte offset
+	 */
+	default double getDouble(int i) {
+		return Double.longBitsToDouble(getLong(i));
+	}
+
+	/**
+	 * @param i byte offset
+	 */
+	default char getChar(int i) {
+		byte b1 = getByte(i);
+		byte b2 = getByte(i + 1);
+		return (char) ((b1 & 0xFF) << 8 | (b2 & 0xFF));
+	}
+
+	/**
+	 * @param i byte offset
+	 */
+	default short getShort(int i) {
+		byte b1 = getByte(i);
+		byte b2 = getByte(i + 1);
+		return (short) ((b1 & 0xFF) << 8 | (b2 & 0xFF));
+	}
+
+	/**
+	 * @param i byte offset
+	 */
+	default int getInt(int i) {
+		byte b1 = getByte(i);
+		byte b2 = getByte(i + 1);
+		byte b3 = getByte(i + 2);
+		byte b4 = getByte(i + 3);
+		return b1 << 24 | (b2 & 0xFF) << 16 | (b3 & 0xFF) << 8 | (b4 & 0xFF);
+	}
+
+	/**
+	 * @param i byte offset
+	 */
 	default long getLong(int i) {
 		byte b1 = getByte(i);
 		byte b2 = getByte(i + 1);
@@ -124,26 +168,21 @@ public interface Buf extends ByteList, RandomAccess {
 	/**
 	 * @param i byte offset
 	 */
-	default int getInt(int i) {
+	default long getInt52(int i) {
 		byte b1 = getByte(i);
 		byte b2 = getByte(i + 1);
 		byte b3 = getByte(i + 2);
 		byte b4 = getByte(i + 3);
-		return b1 << 24 | (b2 & 0xFF) << 16 | (b3 & 0xFF) << 8 | (b4 & 0xFF);
-	}
-
-	/**
-	 * @param i byte offset
-	 */
-	default float getFloat(int i) {
-		return Float.intBitsToFloat(getInt(i));
-	}
-
-	/**
-	 * @param i byte offset
-	 */
-	default double getDouble(int i) {
-		return Double.longBitsToDouble(getLong(i));
+		byte b5 = getByte(i + 4);
+		byte b6 = getByte(i + 5);
+		byte b7 = getByte(i + 6);
+		return (b1 & 0xFFL) << 48
+				| (b2 & 0xFFL) << 40
+				| (b3 & 0xFFL) << 32
+				| (b4 & 0xFFL) << 24
+				| (b5 & 0xFFL) << 16
+				| (b6 & 0xFFL) << 8
+				| (b7 & 0xFFL);
 	}
 
 	/**
@@ -152,6 +191,27 @@ public interface Buf extends ByteList, RandomAccess {
 	default boolean getBoolean(int i) {
 		return getByte(i) != 0;
 	}
+
+	/**
+	 * @param i byte offset
+	 */
+	default String getShortText(int i, Charset charset) {
+		var len = getShort(i);
+		return getString(i + Short.BYTES, len, charset);
+	}
+
+	/**
+	 * @param i byte offset
+	 */
+	default String getMediumText(int i, Charset charset) {
+		var len = getInt(i);
+		return getString(i + Integer.BYTES, len, charset);
+	}
+
+	/**
+	 * @param i byte offset
+	 */
+	String getString(int i, int length, Charset charset);
 
 	/**
 	 * @param i byte offset
@@ -165,6 +225,22 @@ public interface Buf extends ByteList, RandomAccess {
 	 */
 	default void setByte(int i, byte val) {
 		set(i, val);
+	}
+
+	/**
+	 * @param i byte offset
+	 */
+	default void setChar(int i, char val) {
+		set(i, (byte) (val >> 8));
+		set(i + 1, (byte) val);
+	}
+
+	/**
+	 * @param i byte offset
+	 */
+	default void setShort(int i, short val) {
+		set(i, (byte) (val >> 8));
+		set(i + 1, (byte) val);
 	}
 
 	/**
@@ -189,6 +265,20 @@ public interface Buf extends ByteList, RandomAccess {
 		set(i + 5, (byte) (val >> 16));
 		set(i + 6, (byte) (val >> 8));
 		set(i + 7, (byte) val);
+	}
+
+	/**
+	 * @param i byte offset
+	 */
+	default void setInt52(int i, long val) {
+		Int52.checkValidity(val);
+		set(i, (byte) (val >> 48));
+		set(i + 1, (byte) (val >> 40));
+		set(i + 2, (byte) (val >> 32));
+		set(i + 3, (byte) (val >> 24));
+		set(i + 4, (byte) (val >> 16));
+		set(i + 5, (byte) (val >> 8));
+		set(i + 6, (byte) val);
 	}
 
 	/**

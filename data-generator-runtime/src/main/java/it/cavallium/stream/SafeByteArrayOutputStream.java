@@ -16,14 +16,13 @@
 
 package it.cavallium.stream;
 
+import static java.util.Objects.checkFromToIndex;
+
 import it.cavallium.buffer.IgnoreCoverage;
 import it.unimi.dsi.fastutil.bytes.ByteArrays;
-
 import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.Objects;
-
-import static java.util.Objects.checkFromToIndex;
 
 /** Simple, fast byte-array output stream that exposes the backing array.
  *
@@ -143,32 +142,19 @@ public class SafeByteArrayOutputStream extends SafeMeasurableOutputStream implem
 	private void growBy(int len) {
 		if (wrapped) {
 			ensureWrappedBounds(arrayPosition, arrayPosition + len);
-		}
-		if (arrayPosition + len > array.length) {
-			if (wrapped) {
-				throw new ArrayIndexOutOfBoundsException(arrayPosition + len - 1);
-			} else {
-				array = ByteArrays.grow(array, arrayPosition + len, arrayPosition);
-			}
+		} else if (arrayPosition + len > array.length) {
+			array = ByteArrays.grow(array, arrayPosition + len, arrayPosition);
 		}
 	}
 
 	@Override
 	public void position(final long newPosition) {
-		if (wrapped) {
-			arrayPosition = (int) (newPosition + wrappedFrom);
-		} else {
-			arrayPosition = (int)newPosition;
-		}
+		arrayPosition = (int) (newPosition + wrappedFrom);
 	}
 
 	@Override
 	public long position() {
-		if (wrapped) {
-			return arrayPosition - wrappedFrom;
-		} else {
-			return arrayPosition;
-		}
+		return arrayPosition - wrappedFrom;
 	}
 
 	@Override

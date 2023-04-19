@@ -1,16 +1,16 @@
 package it.cavallium.buffer;
 
+import static java.util.Objects.checkFromToIndex;
+
 import it.cavallium.stream.SafeByteArrayOutputStream;
 import it.cavallium.stream.SafeDataOutput;
 import it.cavallium.stream.SafeDataOutputStream;
-import it.unimi.dsi.fastutil.Arrays;
 import java.io.IOException;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.Objects;
 import org.jetbrains.annotations.NotNull;
-
-import static java.util.Objects.checkFromToIndex;
 
 public class BufDataOutput implements SafeDataOutput {
 
@@ -62,6 +62,8 @@ public class BufDataOutput implements SafeDataOutput {
 		}
 	}
 
+	@IgnoreCoverage
+	@Deprecated(forRemoval = true)
 	public static BufDataOutput wrap(Buf buf, int from, int to) {
 		checkFromToIndex(from, to, buf.size());
 		if (buf.isEmpty()) {
@@ -71,6 +73,8 @@ public class BufDataOutput implements SafeDataOutput {
 		}
 	}
 
+	@IgnoreCoverage
+	@Deprecated(forRemoval = true)
 	public static BufDataOutput wrap(Buf buf) {
 		if (buf.isEmpty()) {
 			return createLimited(0);
@@ -232,6 +236,11 @@ public class BufDataOutput implements SafeDataOutput {
 	public Buf asList() {
 		dOut.flush();
 		return Buf.wrap(this.buf.array, this.buf.length);
+	}
+
+	public Buf toList() {
+		dOut.flush();
+		return Buf.wrap(Arrays.copyOf(this.buf.array, this.buf.length));
 	}
 
 	@Override

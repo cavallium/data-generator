@@ -1,21 +1,35 @@
 package it.cavallium.buffer;
 
-import static it.unimi.dsi.fastutil.Arrays.ensureFromTo;
+import static java.util.Objects.checkFromIndexSize;
 import static java.util.Objects.checkFromToIndex;
 
 import it.cavallium.stream.SafeByteArrayInputStream;
 import it.cavallium.stream.SafeByteArrayOutputStream;
 import it.cavallium.stream.SafeDataOutput;
-import it.unimi.dsi.fastutil.bytes.*;
-
+import it.unimi.dsi.fastutil.bytes.AbstractByteList;
+import it.unimi.dsi.fastutil.bytes.ByteArrayList;
+import it.unimi.dsi.fastutil.bytes.ByteArrays;
+import it.unimi.dsi.fastutil.bytes.ByteCollection;
+import it.unimi.dsi.fastutil.bytes.ByteConsumer;
+import it.unimi.dsi.fastutil.bytes.ByteIterator;
+import it.unimi.dsi.fastutil.bytes.ByteIterators;
+import it.unimi.dsi.fastutil.bytes.ByteList;
+import it.unimi.dsi.fastutil.bytes.ByteListIterator;
+import it.unimi.dsi.fastutil.bytes.BytePredicate;
+import it.unimi.dsi.fastutil.bytes.ByteSpliterator;
+import it.unimi.dsi.fastutil.bytes.ByteSpliterators;
+import it.unimi.dsi.fastutil.bytes.ByteUnaryOperator;
 import java.io.Serial;
 import java.nio.charset.Charset;
-import java.util.*;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.Iterator;
+import java.util.NoSuchElementException;
 import java.util.function.IntPredicate;
 import java.util.function.IntUnaryOperator;
 import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
-
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.VisibleForTesting;
@@ -220,7 +234,12 @@ class ByteListBuf extends ByteArrayList implements Buf {
 
 	@Override
 	public String toString(Charset charset) {
-		return new String(a, 0, size, charset);
+		return getString(0, size, charset);
+	}
+
+	@Override
+	public String getString(int i, int length, Charset charset) {
+		return new String(a, i, length, charset);
 	}
 
 	class SubList extends AbstractByteList.ByteRandomAccessSubList implements Buf {
@@ -508,6 +527,12 @@ class ByteListBuf extends ByteArrayList implements Buf {
 		@Override
 		public String toString(Charset charset) {
 			return new String(a, from, size(), charset);
+		}
+
+		@Override
+		public String getString(int i, int length, Charset charset) {
+			checkFromIndexSize(i, length, to - from);
+			return new String(a, from + i, length, charset);
 		}
 	}
 
