@@ -4,6 +4,7 @@ import java.io.Closeable;
 import java.io.DataInput;
 import java.nio.charset.Charset;
 
+import java.nio.charset.StandardCharsets;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -145,9 +146,19 @@ public interface SafeDataInput extends Closeable, DataInput {
 	String readLine();
 
 	@Deprecated
-	@NotNull String readUTF();
+	default @NotNull String readUTF() {
+		return readShortText(StandardCharsets.UTF_8);
+	}
 
-	@NotNull String readShortText(Charset charset);
+	default @NotNull String readShortText(Charset charset) {
+		var length = this.readUnsignedShort();
+		return this.readString(length, charset);
+	}
 
-	@NotNull String readMediumText(Charset charset);
+	default @NotNull String readMediumText(Charset charset) {
+		var length = this.readInt();
+		return this.readString(length, charset);
+	}
+
+	@NotNull String readString(int len, Charset charset);
 }

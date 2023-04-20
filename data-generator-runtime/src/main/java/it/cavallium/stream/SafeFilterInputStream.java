@@ -224,7 +224,7 @@ public class SafeFilterInputStream extends SafeInputStream {
 
 	@IgnoreCoverage
 	@Override
-	public String readString(int length, Charset charset) {
+	public @NotNull String readString(int length, Charset charset) {
 		return in.readString(length, charset);
 	}
 }

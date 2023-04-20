@@ -25,9 +25,6 @@
 
 package it.cavallium.stream;
 
-import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
-
 import it.cavallium.buffer.IgnoreCoverage;
 import org.jetbrains.annotations.NotNull;
 
@@ -341,36 +338,5 @@ public class SafeDataInputStream extends SafeFilterInputStream implements SafeDa
 	@Deprecated
 	public final String readLine() {
 		throw new UnsupportedOperationException();
-	}
-
-	/**
-	 * See the general contract of the {@code readUTF}
-	 * method of {@code DataInput}.
-	 * <p>
-	 * Bytes
-	 * for this operation are read from the contained
-	 * input stream.
-	 *
-	 * @return     a Unicode string.
-	 */
-	@Deprecated
-	@IgnoreCoverage
-	@Override
-	public @NotNull String readUTF() {
-		return readShortText(StandardCharsets.UTF_8);
-	}
-
-	@IgnoreCoverage
-	@Override
-	public @NotNull String readShortText(Charset charset) {
-		int utfLength = this.readUnsignedShort();
-		return in.readString(utfLength, charset);
-	}
-
-	@IgnoreCoverage
-	@Override
-	public @NotNull String readMediumText(Charset charset) {
-		int utfLength = this.readInt();
-		return in.readString(utfLength, charset);
 	}
 }
