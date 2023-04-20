@@ -7,8 +7,9 @@ public class UpgradeUtil {
 	@SuppressWarnings("unchecked")
 	public static <A, B> List<B> upgradeArray(List<A> from, DataUpgrader<A, B> upgrader) {
 		Object[] array;
-		if (from instanceof ImmutableWrappedArrayList<A> immutableWrappedArrayList) {
-			array = immutableWrappedArrayList.a;
+		if (from.getClass() == ImmutableWrappedArrayList.class
+				&& ((ImmutableWrappedArrayList<?>) from).a.getClass() == Object[].class) {
+			array = ((ImmutableWrappedArrayList<?>) from).a;
 		} else {
 			array = from.toArray();
 		}

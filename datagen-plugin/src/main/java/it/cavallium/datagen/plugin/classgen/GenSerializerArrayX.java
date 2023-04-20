@@ -24,6 +24,11 @@ import org.jetbrains.annotations.NotNull;
 
 public class GenSerializerArrayX extends ClassGenerator {
 
+	/**
+	 * Enabling this option can slow down deserialization updates
+	 */
+	private static final boolean USE_NATIVE_TYPED_ARRAYS = false;
+
 	public GenSerializerArrayX(ClassGeneratorParams params) {
 		super(params);
 	}
@@ -96,23 +101,37 @@ public class GenSerializerArrayX extends ClassGenerator {
 		method.addModifiers(Modifier.PUBLIC, Modifier.FINAL);
 
 		var typeArrayClassName = typeArray.getJTypeName(basePackageName);
+
+		var arrayComponentTypeName = typeArray.getBase().getJTypeName(basePackageName);
+		var typedArrayTypeName = ArrayTypeName.of(arrayComponentTypeName);
+
 		method.returns(typeArrayClassName);
 		method.addAnnotation(NotNull.class);
 
 		method.addParameter(ParameterSpec.builder(SafeDataInput.class, "in").build());
 
 		method.addStatement("int sz = in.readInt()");
-		var arrayTypeName = ArrayTypeName.of(typeArray.getBase().getJTypeName(basePackageName));
-		method.addStatement("$T a = new $T[sz]", arrayTypeName, arrayTypeName.componentType);
+		if (USE_NATIVE_TYPED_ARRAYS) {
+			method.addStatement("$T a = new $T[sz]", typedArrayTypeName, arrayComponentTypeName);
+		} else {
+			method.addStatement("$T a = new $T[sz]", Object[].class, Object.class);
+		}
 		method.addCode("\n");
 		method.beginControlFlow("for (int i = 0; i < sz; ++i)");
 		var baseSerializerInstance = typeArray.getBase().getJSerializerInstance(basePackageName);
+
 		method.addStatement("a[i] = $T.$N.deserialize(in)", baseSerializerInstance.className(), baseSerializerInstance.fieldName());
 		method.endControlFlow();
 
 		method.addCode("\n");
-		method.addStatement("return new $T(a)", ParameterizedTypeName.get(ClassName.get(ImmutableWrappedArrayList.class),
-				typeArray.getBase().getJTypeName(basePackageName)));
+		if (USE_NATIVE_TYPED_ARRAYS) {
+			method.addStatement("return new $T(a)", ParameterizedTypeName.get(ClassName.get(ImmutableWrappedArrayList.class), arrayComponentTypeName));
+		} else {
+			method.addStatement("return ($T) new $T(a)",
+					ParameterizedTypeName.get(ClassName.get(ImmutableWrappedArrayList.class), arrayComponentTypeName),
+					ClassName.get(ImmutableWrappedArrayList.class)
+			);
+		}
 
 		classBuilder.addMethod(method.build());
 	}

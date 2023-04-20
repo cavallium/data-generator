@@ -624,7 +624,7 @@ public class ImmutableWrappedArrayList<K> extends AbstractObjectList<K> implemen
 	/**
 	 * Compares this type-specific array list to another one.
 	 *
-	 * @apiNote This method exists only for sake of efficiency. The implementation inherited from the
+	 * This method exists only for sake of efficiency. The implementation inherited from the
 	 *          abstract implementation would already work.
 	 *
 	 * @param l a type-specific array list.
@@ -655,7 +655,7 @@ public class ImmutableWrappedArrayList<K> extends AbstractObjectList<K> implemen
 	/**
 	 * Compares this array list to another array list.
 	 *
-	 * @apiNote This method exists only for sake of efficiency. The implementation inherited from the
+	 * This method exists only for sake of efficiency. The implementation inherited from the
 	 *          abstract implementation would already work.
 	 *
 	 * @param l an array list.

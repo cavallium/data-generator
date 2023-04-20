@@ -1,12 +1,15 @@
 package it.cavallium.datagen.plugin;
 
 import java.util.Objects;
+import org.jetbrains.annotations.Nullable;
 
 public final class MoveDataConfiguration implements TransformationConfiguration {
 
 	public String transformClass;
 	public String from;
 	public String to;
+	@Nullable
+	public Integer index;
 
 	@Override
 	public String getTransformClass() {
@@ -27,9 +30,8 @@ public final class MoveDataConfiguration implements TransformationConfiguration 
 			return false;
 		}
 		MoveDataConfiguration that = (MoveDataConfiguration) o;
-		return Objects.equals(transformClass, that.transformClass) && Objects.equals(from, that.from) && Objects.equals(to,
-				that.to
-		);
+		return Objects.equals(transformClass, that.transformClass) && Objects.equals(from, that.from)
+				&& Objects.equals(to, that.to) && Objects.equals(index, that.index);
 	}
 
 	@Override
@@ -38,6 +40,7 @@ public final class MoveDataConfiguration implements TransformationConfiguration 
 		hash += ConfigUtils.hashCode(transformClass);
 		hash += ConfigUtils.hashCode(from);
 		hash += ConfigUtils.hashCode(to);
+		hash += ConfigUtils.hashCode(index);
 		return hash;
 	}
 
@@ -46,6 +49,7 @@ public final class MoveDataConfiguration implements TransformationConfiguration 
 		if (this.transformClass != null) c.transformClass = this.transformClass;
 		if (this.from != null) c.from = this.from;
 		if (this.to != null) c.to = this.to;
+		if (this.index != null) c.index = this.index;
 		return c;
 	}
 }

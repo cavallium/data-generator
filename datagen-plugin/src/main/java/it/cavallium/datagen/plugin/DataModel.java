@@ -213,11 +213,20 @@ public class DataModel {
 							if (definition.isEmpty()) {
 								throw new IllegalArgumentException(transformCoordinate + " refers to an unknown field: " + t.from);
 							}
-							var prevDef = tryInsertAtIndex(transformClass.data,
-									t.to,
-									definition.get().getValue(),
-									definition.get().getKey()
-							);
+							String prevDef;
+							if (t.index != null) {
+								prevDef = tryInsertAtIndex(transformClass.data,
+										t.to,
+										definition.get().getValue(),
+										t.index
+								);
+							} else {
+								prevDef = tryInsertAtIndex(transformClass.data,
+										t.to,
+										definition.get().getValue(),
+										definition.get().getKey()
+								);
+							}
 							if (prevDef != null) {
 								throw new IllegalArgumentException(
 										transformCoordinate + " tries to overwrite the existing field \"" + t.to + "\" of value \""

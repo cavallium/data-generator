@@ -29,6 +29,9 @@ public class MavenPlugin extends AbstractMojo {
 	@Parameter( required = true, defaultValue = "false")
 	private String useRecordBuilder;
 
+	@Parameter(defaultValue = "false")
+	private String generateTestResources;
+
 	/**
 	 * @parameter default-value="${project}"
 	 * @required
@@ -41,7 +44,8 @@ public class MavenPlugin extends AbstractMojo {
 	public void execute() throws MojoExecutionException, MojoFailureException {
 		try {
 			SourcesGenerator sourcesGenerator = SourcesGenerator.load(configPath.toPath());
-			Path genRecordsPath = project.getBasedir().getAbsoluteFile().toPath().resolve("target").resolve("generated-sources").resolve("database-classes");
+			project.hasLifecyclePhase("generate-test-sources");
+			Path genRecordsPath = project.getBasedir().getAbsoluteFile().toPath().resolve("target").resolve(Boolean.parseBoolean(generateTestResources) ? "generated-test-sources" : "generated-sources").resolve("database-classes");
 
 			Path outPath = genRecordsPath.resolve("java");
 			this.project.addCompileSourceRoot(outPath.toString());

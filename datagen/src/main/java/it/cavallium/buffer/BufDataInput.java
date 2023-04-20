@@ -25,19 +25,4 @@ public class BufDataInput extends SafeDataInputStream {
 	public void close() {
 		super.close();
 	}
-
-	@Override
-	public void mark(int readlimit) {
-		throw new UnsupportedOperationException();
-	}
-
-	@Override
-	public void reset() {
-		throw new UnsupportedOperationException();
-	}
-
-	@Override
-	public boolean markSupported() {
-		return false;
-	}
 }
