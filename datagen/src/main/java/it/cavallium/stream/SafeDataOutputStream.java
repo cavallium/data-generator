@@ -28,6 +28,7 @@ package it.cavallium.stream;
 import it.cavallium.buffer.IgnoreCoverage;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * A data output stream lets an application write primitive Java data
@@ -80,6 +81,27 @@ public class SafeDataOutputStream extends SafeFilterOutputStream implements Safe
 	public void write(int b) {
 		out.write(b);
 		incCount(1);
+	}
+
+	/**
+	 * Writes {@code b.length} bytes to this output stream.
+	 * <p>
+	 * The {@code write} method of {@code FilterOutputStream}
+	 * calls its {@code write} method of three arguments with the
+	 * arguments {@code b}, {@code 0}, and
+	 * {@code b.length}.
+	 * <p>
+	 * Note that this method does not call the one-argument
+	 * {@code write} method of its underlying output stream with
+	 * the single argument {@code b}.
+	 *
+	 * @param      b   the data to be written.
+	 * @see        SafeFilterOutputStream#write(byte[], int, int)
+	 */
+	@Override
+	public void write(byte @NotNull [] b) {
+		out.write(b);
+		incCount(b.length);
 	}
 
 	/**
