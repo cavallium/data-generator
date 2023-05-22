@@ -1,19 +1,22 @@
 package it.cavallium.stream;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import it.cavallium.buffer.Buf;
 import it.cavallium.buffer.BufDataInput;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.MethodSource;
-
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.stream.Stream;
-
-import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 @SuppressWarnings("resource")
 public class TestInput {
@@ -32,11 +35,11 @@ public class TestInput {
     @Test
     public void testBufDataInputValidity() {
         var bdi = BufDataInput.create(Buf.wrap((byte) 1, (byte) 2, (byte) 3, (byte) 4));
-        assertThrows(UnsupportedOperationException.class, () -> bdi.mark(1));
-        assertThrows(UnsupportedOperationException.class, bdi::reset);
+        assertDoesNotThrow(() -> bdi.mark(1));
+        assertDoesNotThrow(bdi::reset);
         //noinspection deprecation
         assertDoesNotThrow(bdi::close);
-        assertFalse(bdi.markSupported());
+        assertTrue(bdi.markSupported());
     }
 
     @Test
