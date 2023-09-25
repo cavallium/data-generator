@@ -24,6 +24,7 @@ import java.nio.charset.Charset;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.HexFormat;
 import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
@@ -37,6 +38,7 @@ import org.jetbrains.annotations.VisibleForTesting;
 
 class ByteListBuf extends ByteArrayList implements Buf {
 
+	private static final HexFormat HEX_FORMAT = HexFormat.of().withUpperCase();
 	private static final String IMMUTABLE_ERROR = "The buffer is immutable";
 	private static final VariableLengthLexiconographicComparator VAR_LENGTH_LEX_COMP = new VariableLengthLexiconographicComparator();
 
@@ -238,6 +240,11 @@ class ByteListBuf extends ByteArrayList implements Buf {
 	@Override
 	public String toString(Charset charset) {
 		return getString(0, size, charset);
+	}
+
+	@Override
+	public String toString() {
+		return HEX_FORMAT.formatHex(a, 0, size());
 	}
 
 	@Override
@@ -530,6 +537,11 @@ class ByteListBuf extends ByteArrayList implements Buf {
 		@Override
 		public String toString(Charset charset) {
 			return new String(a, from, size(), charset);
+		}
+
+		@Override
+		public String toString() {
+			return HEX_FORMAT.formatHex(a, from, from + size());
 		}
 
 		@Override
