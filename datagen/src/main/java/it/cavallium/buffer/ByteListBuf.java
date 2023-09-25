@@ -38,6 +38,8 @@ import org.jetbrains.annotations.VisibleForTesting;
 class ByteListBuf extends ByteArrayList implements Buf {
 
 	private static final String IMMUTABLE_ERROR = "The buffer is immutable";
+	private static final VariableLengthLexiconographicComparator VAR_LENGTH_LEX_COMP = new VariableLengthLexiconographicComparator();
+
 	private boolean immutable;
 
 	protected ByteListBuf(byte[] a, boolean wrapped) {
@@ -511,7 +513,7 @@ class ByteListBuf extends ByteArrayList implements Buf {
 
 		int contentsCompareTo(byte[] otherA, int otherAFrom, int otherATo) {
 			if (a == otherA && from == otherAFrom && to == otherATo) return 0;
-			return Arrays.compareUnsigned(a, from, to, otherA, otherAFrom, otherATo);
+			return VAR_LENGTH_LEX_COMP.compare(a, from, to, otherA, otherAFrom, otherATo);
 		}
 
 		@Override
@@ -886,7 +888,7 @@ class ByteListBuf extends ByteArrayList implements Buf {
 		final int s1 = size(), s2 = l.size();
 		final byte[] a1 = a, a2 = l.elements();
 		if (a1 == a2 && s1 == s2) return 0;
-		return Arrays.compareUnsigned(a, 0, s1, a2, 0, s2);
+		return VAR_LENGTH_LEX_COMP.compare(a, 0, s1, a2, 0, s2);
 	}
 
 	/**
