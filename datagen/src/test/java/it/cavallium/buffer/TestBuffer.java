@@ -78,6 +78,11 @@ public class TestBuffer {
         return Stream.concat(primaryBufs.stream(), subListBufs.stream());
     }
 
+    public static Stream<BufArg> provideBufsCompare() {
+        return Stream.concat(provideBufs(),
+            Stream.of(new BufArg("0x50", Buf.wrap((byte) 50), 1, new byte[]{50})));
+    }
+
     public static List<BufArg> createPrimaryBufs() {
         var emptyBuf = new BufArg("create()", Buf.create(), 0, new byte[0]);
         var byteListBuf = new BufArg("createByteListBuf()", ByteListBuf.of(), 0, new byte[0]);
@@ -544,7 +549,7 @@ public class TestBuffer {
     }
 
     @ParameterizedTest
-    @MethodSource("provideBufs")
+    @MethodSource("provideBufsCompare")
     public void testCompareTo(BufArg bufArg) {
         if (bufArg.initialSize > 0) {
             var bigger = Arrays.copyOf(bufArg.initialContent, bufArg.initialSize + 1);

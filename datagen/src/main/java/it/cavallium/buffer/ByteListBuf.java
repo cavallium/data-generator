@@ -25,6 +25,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.Iterator;
+import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.function.IntPredicate;
 import java.util.function.IntUnaryOperator;
@@ -866,5 +867,61 @@ class ByteListBuf extends ByteArrayList implements Buf {
 		if (!isMutable()) {
 			throw new UnsupportedOperationException(IMMUTABLE_ERROR);
 		}
+	}
+
+	@Override
+	public int compareTo(List<? extends Byte> l) {
+		if (l instanceof ByteArrayList) {
+			return compareTo((ByteArrayList)l);
+		}
+		if (l instanceof SubList) {
+			// Must negate because we are inverting the order of the comparison.
+			return -((SubList)l).compareTo(this);
+		}
+		return super.compareTo(l);
+	}
+
+	@Override
+	public int compareTo(ByteArrayList l) {
+		final int s1 = size(), s2 = l.size();
+		final byte[] a1 = a, a2 = l.elements();
+		if (a1 == a2 && s1 == s2) return 0;
+		return Arrays.compareUnsigned(a, 0, s1, a2, 0, s2);
+	}
+
+	/**
+	 * Compares this type-specific array list to another one.
+	 *
+	 * @apiNote This method exists only for sake of efficiency. The implementation inherited from the
+	 *          abstract implementation would already work.
+	 *
+	 * @param l a type-specific array list.
+	 * @return true if the argument contains the same elements of this type-specific array list.
+	 */
+	public boolean equals(final ByteArrayList l) {
+		if (l == this) return true;
+		int s = size();
+		if (s != l.size()) return false;
+		final byte[] a1 = a, a2 = l.elements();
+		final int s1 = this.size(), s2 = l.size();
+		return Arrays.equals(a1, 0, s1, a2, 0, s2);
+	}
+
+	@SuppressWarnings("unlikely-arg-type")
+	@Override
+	public boolean equals(final Object o) {
+		if (o == this) return true;
+		if (o == null) return false;
+		if (!(o instanceof java.util.List)) return false;
+		if (o instanceof ByteArrayList) {
+			// Safe cast because we are only going to take elements from other list, never give them
+			return equals((ByteArrayList) o);
+		}
+		if (o instanceof SubList subList) {
+			// Safe cast because we are only going to take elements from other list, never give them
+			// Sublist has an optimized sub-array based comparison, reuse that.
+			return subList.equals(this);
+		}
+		return super.equals(o);
 	}
 }
