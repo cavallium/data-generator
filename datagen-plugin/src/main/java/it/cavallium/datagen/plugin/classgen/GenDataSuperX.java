@@ -3,6 +3,7 @@ package it.cavallium.datagen.plugin.classgen;
 import com.squareup.javapoet.ClassName;
 import com.squareup.javapoet.MethodSpec;
 import com.squareup.javapoet.ParameterSpec;
+import com.squareup.javapoet.TypeName;
 import com.squareup.javapoet.TypeSpec;
 import it.cavallium.datagen.plugin.ClassGenerator;
 import it.cavallium.datagen.plugin.ComputedTypeSuper;
@@ -35,6 +36,17 @@ public class GenDataSuperX extends ClassGenerator {
 		var classBuilder = TypeSpec.interfaceBuilder(type.simpleName());
 
 		classBuilder.addModifiers(Modifier.PUBLIC);
+
+		if (version.isCurrent()) {
+			classBuilder.addModifiers(Modifier.SEALED);
+			Stream<TypeName> superTypesThatExtendThisSuperType = dataModel.getSuperTypesComputed(version)
+					.filter(computedTypeSuper -> dataModel.getExtendsInterfaces(computedTypeSuper).anyMatch(typeSuper::equals))
+					.map(computedTypeSuper -> computedTypeSuper.getJTypeName(basePackageName));
+			Stream<TypeName> subTypes = typeSuper.subTypes().stream()
+					.map(subType -> subType.getJTypeName(basePackageName));
+			Stream<TypeName> permittedSubclasses = Stream.concat(superTypesThatExtendThisSuperType, subTypes).distinct();
+			classBuilder.addPermittedSubclasses(permittedSubclasses.toList());
+		}
 
 		dataModel.getTypeSameVersions(typeSuper).forEach(v -> {
 			var iTypeClass = ClassName.get(v.getPackage(basePackageName), "IBaseType");
