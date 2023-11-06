@@ -12,6 +12,8 @@ public class Nullableboolean implements Serializable, INullable, NativeNullable<
 	@Serial
 	private static final long serialVersionUID = 1L;
 	private static final Nullableboolean NULL = new Nullableboolean(null);
+	private static final Nullableboolean TRUE = new Nullableboolean(true);
+	private static final Nullableboolean FALSE = new Nullableboolean(false);
 
 	private final Boolean value;
 
@@ -20,14 +22,14 @@ public class Nullableboolean implements Serializable, INullable, NativeNullable<
 	}
 
 	public static Nullableboolean of(boolean value) {
-		return new Nullableboolean(value);
+		return value ? TRUE : FALSE;
 	}
 
 	public static Nullableboolean ofNullable(@Nullable Boolean value) {
 		if (value == null) {
 			return NULL;
 		} else {
-			return new Nullableboolean(value);
+			return value ? TRUE : FALSE;
 		}
 	}
 

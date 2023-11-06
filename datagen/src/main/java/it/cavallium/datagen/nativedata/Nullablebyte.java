@@ -12,6 +12,13 @@ public class Nullablebyte implements Serializable, INullable, NativeNullable<Byt
 	@Serial
 	private static final long serialVersionUID = 1L;
 	private static final Nullablebyte NULL = new Nullablebyte(null);
+	private static final Nullablebyte[] BYTES = new Nullablebyte[1 << Byte.SIZE];
+
+	static {
+		for (short i = Byte.MIN_VALUE; i <= Byte.MAX_VALUE; i++) {
+			BYTES[i - Byte.MIN_VALUE] = new Nullablebyte((byte) i);
+		}
+	}
 
 	private final Byte value;
 
@@ -20,14 +27,14 @@ public class Nullablebyte implements Serializable, INullable, NativeNullable<Byt
 	}
 
 	public static Nullablebyte of(byte value) {
-		return new Nullablebyte(value);
+		return BYTES[value - Byte.MIN_VALUE];
 	}
 
 	public static Nullablebyte ofNullable(@Nullable Byte value) {
 		if (value == null) {
 			return NULL;
 		} else {
-			return new Nullablebyte(value);
+			return BYTES[value - Byte.MIN_VALUE];
 		}
 	}
 
@@ -35,7 +42,7 @@ public class Nullablebyte implements Serializable, INullable, NativeNullable<Byt
 		if (value == null) {
 			return NULL;
 		} else {
-			return new Nullablebyte(value.byteValue());
+			return BYTES[value.byteValue() - Byte.MIN_VALUE];
 		}
 	}
 
