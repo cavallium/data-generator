@@ -241,7 +241,6 @@ public class GenUpgraderBaseX extends ClassGenerator {
 						instanceField.fieldLocation().fieldName()
 				);
 			}
-
 			classBuilder.addField(fieldBuilder.build());
 			initializerStaticFieldNames.put(identifier, initializerName);
 		}
@@ -251,17 +250,24 @@ public class GenUpgraderBaseX extends ClassGenerator {
 	private String createUpgraderStaticField(AtomicInteger nextUpgraderStaticFieldId,
 			HashMap<String, String> upgraderStaticFieldNames,
 			Builder classBuilder,
-			String upgraderImplementationLocation,
+			JInterfaceLocation upgraderLocation,
 			TypeName genericUpgraderClass) {
-		var upgraderName = upgraderStaticFieldNames.get(upgraderImplementationLocation);
+		var identifier = upgraderLocation.getIdentifier();
+		var upgraderName = upgraderStaticFieldNames.get(identifier);
 		if (upgraderName == null) {
 			upgraderName = "U" + nextUpgraderStaticFieldId.getAndIncrement();
-			classBuilder.addField(FieldSpec
+			var fieldBuilder = FieldSpec
 					.builder(genericUpgraderClass, upgraderName)
-					.addModifiers(Modifier.PRIVATE, Modifier.STATIC, Modifier.FINAL)
-					.initializer("new $T()", upgraderClass)
-					.build());
-			upgraderStaticFieldNames.put(upgraderImplementationLocation, upgraderName);
+					.addModifiers(Modifier.PRIVATE, Modifier.STATIC, Modifier.FINAL);
+			switch (upgraderLocation) {
+				case JInterfaceLocationClassName className -> fieldBuilder.initializer("new $T()", className.className());
+				case JInterfaceLocationInstanceField instanceField -> fieldBuilder.initializer("$T.$N",
+						instanceField.fieldLocation().className(),
+						instanceField.fieldLocation().fieldName()
+				);
+			}
+			classBuilder.addField(fieldBuilder.build());
+			upgraderStaticFieldNames.put(identifier, upgraderName);
 		}
 		return upgraderName;
 	}
