@@ -16,6 +16,9 @@ import it.cavallium.datagen.plugin.ComputedType;
 import it.cavallium.datagen.plugin.ComputedType.VersionedComputedType;
 import it.cavallium.datagen.plugin.ComputedTypeBase;
 import it.cavallium.datagen.plugin.ComputedVersion;
+import it.cavallium.datagen.plugin.JInterfaceLocation;
+import it.cavallium.datagen.plugin.JInterfaceLocation.JInterfaceLocationClassName;
+import it.cavallium.datagen.plugin.JInterfaceLocation.JInterfaceLocationInstanceField;
 import it.cavallium.datagen.plugin.MoveDataConfiguration;
 import it.cavallium.datagen.plugin.NewDataConfiguration;
 import it.cavallium.datagen.plugin.RemoveDataConfiguration;
@@ -116,7 +119,7 @@ public class GenUpgraderBaseX extends ClassGenerator {
 								var newDataConfiguration = e.getValue();
 								var computedTypes = dataModel.getComputedTypes(nextTypeBase.getVersion());
 								var newFieldType = Objects.requireNonNull(computedTypes.get(DataModel.fixType(newDataConfiguration.type)));
-								var initializerClass = ClassName.bestGuess(newDataConfiguration.initializer);
+								var initializerLocation = newDataConfiguration.getInitializerLocation();
 								var genericInitializerClass = ParameterizedTypeName.get(ClassName.get(DataInitializer.class),
 										newFieldType.getJTypeName(basePackageName).box()
 								);
@@ -124,7 +127,7 @@ public class GenUpgraderBaseX extends ClassGenerator {
 								var initializerName = createInitializerStaticField(nextInitializerStaticFieldId,
 										initializerStaticFieldNames,
 										classBuilder,
-										initializerClass,
+										initializerLocation,
 										genericInitializerClass
 								);
 
@@ -163,7 +166,7 @@ public class GenUpgraderBaseX extends ClassGenerator {
 						if (!upgradeDataConfiguration.from.equals(fieldName)) {
 							continue;
 						}
-						var upgraderClass = ClassName.bestGuess(upgradeDataConfiguration.upgrader);
+						var upgraderImplementationLocation = upgradeDataConfiguration.getUpgraderLocation();
 						var cb = CodeBlock.builder();
 						var newFieldType = Objects
 								.requireNonNull(dataModel.getComputedTypes(nextTypeBase.getVersion()).get(DataModel.fixType(upgradeDataConfiguration.type)));
@@ -175,7 +178,7 @@ public class GenUpgraderBaseX extends ClassGenerator {
 						var upgraderName = createUpgraderStaticField(nextUpgraderStaticFieldId,
 								upgraderStaticFieldNames,
 								classBuilder,
-								upgraderClass,
+								upgraderImplementationLocation,
 								genericUpgraderClass
 						);
 
@@ -222,18 +225,25 @@ public class GenUpgraderBaseX extends ClassGenerator {
 	private String createInitializerStaticField(AtomicInteger nextInitializerStaticFieldId,
 			HashMap<String, String> initializerStaticFieldNames,
 			Builder classBuilder,
-			ClassName initializerClass,
+			JInterfaceLocation initializerLocation,
 			TypeName genericInitializerClass) {
-		var ref = initializerClass.reflectionName();
-		var initializerName = initializerStaticFieldNames.get(ref);
+		var identifier = initializerLocation.getIdentifier();
+		var initializerName = initializerStaticFieldNames.get(identifier);
 		if (initializerName == null) {
 			initializerName = "I" + nextInitializerStaticFieldId.getAndIncrement();
-			classBuilder.addField(FieldSpec
+			var fieldBuilder = FieldSpec
 					.builder(genericInitializerClass, initializerName)
-					.addModifiers(Modifier.PRIVATE, Modifier.STATIC, Modifier.FINAL)
-					.initializer("new $T()", initializerClass)
-					.build());
-			initializerStaticFieldNames.put(ref, initializerName);
+					.addModifiers(Modifier.PRIVATE, Modifier.STATIC, Modifier.FINAL);
+			switch (initializerLocation) {
+				case JInterfaceLocationClassName className -> fieldBuilder.initializer("new $T()", className.className());
+				case JInterfaceLocationInstanceField instanceField -> fieldBuilder.initializer("$T.$N",
+						instanceField.fieldLocation().className(),
+						instanceField.fieldLocation().fieldName()
+				);
+			}
+
+			classBuilder.addField(fieldBuilder.build());
+			initializerStaticFieldNames.put(identifier, initializerName);
 		}
 		return initializerName;
 	}
@@ -241,10 +251,9 @@ public class GenUpgraderBaseX extends ClassGenerator {
 	private String createUpgraderStaticField(AtomicInteger nextUpgraderStaticFieldId,
 			HashMap<String, String> upgraderStaticFieldNames,
 			Builder classBuilder,
-			ClassName upgraderClass,
+			String upgraderImplementationLocation,
 			TypeName genericUpgraderClass) {
-		var ref = upgraderClass.reflectionName();
-		var upgraderName = upgraderStaticFieldNames.get(ref);
+		var upgraderName = upgraderStaticFieldNames.get(upgraderImplementationLocation);
 		if (upgraderName == null) {
 			upgraderName = "U" + nextUpgraderStaticFieldId.getAndIncrement();
 			classBuilder.addField(FieldSpec
@@ -252,7 +261,7 @@ public class GenUpgraderBaseX extends ClassGenerator {
 					.addModifiers(Modifier.PRIVATE, Modifier.STATIC, Modifier.FINAL)
 					.initializer("new $T()", upgraderClass)
 					.build());
-			upgraderStaticFieldNames.put(ref, upgraderName);
+			upgraderStaticFieldNames.put(upgraderImplementationLocation, upgraderName);
 		}
 		return upgraderName;
 	}

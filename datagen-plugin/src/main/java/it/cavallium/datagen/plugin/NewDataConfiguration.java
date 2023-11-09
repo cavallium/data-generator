@@ -9,6 +9,7 @@ public class NewDataConfiguration implements TransformationConfiguration {
 	public String to;
 	public String type;
 	public String initializer;
+	public String initializerInstance;
 	@Nullable
 	public Integer index;
 
@@ -22,6 +23,10 @@ public class NewDataConfiguration implements TransformationConfiguration {
 		return "new-data";
 	}
 
+	public JInterfaceLocation getInitializerLocation() {
+		return JInterfaceLocation.parse(initializer, initializerInstance);
+	}
+
 	@Override
 	public boolean equals(Object o) {
 		if (this == o) {
@@ -33,6 +38,7 @@ public class NewDataConfiguration implements TransformationConfiguration {
 		NewDataConfiguration that = (NewDataConfiguration) o;
 		return Objects.equals(transformClass, that.transformClass) && Objects.equals(to, that.to)
 				&& Objects.equals(type, that.type) && Objects.equals(initializer, that.initializer)
+				&& Objects.equals(initializerInstance, that.initializerInstance)
 				&& Objects.equals(index, that.index);
 	}
 
@@ -43,6 +49,7 @@ public class NewDataConfiguration implements TransformationConfiguration {
 		hash += ConfigUtils.hashCode(to);
 		hash += ConfigUtils.hashCode(type);
 		hash += ConfigUtils.hashCode(initializer);
+		hash += ConfigUtils.hashCode(initializerInstance);
 		hash += ConfigUtils.hashCode(index);
 		return hash;
 	}
@@ -51,6 +58,7 @@ public class NewDataConfiguration implements TransformationConfiguration {
 		var c = new NewDataConfiguration();
 		if (this.transformClass != null) c.transformClass = this.transformClass;
 		if (this.initializer != null) c.initializer = this.initializer;
+		if (this.initializerInstance != null) c.initializerInstance = this.initializerInstance;
 		if (this.to != null) c.to = this.to;
 		if (this.type != null) c.type = this.type;
 		if (this.index != null) c.index = this.index;
