@@ -5,8 +5,10 @@ import com.squareup.javapoet.ClassName;
 import com.squareup.javapoet.MethodSpec;
 import com.squareup.javapoet.ParameterSpec;
 import com.squareup.javapoet.ParameterizedTypeName;
+import com.squareup.javapoet.TypeName;
 import com.squareup.javapoet.TypeSpec;
 import com.squareup.javapoet.TypeSpec.Builder;
+import com.squareup.javapoet.WildcardTypeName;
 import it.cavallium.datagen.DataSerializer;
 import it.cavallium.datagen.NotSerializableException;
 import it.cavallium.datagen.nativedata.ImmutableWrappedArrayList;
@@ -127,8 +129,9 @@ public class GenSerializerArrayX extends ClassGenerator {
 		if (USE_NATIVE_TYPED_ARRAYS) {
 			method.addStatement("return $T.of(a)", ParameterizedTypeName.get(ClassName.get(ImmutableWrappedArrayList.class), arrayComponentTypeName));
 		} else {
-			method.addStatement("return ($T) $T.of(a)",
+			method.addStatement("return ($T) ($T) $T.of(a)",
 					ParameterizedTypeName.get(ClassName.get(ImmutableWrappedArrayList.class), arrayComponentTypeName),
+					ParameterizedTypeName.get(ClassName.get(ImmutableWrappedArrayList.class), WildcardTypeName.subtypeOf(TypeName.OBJECT)),
 					ClassName.get(ImmutableWrappedArrayList.class)
 			);
 		}
