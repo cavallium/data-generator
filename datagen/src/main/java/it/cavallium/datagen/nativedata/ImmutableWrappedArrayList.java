@@ -63,7 +63,6 @@ public class ImmutableWrappedArrayList<K> extends AbstractObjectList<K> implemen
 	/**
 	 * Creates an array list using an array of elements.
 	 *
-	 * @param init a the array the will become the new backing array of the array list.
 	 * @return a new array list backed by the given array.
 	 */
 	public static <K> ImmutableWrappedArrayList<K> of() {
