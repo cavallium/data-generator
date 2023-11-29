@@ -125,9 +125,9 @@ public class GenSerializerArrayX extends ClassGenerator {
 
 		method.addCode("\n");
 		if (USE_NATIVE_TYPED_ARRAYS) {
-			method.addStatement("return new $T(a)", ParameterizedTypeName.get(ClassName.get(ImmutableWrappedArrayList.class), arrayComponentTypeName));
+			method.addStatement("return $T.of(a)", ParameterizedTypeName.get(ClassName.get(ImmutableWrappedArrayList.class), arrayComponentTypeName));
 		} else {
-			method.addStatement("return ($T) new $T(a)",
+			method.addStatement("return ($T) $T.of(a)",
 					ParameterizedTypeName.get(ClassName.get(ImmutableWrappedArrayList.class), arrayComponentTypeName),
 					ClassName.get(ImmutableWrappedArrayList.class)
 			);

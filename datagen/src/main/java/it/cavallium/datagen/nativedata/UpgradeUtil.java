@@ -16,7 +16,7 @@ public class UpgradeUtil {
 		for (int i = 0; i < array.length; i++) {
 			array[i] = (B) upgrader.upgrade((A) array[i]);
 		}
-		return (ImmutableWrappedArrayList<B>) new ImmutableWrappedArrayList<>(array);
+		return (ImmutableWrappedArrayList<B>) ImmutableWrappedArrayList.of(array);
 	}
 
 	public static <A, B> B upgradeNullable(A nullableValue, DataUpgrader<A, B> upgrader) {

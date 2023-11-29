@@ -32,6 +32,8 @@ import java.util.function.Consumer;
 import org.jetbrains.annotations.NotNull;
 
 public class ImmutableWrappedArrayList<K> extends AbstractObjectList<K> implements RandomAccess {
+
+	private static final ImmutableWrappedArrayList<?> EMPTY = new ImmutableWrappedArrayList<>(new Object[0]);
 	/** The backing array. */
 	protected final K[] a;
 	/** The current actual size of the list (never greater than the backing-array length). */
@@ -42,7 +44,7 @@ public class ImmutableWrappedArrayList<K> extends AbstractObjectList<K> implemen
 	 *
 	 * @param a an array whose elements will be used to fill the array list.
 	 */
-	public ImmutableWrappedArrayList(final K[] a) {
+	private ImmutableWrappedArrayList(final K[] a) {
 		this.a = a;
 		this.size = a.length;
 	}
@@ -55,7 +57,18 @@ public class ImmutableWrappedArrayList<K> extends AbstractObjectList<K> implemen
 	 */
 	@SafeVarargs
 	public static <K> ImmutableWrappedArrayList<K> of(final K... init) {
-		return new ImmutableWrappedArrayList<>(init);
+		return init.length == 0 ?  of() : new ImmutableWrappedArrayList<>(init);
+	}
+
+	/**
+	 * Creates an array list using an array of elements.
+	 *
+	 * @param init a the array the will become the new backing array of the array list.
+	 * @return a new array list backed by the given array.
+	 */
+	public static <K> ImmutableWrappedArrayList<K> of() {
+		//noinspection unchecked
+		return (ImmutableWrappedArrayList<K>) EMPTY;
 	}
 
 	private UnsupportedOperationException ex() {
