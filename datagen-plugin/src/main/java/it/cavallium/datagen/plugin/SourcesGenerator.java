@@ -202,14 +202,22 @@ public class SourcesGenerator {
 		new GenUpgraderSuperX(genParams).run();
 
 		// Update the hash at the end
-		Files.writeString(hashPath,
-				basePackageName + '\n' + useRecordBuilders + '\n' + deepCheckBeforeCreatingNewEqualInstances + '\n' + curHash
-						+ '\n',
-				StandardCharsets.UTF_8,
-				TRUNCATE_EXISTING,
-				WRITE,
-				CREATE
-		);
+		var newHashRaw = basePackageName + '\n' + useRecordBuilders + '\n' + deepCheckBeforeCreatingNewEqualInstances + '\n' + curHash + '\n';
+		String oldHashRaw;
+		if (Files.exists(hashPath)) {
+			oldHashRaw = Files.readString(hashPath, StandardCharsets.UTF_8);
+		} else {
+			oldHashRaw = null;
+		}
+		if (!Objects.equals(newHashRaw, oldHashRaw)) {
+			Files.writeString(hashPath,
+					newHashRaw,
+					StandardCharsets.UTF_8,
+					TRUNCATE_EXISTING,
+					WRITE,
+					CREATE
+			);
+		}
 		generatedFilesToDelete.remove(outPath.relativize(hashPath));
 	}
 
