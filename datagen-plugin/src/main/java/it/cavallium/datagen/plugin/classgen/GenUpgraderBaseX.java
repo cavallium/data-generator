@@ -9,22 +9,12 @@ import com.squareup.javapoet.ParameterizedTypeName;
 import com.squareup.javapoet.TypeName;
 import com.squareup.javapoet.TypeSpec;
 import com.squareup.javapoet.TypeSpec.Builder;
-import it.cavallium.datagen.DataInitializer;
-import it.cavallium.datagen.DataUpgrader;
-import it.cavallium.datagen.plugin.ClassGenerator;
-import it.cavallium.datagen.plugin.ComputedType;
+import it.cavallium.datagen.*;
+import it.cavallium.datagen.plugin.*;
 import it.cavallium.datagen.plugin.ComputedType.VersionedComputedType;
-import it.cavallium.datagen.plugin.ComputedTypeBase;
-import it.cavallium.datagen.plugin.ComputedVersion;
-import it.cavallium.datagen.plugin.JInterfaceLocation;
 import it.cavallium.datagen.plugin.JInterfaceLocation.JInterfaceLocationClassName;
 import it.cavallium.datagen.plugin.JInterfaceLocation.JInterfaceLocationInstanceField;
-import it.cavallium.datagen.plugin.MoveDataConfiguration;
-import it.cavallium.datagen.plugin.NewDataConfiguration;
-import it.cavallium.datagen.plugin.RemoveDataConfiguration;
-import it.cavallium.datagen.plugin.TransformationConfiguration;
-import it.cavallium.datagen.plugin.UpgradeDataConfiguration;
-import it.cavallium.datagen.plugin.DataModel;
+
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -36,6 +26,7 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import javax.lang.model.element.Modifier;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 public class GenUpgraderBaseX extends ClassGenerator {
 
@@ -64,7 +55,7 @@ public class GenUpgraderBaseX extends ClassGenerator {
 
 		classBuilder.addModifiers(Modifier.PUBLIC, Modifier.FINAL);
 
-		classBuilder.addSuperinterface(ParameterizedTypeName.get(ClassName.get(DataUpgrader.class),
+		classBuilder.superclass(ParameterizedTypeName.get(ClassName.get(DataUpgraderSimple.class),
 				typeBaseClassName,
 				nextTypeBase.getJTypeName(basePackageName)
 		));
@@ -92,6 +83,7 @@ public class GenUpgraderBaseX extends ClassGenerator {
 
 		AtomicInteger nextInitializerStaticFieldId = new AtomicInteger();
 		HashMap<String, String> initializerStaticFieldNames = new HashMap<>();
+		HashMap<String, ContextInfo> contextStaticFieldCodeBlocks = new HashMap<>();
 		AtomicInteger nextUpgraderStaticFieldId = new AtomicInteger();
 		HashMap<String, String> upgraderStaticFieldNames = new HashMap<>();
 		List<TransformationConfiguration> transformations = dataModel.getChanges(nextTypeBase);
@@ -120,7 +112,16 @@ public class GenUpgraderBaseX extends ClassGenerator {
 								var computedTypes = dataModel.getComputedTypes(nextTypeBase.getVersion());
 								var newFieldType = Objects.requireNonNull(computedTypes.get(DataModel.fixType(newDataConfiguration.type)));
 								var initializerLocation = newDataConfiguration.getInitializerLocation();
+
+								var contextInfo = createContextStaticClass(typeBase, e.getValue().to,
+										contextStaticFieldCodeBlocks,
+										classBuilder,
+										initializerLocation,
+										newDataConfiguration.getContextParameters()
+								);
+
 								var genericInitializerClass = ParameterizedTypeName.get(ClassName.get(DataInitializer.class),
+										contextInfo.typeName(),
 										newFieldType.getJTypeName(basePackageName).box()
 								);
 
@@ -131,7 +132,7 @@ public class GenUpgraderBaseX extends ClassGenerator {
 										genericInitializerClass
 								);
 
-								return new Field(newDataConfiguration.to, newFieldType, CodeBlock.of("$N.initialize()", initializerName), i + 1);
+								return new Field(newDataConfiguration.to, newFieldType, CodeBlock.of("$N.initialize($L)", initializerName, contextInfo.contextApply), i + 1);
 							})
 			);
 			resultFields = fields.<ResultField>mapMulti((field, consumer) -> {
@@ -170,7 +171,16 @@ public class GenUpgraderBaseX extends ClassGenerator {
 						var cb = CodeBlock.builder();
 						var newFieldType = Objects
 								.requireNonNull(dataModel.getComputedTypes(nextTypeBase.getVersion()).get(DataModel.fixType(upgradeDataConfiguration.type)));
+
+						var contextInfo = createContextStaticClass(typeBase, upgradeDataConfiguration.from,
+								contextStaticFieldCodeBlocks,
+								classBuilder,
+								upgraderImplementationLocation,
+								upgradeDataConfiguration.getContextParameters()
+						);
+
 						var genericUpgraderClass = ParameterizedTypeName.get(ClassName.get(DataUpgrader.class),
+								contextInfo.typeName(),
 								fieldType.getJTypeName(basePackageName).box(),
 								newFieldType.getJTypeName(basePackageName).box()
 						);
@@ -182,9 +192,10 @@ public class GenUpgraderBaseX extends ClassGenerator {
 								genericUpgraderClass
 						);
 
-						cb.add("($T) $N.upgrade(($T) ",
+						cb.add("($T) $N.upgrade($L, ($T) ",
 								newFieldType.getJTypeName(basePackageName),
 								upgraderName,
+								contextInfo.contextApply,
 								fieldType.getJTypeName(basePackageName)
 						);
 						cb.add(codeBlock);
@@ -223,10 +234,10 @@ public class GenUpgraderBaseX extends ClassGenerator {
 	}
 
 	private String createInitializerStaticField(AtomicInteger nextInitializerStaticFieldId,
-			HashMap<String, String> initializerStaticFieldNames,
-			Builder classBuilder,
-			JInterfaceLocation initializerLocation,
-			TypeName genericInitializerClass) {
+												HashMap<String, String> initializerStaticFieldNames,
+												Builder classBuilder,
+												JInterfaceLocation initializerLocation,
+												TypeName genericInitializerClass) {
 		var identifier = initializerLocation.getIdentifier();
 		var initializerName = initializerStaticFieldNames.get(identifier);
 		if (initializerName == null) {
@@ -245,6 +256,55 @@ public class GenUpgraderBaseX extends ClassGenerator {
 			initializerStaticFieldNames.put(identifier, initializerName);
 		}
 		return initializerName;
+	}
+
+	record ContextInfo(TypeName typeName, CodeBlock contextApply) {}
+
+	private ContextInfo createContextStaticClass(ComputedTypeBase typeBase,
+			String fieldName,
+											   HashMap<String, ContextInfo> contextStaticFieldCodeBlocks,
+											   Builder classBuilder,
+											   JInterfaceLocation initializerLocation,
+											   @NotNull List<String> contextParameters) {
+		var identifier = initializerLocation.getIdentifier();
+		var contextStaticFieldCodeBlock = contextStaticFieldCodeBlocks.get(identifier);
+		if (contextStaticFieldCodeBlock == null) {
+			var codeBlockBuilder = CodeBlock.builder();
+			TypeName typeName;
+
+			if (contextParameters.isEmpty()) {
+				typeName = ClassName.get(DataContextNone.class);
+				codeBlockBuilder.add("$T.INSTANCE", typeName);
+			} else {
+				var name = "Context" + SourcesGenerator.capitalize(fieldName);
+				var contextTypeClassBuilder = TypeSpec.recordBuilder(name)
+						.addSuperinterface(ClassName.get(DataContext.class))
+						.addModifiers(Modifier.PUBLIC, Modifier.STATIC);
+				typeName = typeBase.getJUpgraderName(basePackageName).nestedClass(name);
+
+				codeBlockBuilder.add("new $T(", typeName);
+				boolean first = true;
+				for (String contextParameter : contextParameters) {
+					var fieldType = typeBase.getData().get(contextParameter);
+					contextTypeClassBuilder.addRecordComponent(ParameterSpec.builder(fieldType.getJTypeName(basePackageName), contextParameter).build());
+
+					if (first) {
+						first = false;
+					} else {
+						codeBlockBuilder.add(", ");
+					}
+					codeBlockBuilder.add("data.$N()", contextParameter);
+				}
+				codeBlockBuilder.add(")");
+
+				var clazz = contextTypeClassBuilder.build();
+				classBuilder.addType(clazz);
+			}
+
+			contextStaticFieldCodeBlock = new ContextInfo(typeName, codeBlockBuilder.build());
+			contextStaticFieldCodeBlocks.put(identifier, contextStaticFieldCodeBlock);
+		}
+		return contextStaticFieldCodeBlock;
 	}
 
 	private String createUpgraderStaticField(AtomicInteger nextUpgraderStaticFieldId,

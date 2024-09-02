@@ -405,7 +405,7 @@ public class SourcesGenerator {
 		return i;
 	}
 
-	private String capitalize(String field) {
+	public static String capitalize(String field) {
 		return Character.toUpperCase(field.charAt(0)) + field.substring(1);
 	}
 

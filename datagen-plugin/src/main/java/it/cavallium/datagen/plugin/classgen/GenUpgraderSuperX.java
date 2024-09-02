@@ -8,6 +8,7 @@ import com.squareup.javapoet.ParameterizedTypeName;
 import com.squareup.javapoet.TypeSpec;
 import com.squareup.javapoet.TypeSpec.Builder;
 import it.cavallium.datagen.DataUpgrader;
+import it.cavallium.datagen.DataUpgraderSimple;
 import it.cavallium.datagen.plugin.ClassGenerator;
 import it.cavallium.datagen.plugin.ComputedType;
 import it.cavallium.datagen.plugin.ComputedType.VersionedComputedType;
@@ -44,7 +45,7 @@ public class GenUpgraderSuperX extends ClassGenerator {
 
 		classBuilder.addModifiers(Modifier.PUBLIC, Modifier.FINAL);
 
-		classBuilder.addSuperinterface(ParameterizedTypeName.get(ClassName.get(DataUpgrader.class),
+		classBuilder.superclass(ParameterizedTypeName.get(ClassName.get(DataUpgraderSimple.class),
 				typeBaseClassName,
 				nextTypeSuper.getJTypeName(basePackageName)
 		));

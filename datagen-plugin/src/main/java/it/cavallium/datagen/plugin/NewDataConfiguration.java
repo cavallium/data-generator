@@ -1,6 +1,9 @@
 package it.cavallium.datagen.plugin;
 
+import java.util.List;
 import java.util.Objects;
+
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 public class NewDataConfiguration implements TransformationConfiguration {
@@ -12,6 +15,8 @@ public class NewDataConfiguration implements TransformationConfiguration {
 	public String initializerInstance;
 	@Nullable
 	public Integer index;
+	@Nullable
+	public List<String> contextParameters;
 
 	@Override
 	public String getTransformClass() {
@@ -27,6 +32,11 @@ public class NewDataConfiguration implements TransformationConfiguration {
 		return JInterfaceLocation.parse(initializer, initializerInstance);
 	}
 
+	@NotNull
+	public List<String> getContextParameters() {
+		return Objects.requireNonNullElse(contextParameters, List.of());
+	}
+
 	@Override
 	public boolean equals(Object o) {
 		if (this == o) {
@@ -39,7 +49,8 @@ public class NewDataConfiguration implements TransformationConfiguration {
 		return Objects.equals(transformClass, that.transformClass) && Objects.equals(to, that.to)
 				&& Objects.equals(type, that.type) && Objects.equals(initializer, that.initializer)
 				&& Objects.equals(initializerInstance, that.initializerInstance)
-				&& Objects.equals(index, that.index);
+				&& Objects.equals(index, that.index)
+				&& Objects.equals(contextParameters, that.contextParameters);
 	}
 
 	@Override
@@ -51,6 +62,7 @@ public class NewDataConfiguration implements TransformationConfiguration {
 		hash += ConfigUtils.hashCode(initializer);
 		hash += ConfigUtils.hashCode(initializerInstance);
 		hash += ConfigUtils.hashCode(index);
+		hash += ConfigUtils.hashCode(contextParameters);
 		return hash;
 	}
 
@@ -62,6 +74,7 @@ public class NewDataConfiguration implements TransformationConfiguration {
 		if (this.to != null) c.to = this.to;
 		if (this.type != null) c.type = this.type;
 		if (this.index != null) c.index = this.index;
+		if (this.contextParameters != null) c.contextParameters = this.contextParameters;
 		return c;
 	}
 }

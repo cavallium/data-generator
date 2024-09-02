@@ -11,6 +11,7 @@ import com.squareup.javapoet.TypeSpec.Builder;
 import com.squareup.javapoet.TypeVariableName;
 import it.cavallium.datagen.DataSerializer;
 import it.cavallium.datagen.DataUpgrader;
+import it.cavallium.datagen.DataUpgraderSimple;
 import it.cavallium.datagen.plugin.ClassGenerator;
 import it.cavallium.datagen.plugin.ComputedType.VersionedComputedType;
 import it.cavallium.datagen.plugin.ComputedTypeArrayFixed;
@@ -188,7 +189,7 @@ public class GenVersion extends ClassGenerator {
 				return;
 			}
 
-			var genericClassName = ParameterizedTypeName.get(ClassName.get(DataUpgrader.class),
+			var genericClassName = ParameterizedTypeName.get(ClassName.get(DataUpgraderSimple.class),
 					type.getJTypeName(basePackageName), nextVersion.getJTypeName(basePackageName)
 			);
 			var upgraderClassName = type.getJUpgraderName(basePackageName);

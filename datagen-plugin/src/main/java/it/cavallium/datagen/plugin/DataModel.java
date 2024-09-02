@@ -159,7 +159,7 @@ public class DataModel {
 				.stream()
 				.filter(x -> x.size() > 1)
 				.forEach(x -> {
-					var type = x.get(0);
+					var type = x.getFirst();
 					throw new IllegalArgumentException("Type " + type + " has been defined more than once (check base, super, and custom types)!");
 				});
 
@@ -209,28 +209,19 @@ public class DataModel {
 										+ t.transformClass);
 							}
 							transformClass.addDifferentThanPrev(transformation);
-							var definition = removeAndGetIndex(transformClass.data, t.from);
+							var definition = transformClass.remove(t.from);
 							if (definition.isEmpty()) {
 								throw new IllegalArgumentException(transformCoordinate + " refers to an unknown field: " + t.from);
 							}
-							String prevDef;
-							if (t.index != null) {
-								prevDef = tryInsertAtIndex(transformClass.data,
-										t.to,
-										definition.get().getValue(),
-										t.index
-								);
-							} else {
-								prevDef = tryInsertAtIndex(transformClass.data,
-										t.to,
-										definition.get().getValue(),
-										definition.get().getKey()
-								);
-							}
+							ParsedClass.FieldInfo prevDef = transformClass.insert(
+									Objects.requireNonNullElse(t.index, definition.get().getKey()),
+									t.to,
+									new ParsedClass.InputFieldInfo(definition.get().getValue().typeName(), List.of())
+							);
 							if (prevDef != null) {
 								throw new IllegalArgumentException(
 										transformCoordinate + " tries to overwrite the existing field \"" + t.to + "\" of value \""
-												+ prevDef + "\" with the field \"" + t.from + "\" of type \"" + definition.orElse(null) + "\"");
+												+ prevDef.typeName() + "\" with the field \"" + t.from + "\" of type \"" + definition.orElse(null) + "\"");
 							}
 						}
 						case "new-data" -> {
@@ -244,15 +235,12 @@ public class DataModel {
 							if (!allTypes.contains(extractTypeName(t.type))) {
 								throw new IllegalArgumentException(transformCoordinate + " refers to an unknown type: " + t.type);
 							}
-							String prevDef;
-							if (t.index != null) {
-								prevDef = tryInsertAtIndex(transformClass.data, t.to, fixType(t.type), t.index);
-							} else {
-								prevDef = transformClass.data.putIfAbsent(t.to, fixType(t.type));
-							}
+							var type = fixType(t.type);
+							var fieldInfo = new ParsedClass.InputFieldInfo(type, t.getContextParameters());
+							ParsedClass.FieldInfo prevDef = transformClass.insert(t.index, t.to, fieldInfo);
 							if (prevDef != null) {
 								throw new IllegalArgumentException(transformCoordinate + " tries to overwrite the existing field \""
-										+ t.to + "\" of value \"" + prevDef
+										+ t.to + "\" of value \"" + prevDef.typeName()
 										+ "\" with the new type \"" + t.type + "\"");
 							}
 						}
@@ -281,7 +269,7 @@ public class DataModel {
 							if (!allTypes.contains(extractTypeName(t.type))) {
 								throw new IllegalArgumentException(transformCoordinate + " refers to an unknown type: " + t.type);
 							}
-							String prevDefinition = transformClass.data.replace(t.from, fixType(t.type));
+							var prevDefinition = transformClass.replace(t.from, new ParsedClass.InputFieldInfo(fixType(t.type), t.getContextParameters()));
 							if (prevDefinition == null) {
 								throw new IllegalArgumentException(transformCoordinate + " refers to an unknown field: " + t.from);
 							}
@@ -340,7 +328,7 @@ public class DataModel {
 					List<ComputedType> versionBaseTypes = computedClassConfig.get(versionIndexF).entrySet().stream()
 							.map(e -> {
 								var data = new LinkedHashMap<String, VersionedType>();
-								e.getValue().getData().forEach((key, value) -> data.put(key, new VersionedType(value, version)));
+								e.getValue().getData().forEach((key, value) -> data.put(key, new VersionedType(value.typeName(), version)));
 								return new ComputedTypeBase(new VersionedType(e.getKey(), version),
 										e.getValue().stringRepresenter, data, computedTypeSupplier);
 							}).collect(Collectors.toList());
@@ -357,8 +345,8 @@ public class DataModel {
 						var nullableRawTypes = computedClassConfig.values().stream()
 								.flatMap(x -> x.values().stream())
 								.flatMap(x -> x.getData().values().stream())
-								.filter(x -> x.startsWith("-"))
-								.map(nullableName -> nullableName.substring(1))
+								.filter(x -> x.typeName().startsWith("-"))
+								.map(nullableName -> nullableName.typeName().substring(1))
 								.toList();
 						// Compute nullable versioned types
 						nullableRawTypes.stream()
@@ -383,8 +371,8 @@ public class DataModel {
 						var arrayRawTypes = computedClassConfig.values().stream()
 								.flatMap(x -> x.values().stream())
 								.flatMap(x -> x.getData().values().stream())
-								.filter(x -> x.startsWith("§"))
-								.map(nullableName -> nullableName.substring(1))
+								.filter(x -> x.typeName().startsWith("§"))
+								.map(nullableName -> nullableName.typeName().substring(1))
 								.toList();
 						// Compute array versioned types
 						arrayRawTypes.stream()
@@ -450,7 +438,7 @@ public class DataModel {
 											.entrySet()
 											.stream()
 											.collect(Collectors.toMap(Entry::getKey, e -> {
-												var fieldTypeName = e.getValue();
+												var fieldTypeName = e.getValue().typeName();
 												return new VersionedType(fieldTypeName, computedVersions.get(currentOrNewerTypeVersion.getInt(fieldTypeName)));
 											}, (a, b) -> {
 												throw new IllegalStateException();
@@ -591,40 +579,6 @@ public class DataModel {
 		this.baseTypeDataChanges = baseTypeDataChanges;
 	}
 
-	private String tryInsertAtIndex(LinkedHashMap<String, String> data, String key, String value, int index) {
-		var before = new LinkedHashMap<String, String>();
-		var after = new LinkedHashMap<String, String>();
-		int i = 0;
-		for (Entry<String, String> entry : data.entrySet()) {
-			if (i < index) {
-				before.put(entry.getKey(), entry.getValue());
-			} else {
-				after.put(entry.getKey(), entry.getValue());
-			}
-			i++;
-		}
-		data.clear();
-		data.putAll(before);
-		var prev = data.putIfAbsent(key, value);
-		data.putAll(after);
-		return prev;
-	}
-
-	private Optional<Entry<Integer, String>> removeAndGetIndex(LinkedHashMap<String, String> data, String find) {
-		int foundIndex = -1;
-		{
-			int i = 0;
-			for (Entry<String, String> entry : data.entrySet()) {
-				if (entry.getKey().equals(find)) {
-					foundIndex = i;
-				}
-				i++;
-			}
-		}
-		if (foundIndex == -1) return Optional.empty();
-		return Optional.of(Map.entry(foundIndex, requireNonNull(data.remove(find))));
-	}
-
 	@Nullable
 	public static String getNextVersion(Map<String, String> versionsSequence, String version) {
 		return versionsSequence.get(version);
@@ -650,7 +604,7 @@ public class DataModel {
 					if (list.size() != 1) {
 						throw exceptionGenerator.apply(list);
 					}
-					return list.get(0);
+					return list.getFirst();
 				}
 		);
 	}
@@ -669,7 +623,7 @@ public class DataModel {
 					if (list.isEmpty()) {
 						return Optional.empty();
 					}
-					return Optional.of(list.get(0));
+					return Optional.of(list.getFirst());
 				}
 		);
 	}
