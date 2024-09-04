@@ -34,10 +34,11 @@ public interface TypedNullable<T> extends NativeNullable<T> {
 	}
 
 	@Override
-	default @NotNull NativeNullable<? extends T> or(@NotNull NativeNullable<? extends T> fallback) {
+	default @NotNull TypedNullable<T> or(@NotNull NativeNullable<? extends T> fallback) {
 		var value = getNullable();
 		if (value == null) {
-			return fallback;
+            //noinspection unchecked
+            return (TypedNullable<T>) fallback;
 		} else {
 			return this;
 		}

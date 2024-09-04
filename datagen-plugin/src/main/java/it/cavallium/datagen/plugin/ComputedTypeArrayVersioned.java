@@ -89,6 +89,11 @@ public final class ComputedTypeArrayVersioned implements VersionedComputedType, 
 	}
 
 	@Override
+	public TypeName getJTypeNameGeneric(String basePackageName) {
+		return getJTypeName(basePackageName);
+	}
+
+	@Override
 	public ClassName getJSerializerName(String basePackageName) {
 		return ClassName.get(baseType.version().getSerializersPackage(basePackageName), "Array" + baseType.type() + "Serializer");
 	}

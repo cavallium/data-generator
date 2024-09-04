@@ -100,6 +100,11 @@ public final class ComputedTypeNullableNative implements ComputedTypeNullable {
 	}
 
 	@Override
+	public TypeName getJTypeNameGeneric(String basePackageName) {
+		return getJTypeName(basePackageName);
+	}
+
+	@Override
 	public ClassName getJSerializerName(String basePackageName) {
 		return switch (baseType) {
 			case "boolean" -> ClassName.get(NullablebooleanSerializer.class);

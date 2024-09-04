@@ -2,6 +2,7 @@ package it.cavallium.datagen.plugin;
 
 import com.squareup.javapoet.ClassName;
 import com.squareup.javapoet.CodeBlock;
+import com.squareup.javapoet.TypeName;
 import it.cavallium.datagen.plugin.ComputedType.VersionedComputedType;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -94,6 +95,11 @@ public final class ComputedTypeSuper implements VersionedComputedType {
 
 	@Override
 	public ClassName getJTypeName(String basePackageName) {
+		return ClassName.get(getVersion().getDataPackage(basePackageName), type.type());
+	}
+
+	@Override
+	public TypeName getJTypeNameGeneric(String basePackageName) {
 		return ClassName.get(getVersion().getDataPackage(basePackageName), type.type());
 	}
 

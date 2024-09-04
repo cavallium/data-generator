@@ -61,7 +61,7 @@ public class GenDataSuperX extends ClassGenerator {
 		Stream
 				.concat(dataModel.getCommonInterfaceData(typeSuper), dataModel.getCommonInterfaceGetters(typeSuper))
 				.forEach(superType -> {
-					var returnType = superType.getValue().getJTypeName(basePackageName);
+					var returnType = superType.getValue().getJTypeNameGeneric(basePackageName);
 					var getter = MethodSpec
 							.methodBuilder(superType.getKey())
 							.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
@@ -73,7 +73,7 @@ public class GenDataSuperX extends ClassGenerator {
 				});
 
 		dataModel.getCommonInterfaceData(typeSuper).forEach(superType -> {
-			var returnType = superType.getValue().getJTypeName(basePackageName);
+			var returnType = superType.getValue().getJTypeNameGeneric(basePackageName);
 
 			var setter = MethodSpec
 					.methodBuilder("set" + StringUtils.capitalize(superType.getKey()))

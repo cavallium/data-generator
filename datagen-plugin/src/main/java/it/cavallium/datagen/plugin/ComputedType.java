@@ -12,6 +12,7 @@ public sealed interface ComputedType permits VersionedComputedType, ComputedType
 	String getName();
 
 	TypeName getJTypeName(String basePackageName);
+	TypeName getJTypeNameGeneric(String basePackageName);
 
 	TypeName getJSerializerName(String basePackageName);
 

@@ -286,7 +286,7 @@ public class GenUpgraderBaseX extends ClassGenerator {
 				boolean first = true;
 				for (String contextParameter : contextParameters) {
 					var fieldType = typeBase.getData().get(contextParameter);
-					contextTypeClassBuilder.addRecordComponent(ParameterSpec.builder(fieldType.getJTypeName(basePackageName), contextParameter).build());
+					contextTypeClassBuilder.addRecordComponent(ParameterSpec.builder(fieldType.getJTypeNameGeneric(basePackageName), contextParameter).build());
 
 					if (first) {
 						first = false;

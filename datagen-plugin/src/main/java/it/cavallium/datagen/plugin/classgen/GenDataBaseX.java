@@ -68,7 +68,7 @@ public class GenDataBaseX extends ClassGenerator {
 				.addModifiers(Modifier.PUBLIC, Modifier.STATIC);
 
 		base.getData().forEach((fieldName, fieldType) -> {
-			var fieldTypeName = fieldType.getJTypeName(basePackageName);
+			var fieldTypeName = fieldType.getJTypeNameGeneric(basePackageName);
 
 			var param = ParameterSpec
 					.builder(fieldTypeName, fieldName)

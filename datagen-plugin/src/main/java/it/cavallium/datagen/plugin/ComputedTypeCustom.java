@@ -94,6 +94,11 @@ public final class ComputedTypeCustom implements ComputedType {
 	}
 
 	@Override
+	public TypeName getJTypeNameGeneric(String basePackageName) {
+		return getJTypeName(basePackageName);
+	}
+
+	@Override
 	public TypeName getJSerializerName(String basePackageName) {
 		return ClassName.bestGuess(serializer);
 	}

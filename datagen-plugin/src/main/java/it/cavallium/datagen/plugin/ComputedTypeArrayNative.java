@@ -3,6 +3,7 @@ package it.cavallium.datagen.plugin;
 import com.squareup.javapoet.ClassName;
 import com.squareup.javapoet.ParameterizedTypeName;
 import com.squareup.javapoet.TypeName;
+import it.cavallium.datagen.NativeNullable;
 import it.cavallium.datagen.nativedata.ArrayInt52Serializer;
 import it.cavallium.datagen.nativedata.ArrayStringSerializer;
 import it.cavallium.datagen.nativedata.ArraybooleanSerializer;
@@ -94,6 +95,11 @@ public final class ComputedTypeArrayNative implements ComputedTypeArray {
 			default -> ParameterizedTypeName.get(ClassName.get(List.class),
 					computedTypeSupplier.get(baseType).getJTypeName(basePackageName));
 		};
+	}
+
+	@Override
+	public TypeName getJTypeNameGeneric(String basePackageName) {
+		return getJTypeName(basePackageName);
 	}
 
 	@Override

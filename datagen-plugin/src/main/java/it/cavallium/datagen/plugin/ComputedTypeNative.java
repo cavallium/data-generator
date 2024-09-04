@@ -47,6 +47,11 @@ public final class ComputedTypeNative implements ComputedType {
 	}
 
 	@Override
+	public TypeName getJTypeNameGeneric(String basePackageName) {
+		return getJTypeName(basePackageName);
+	}
+
+	@Override
 	public TypeName getJSerializerName(String basePackageName) {
 		return switch (type) {
 			case "String" -> ClassName.get(StringSerializer.class);

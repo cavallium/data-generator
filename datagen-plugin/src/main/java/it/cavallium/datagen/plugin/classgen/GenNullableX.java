@@ -88,8 +88,9 @@ public class GenNullableX extends ClassGenerator {
 		classBuilder.addField(FieldSpec
 				.builder(type, "NULL").addModifiers(Modifier.PRIVATE, Modifier.STATIC, Modifier.FINAL).initializer("new $T(null)", type).build());
 
+		classBuilder.addSuperinterfaces(List.of(iNullableITypeClass, iNullableClass, typedNullable));
+
 		if (version.isCurrent()) {
-			classBuilder.addSuperinterfaces(List.of(iNullableITypeClass, iNullableClass, typedNullable));
 
 			classBuilder.addMethod(MethodSpec
 					.methodBuilder("of")

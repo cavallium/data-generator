@@ -42,7 +42,7 @@ public class GenSerializerNullableX extends ClassGenerator {
 
 	private GeneratedClass generateTypeVersioned(ComputedVersion version, ComputedTypeNullable typeNullable) {
 		ClassName serializerClassName = typeNullable.getJSerializerName(basePackageName);
-		var typeNullableClassName = typeNullable.getJTypeName(basePackageName);
+		var typeNullableClassName = typeNullable.getJTypeNameGeneric(basePackageName);
 
 		var classBuilder = TypeSpec.classBuilder(serializerClassName.simpleName());
 
@@ -68,7 +68,7 @@ public class GenSerializerNullableX extends ClassGenerator {
 
 		method.addParameter(ParameterSpec.builder(SafeDataOutput.class, "out").build());
 		method.addParameter(ParameterSpec
-				.builder(typeNullable.getJTypeName(basePackageName), "data")
+				.builder(typeNullable.getJTypeNameGeneric(basePackageName), "data")
 				.addAnnotation(NotNull.class)
 				.build());
 

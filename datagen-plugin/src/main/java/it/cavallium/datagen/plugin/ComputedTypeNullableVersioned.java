@@ -2,7 +2,9 @@ package it.cavallium.datagen.plugin;
 
 import com.squareup.javapoet.ClassName;
 import com.squareup.javapoet.CodeBlock;
+import com.squareup.javapoet.ParameterizedTypeName;
 import com.squareup.javapoet.TypeName;
+import it.cavallium.datagen.TypedNullable;
 import it.cavallium.datagen.nativedata.UpgradeUtil;
 import it.cavallium.datagen.plugin.ComputedType.VersionedComputedType;
 import java.util.LinkedHashMap;
@@ -81,9 +83,19 @@ public final class ComputedTypeNullableVersioned implements ComputedTypeNullable
 		return getJTypeNameOfVersion(baseType.version(), basePackageName);
 	}
 
+	@Override
+	public TypeName getJTypeNameGeneric(String basePackageName) {
+		return getJTypeNameGenericOfVersion(baseType.version(), basePackageName);
+	}
+
 	private TypeName getJTypeNameOfVersion(ComputedVersion version, String basePackageName) {
 		return ClassName.get(version.getDataNullablesPackage(basePackageName),
 				"Nullable" + baseType.type());
+	}
+
+	private TypeName getJTypeNameGenericOfVersion(ComputedVersion version, String basePackageName) {
+		return ParameterizedTypeName.get(ClassName.get(TypedNullable.class),
+				ClassName.get(version.getDataPackage(basePackageName), baseType.type()));
 	}
 
 	@Override
@@ -115,7 +127,7 @@ public final class ComputedTypeNullableVersioned implements ComputedTypeNullable
 		var upgraderInstance = getBase().getJUpgraderInstance(basePackageName);
 		builder.add("new $T($T.upgradeNullable(", next.getJTypeName(basePackageName), UpgradeUtil.class);
 		builder.add(content);
-		builder.add(".value(), $T.$N)", upgraderInstance.className(), upgraderInstance.fieldName());
+		builder.add(".getNullable(), $T.$N)", upgraderInstance.className(), upgraderInstance.fieldName());
 		builder.add(")");
 		return builder.build();
 	}

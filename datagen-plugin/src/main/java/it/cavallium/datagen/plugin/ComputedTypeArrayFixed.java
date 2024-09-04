@@ -72,6 +72,11 @@ public final class ComputedTypeArrayFixed implements ComputedTypeArray {
 	}
 
 	@Override
+	public TypeName getJTypeNameGeneric(String basePackageName) {
+		return getJTypeName(basePackageName);
+	}
+
+	@Override
 	public ClassName getJSerializerName(String basePackageName) {
 		return ClassName.get(currentVersion.getSerializersPackage(basePackageName), "Array" + baseType + "Serializer");
 	}

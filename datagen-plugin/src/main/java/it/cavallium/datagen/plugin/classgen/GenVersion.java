@@ -165,7 +165,7 @@ public class GenVersion extends ClassGenerator {
 			var serializerClassName = type.getJSerializerName(basePackageName);
 
 			var fieldBuilder = FieldSpec.builder(ParameterizedTypeName.get(ClassName.get(DataSerializer.class),
-					type.getJTypeName(basePackageName)
+					type.getJTypeNameGeneric(basePackageName)
 			), serializerFieldLocation.fieldName(), Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL);
 			fieldBuilder.initializer("new $T()", serializerClassName);
 			classBuilder.addField(fieldBuilder.build());
