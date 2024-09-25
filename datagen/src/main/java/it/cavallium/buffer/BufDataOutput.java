@@ -19,13 +19,13 @@ public class BufDataOutput implements SafeDataOutput {
 	private final SafeDataOutputStream dOut;
 	private final int limit;
 
-	private BufDataOutput(SafeByteArrayOutputStream buf) {
+	public BufDataOutput(SafeByteArrayOutputStream buf) {
 		this.buf = buf;
 		this.dOut = new SafeDataOutputStream(buf);
 		limit = Integer.MAX_VALUE;
 	}
 
-	private BufDataOutput(SafeByteArrayOutputStream buf, int maxSize) {
+	public BufDataOutput(SafeByteArrayOutputStream buf, int maxSize) {
 		this.buf = buf;
 		this.dOut = new SafeDataOutputStream(buf);
 		this.limit = maxSize;
@@ -219,13 +219,12 @@ public class BufDataOutput implements SafeDataOutput {
 	public void writeShortText(String s, Charset charset) {
 		if (charset == StandardCharsets.UTF_8) {
 			var beforeWrite = this.buf.position();
-			this.buf.position(beforeWrite + Short.BYTES);
+			writeShort(0);
 			ZeroAllocationEncoder.INSTANCE.encodeTo(s, this);
 			var afterWrite = this.buf.position();
 			this.buf.position(beforeWrite);
 			var len = Math.toIntExact(afterWrite - beforeWrite - Short.BYTES);
 			if (len > Short.MAX_VALUE) {
-				this.buf.position(beforeWrite);
 				throw new IndexOutOfBoundsException("String too long: " + len + " bytes");
 			}
 			this.writeShort(len);
@@ -245,7 +244,7 @@ public class BufDataOutput implements SafeDataOutput {
 	public void writeMediumText(String s, Charset charset) {
 		if (charset == StandardCharsets.UTF_8) {
 			var beforeWrite = this.buf.position();
-			this.buf.position(beforeWrite + Integer.BYTES);
+			writeInt(0);
 			ZeroAllocationEncoder.INSTANCE.encodeTo(s, this);
 			var afterWrite = this.buf.position();
 			this.buf.position(beforeWrite);

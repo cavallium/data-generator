@@ -71,11 +71,24 @@ class ZeroAllocationEncoderTest {
         testDecodeString("lorem ipsum dolor sit amet my name is giovanni");
     }
 
+    @Test
+    void encodeToLong() {
+        testEncodeString("lorem ipsum dolor sit amet ".repeat(10));
+    }
+
+    @Test
+    void decodeLong() {
+        testDecodeString("lorem ipsum dolor sit amet".repeat(10));
+    }
+
     public void testEncodeString(String s) {
         var bdo = BufDataOutput.create();
         INSTANCE.encodeTo(s, bdo);
-        var out = bdo.toList().toString(StandardCharsets.UTF_8);
-        Assertions.assertEquals(s, out);
+        var out = bdo.toList();
+        out.toString(StandardCharsets.UTF_8);
+        Assertions.assertEquals(s, out.toString(StandardCharsets.UTF_8));
+        Assertions.assertEquals(s.length(), bdo.size());
+        Assertions.assertEquals(s.length(), out.size());
     }
 
     private void testDecodeString(String s) {
