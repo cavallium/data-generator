@@ -16,7 +16,10 @@
 
 package it.cavallium.stream;
 
+import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
+import java.util.Arrays;
+import java.util.Objects;
 
 /** Simple, fast and repositionable byte-array input stream.
  *
@@ -122,6 +125,38 @@ public class SafeByteArrayInputStream extends SafeMeasurableInputStream implemen
 		System.arraycopy(array, this.offset + this.position, b, offset, n);
 		this.position += n;
 		return n;
+	}
+
+	@Override
+	public void readNBytes(int length, ByteBuffer buffer) {
+		Objects.checkFromIndexSize(0, length, buffer.remaining());
+		if (this.available() < length) {
+			throw new IndexOutOfBoundsException(this.length);
+		}
+		buffer.put(array, offset + this.position, length);
+		position += length;
+	}
+
+	@Override
+	public int readNBytes(byte[] b, int off, int length) {
+		Objects.checkFromIndexSize(off, length, b.length);
+		var cappedLength = Math.min(this.available(), length);
+		if (cappedLength < 0) {
+			return 0;
+		}
+		System.arraycopy(array, this.offset + this.position, b, off, cappedLength);
+		position += cappedLength;
+		return cappedLength;
+	}
+
+	@Override
+	public byte[] readNBytes(int length) {
+		if (this.available() < length) {
+			throw new IndexOutOfBoundsException(this.length);
+		}
+		var result = Arrays.copyOfRange(this.array, this.offset + position, this.offset + position + length);
+		position += length;
+		return result;
 	}
 
 	@Override

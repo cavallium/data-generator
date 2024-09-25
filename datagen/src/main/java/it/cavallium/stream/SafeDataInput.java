@@ -2,6 +2,7 @@ package it.cavallium.stream;
 
 import java.io.Closeable;
 import java.io.DataInput;
+import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 
 import java.nio.charset.StandardCharsets;
@@ -101,6 +102,10 @@ public interface SafeDataInput extends Closeable, DataInput {
 	 * @see        java.io.InputStream#read(byte[], int, int)
 	 */
 	int read(byte[] b, int off, int len);
+
+	void readFully(ByteBuffer dst);
+
+	void readFully(ByteBuffer dst, int len);
 
 	void readFully(byte @NotNull [] b);
 

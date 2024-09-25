@@ -3,6 +3,8 @@ package it.cavallium.stream;
 import it.cavallium.buffer.IgnoreCoverage;
 import org.jetbrains.annotations.NotNull;
 
+import java.io.OutputStream;
+import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 
 /**
@@ -83,7 +85,7 @@ public class SafeFilterInputStream extends SafeInputStream {
 	 */
 	@IgnoreCoverage
 	public int read(byte @NotNull [] b) {
-		return read(b, 0, b.length);
+		return in.read(b, 0, b.length);
 	}
 
 	/**
@@ -110,6 +112,26 @@ public class SafeFilterInputStream extends SafeInputStream {
 	@IgnoreCoverage
 	public final int read(byte[] b, int off, int len) {
 		return in.read(b, off, len);
+	}
+
+	@Override
+	public void readNBytes(int len, ByteBuffer buffer) {
+		in.readNBytes(len, buffer);
+	}
+
+	@Override
+	public byte[] readAllBytes() {
+		return in.readAllBytes();
+	}
+
+	@Override
+	public int readNBytes(byte[] b, int off, int len) {
+		return in.readNBytes(b, off, len);
+	}
+
+	@Override
+	public byte[] readNBytes(int len) {
+		return in.readNBytes(len);
 	}
 
 	/**
@@ -226,5 +248,20 @@ public class SafeFilterInputStream extends SafeInputStream {
 	@Override
 	public @NotNull String readString(int length, Charset charset) {
 		return in.readString(length, charset);
+	}
+
+	@Override
+	public long transferTo(OutputStream out) {
+		return in.transferTo(out);
+	}
+
+	@Override
+	public void skipNBytes(long n) {
+		in.skipNBytes(n);
+	}
+
+	@Override
+	public String toString() {
+		return in.toString();
 	}
 }

@@ -6,6 +6,7 @@ import org.jetbrains.annotations.NotNull;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -120,6 +121,12 @@ public abstract class SafeInputStream extends InputStream {
 		}
 
 		return result;
+	}
+
+	@IgnoreCoverage
+	public void readNBytes(int len, ByteBuffer buffer) {
+		var b = readNBytes(len);
+		buffer.put(b);
 	}
 
 	@IgnoreCoverage

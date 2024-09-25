@@ -10,6 +10,7 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Objects;
+
 import org.jetbrains.annotations.NotNull;
 
 public class BufDataOutput implements SafeDataOutput {
@@ -216,21 +217,46 @@ public class BufDataOutput implements SafeDataOutput {
 
 	@Override
 	public void writeShortText(String s, Charset charset) {
-		var out = s.getBytes(charset);
-		if (out.length > Short.MAX_VALUE) {
-			throw new IndexOutOfBoundsException("String too long: " + out.length + " bytes");
+		if (charset == StandardCharsets.UTF_8) {
+			var beforeWrite = this.buf.position();
+			this.buf.position(beforeWrite + Short.BYTES);
+			ZeroAllocationEncoder.INSTANCE.encodeTo(s, this);
+			var afterWrite = this.buf.position();
+			this.buf.position(beforeWrite);
+			var len = Math.toIntExact(afterWrite - beforeWrite - Short.BYTES);
+			if (len > Short.MAX_VALUE) {
+				this.buf.position(beforeWrite);
+				throw new IndexOutOfBoundsException("String too long: " + len + " bytes");
+			}
+			this.writeShort(len);
+			this.buf.position(afterWrite);
+		} else {
+			var out = s.getBytes(charset);
+			if (out.length > Short.MAX_VALUE) {
+				throw new IndexOutOfBoundsException("String too long: " + out.length + " bytes");
+			}
+			checkOutOfBounds(Short.BYTES + out.length);
+			dOut.writeShort(out.length);
+			dOut.write(out);
 		}
-		checkOutOfBounds(Short.BYTES + out.length);
-		dOut.writeShort(out.length);
-		dOut.write(out);
 	}
 
 	@Override
 	public void writeMediumText(String s, Charset charset) {
-		var out = s.getBytes(charset);
-		checkOutOfBounds(Integer.BYTES + out.length);
-		dOut.writeInt(out.length);
-		dOut.write(out);
+		if (charset == StandardCharsets.UTF_8) {
+			var beforeWrite = this.buf.position();
+			this.buf.position(beforeWrite + Integer.BYTES);
+			ZeroAllocationEncoder.INSTANCE.encodeTo(s, this);
+			var afterWrite = this.buf.position();
+			this.buf.position(beforeWrite);
+			this.writeInt(Math.toIntExact(afterWrite - beforeWrite - Integer.BYTES));
+			this.buf.position(afterWrite);
+		} else {
+			var out = s.getBytes(charset);
+			checkOutOfBounds(Integer.BYTES + out.length);
+			dOut.writeInt(out.length);
+			dOut.write(out);
+		}
 	}
 
 	public Buf asList() {

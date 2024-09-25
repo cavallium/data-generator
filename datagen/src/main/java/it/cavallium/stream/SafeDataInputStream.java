@@ -28,6 +28,8 @@ package it.cavallium.stream;
 import it.cavallium.buffer.IgnoreCoverage;
 import org.jetbrains.annotations.NotNull;
 
+import java.nio.ByteBuffer;
+
 public class SafeDataInputStream extends SafeFilterInputStream implements SafeDataInput {
 
 	/**
@@ -90,6 +92,18 @@ public class SafeDataInputStream extends SafeFilterInputStream implements SafeDa
 				throw new IndexOutOfBoundsException();
 			n += count;
 		}
+	}
+
+	@Override
+	public void readFully(ByteBuffer dst) {
+		readFully(dst, dst.remaining());
+	}
+
+	@Override
+	public final void readFully(ByteBuffer dst, int len) {
+		if (len < 0)
+			throw new IndexOutOfBoundsException();
+		in.readNBytes(len, dst);
 	}
 
 	/**
