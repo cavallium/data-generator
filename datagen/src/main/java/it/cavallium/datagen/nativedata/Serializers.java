@@ -1,10 +1,12 @@
 package it.cavallium.datagen.nativedata;
 
 public class Serializers {
+	public static final BinaryStringSerializer BinaryStringSerializerInstance = new BinaryStringSerializer();
 	public static final StringSerializer StringSerializerInstance = new StringSerializer();
 	public static final Int52Serializer Int52SerializerInstance = new Int52Serializer();
 
 	public static final NullableStringSerializer NullableStringSerializerInstance = new NullableStringSerializer();
+	public static final NullableBinaryStringSerializer NullableBinaryStringSerializerInstance = new NullableBinaryStringSerializer();
 	public static final NullableInt52Serializer NullableInt52SerializerInstance = new NullableInt52Serializer();
 	public static final NullablebooleanSerializer NullablebooleanSerializerInstance = new NullablebooleanSerializer();
 	public static final NullablebyteSerializer NullablebyteSerializerInstance = new NullablebyteSerializer();
@@ -15,6 +17,7 @@ public class Serializers {
 	public static final NullablefloatSerializer NullablefloatSerializerInstance = new NullablefloatSerializer();
 	public static final NullabledoubleSerializer NullabledoubleSerializerInstance = new NullabledoubleSerializer();
 
+	public static final ArrayBinaryStringSerializer ArrayBinaryStringSerializerInstance = new ArrayBinaryStringSerializer();
 	public static final ArrayStringSerializer ArrayStringSerializerInstance = new ArrayStringSerializer();
 	public static final ArrayInt52Serializer ArrayInt52SerializerInstance = new ArrayInt52Serializer();
 	public static final ArraybooleanSerializer ArraybooleanSerializerInstance = new ArraybooleanSerializer();
