@@ -63,8 +63,15 @@ public class SafeDataOutputStream extends SafeFilterOutputStream implements Safe
 	 * Increases the written counter by the specified value
 	 * until it reaches Integer.MAX_VALUE.
 	 */
-	private void incCount(int value) {
+	protected void incCount(int value) {
 		written = Math.addExact(written, value);
+	}
+	/**
+	 * Decreases the written counter by the specified value
+	 * until it reaches 0.
+	 */
+	protected void decCount(int value) {
+		written = Math.subtractExact(written, value);
 	}
 
 	/**

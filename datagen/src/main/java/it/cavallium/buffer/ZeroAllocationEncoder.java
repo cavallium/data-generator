@@ -27,25 +27,38 @@ public class ZeroAllocationEncoder {
 
     private final ThreadLocal<AtomicReference<CharBuffer>> charBufferRefThreadLocal;
 
+    private final ThreadLocal<AtomicReference<ByteBuffer>> byteBufferRefThreadLocal;
+
     public ZeroAllocationEncoder(int outBufferSize) {
-        bufferThreadLocal = ThreadLocal.withInitial(() -> ByteBuffer.allocate(outBufferSize));
+        var maxBytesPerChar = (int) Math.ceil(StandardCharsets.UTF_8.newEncoder().maxBytesPerChar());
+        bufferThreadLocal = ThreadLocal.withInitial(() -> ByteBuffer.allocate(outBufferSize * maxBytesPerChar));
         charBufferRefThreadLocal = ThreadLocal.withInitial(() -> new AtomicReference<>(CharBuffer.allocate(outBufferSize)));
+        byteBufferRefThreadLocal = ThreadLocal.withInitial(() -> new AtomicReference<>(ByteBuffer.allocate(outBufferSize * maxBytesPerChar)));
     }
 
     public void encodeTo(String s, SafeDataOutput bufDataOutput) {
         var encoder = CHARSET_ENCODER_UTF8.get();
+        encoder.reset();
         var buf = bufferThreadLocal.get();
         var charBuffer = CharBuffer.wrap(s);
+        boolean endOfInput = false;
         CoderResult result;
         do {
             buf.clear();
-            result = encoder.encode(charBuffer, buf, true);
+            result = encoder.encode(charBuffer, buf, endOfInput);
             buf.flip();
-            var bufArray = buf.array();
-            var bufArrayOffset = buf.arrayOffset();
-            bufDataOutput.write(bufArray, bufArrayOffset + buf.position(), buf.remaining());
+            bufDataOutput.write(buf.array(), buf.arrayOffset() + buf.position(), buf.remaining());
             if (result.isUnderflow()) {
-                break;
+                if (endOfInput) {
+                    buf.clear();
+                    encoder.flush(buf);
+                    buf.flip();
+                    bufDataOutput.write(buf.array(), buf.arrayOffset() + buf.position(), buf.remaining());
+                    break;
+                } else {
+                    endOfInput = true;
+                    continue;
+                }
             } else if (result.isOverflow()) {
                 continue;
             } else if (result.isError()) {
@@ -59,32 +72,41 @@ public class ZeroAllocationEncoder {
         } while (true);
     }
 
-    public String decodeFrom(SafeDataInput bufDataInput, int length) {
+    public String decodeFrom(SafeDataInput bufDataInput, int bytesLength) {
         var decoder = CHARSET_DECODER_UTF8.get();
-        var byteBuf = bufferThreadLocal.get();
+        decoder.reset();
+        var bufRef = byteBufferRefThreadLocal.get();
         var charBufRef = charBufferRefThreadLocal.get();
+        var buf = bufRef.get();
         var charBuf = charBufRef.get();
-        if (charBuf.capacity() < length) {
-            charBuf = CharBuffer.allocate(length);
+        assert decoder.maxCharsPerByte() == 1.0f
+                : "UTF8 max chars per byte is 1.0f, but the decoder got a value of " + decoder.maxCharsPerByte();
+        if (charBuf.capacity() < bytesLength) {
+            charBuf = CharBuffer.allocate(bytesLength);
             charBufRef.set(charBuf);
         } else {
             charBuf.clear();
         }
-        var remainingLengthToRead = length;
+        if (buf.capacity() < bytesLength) {
+            buf = ByteBuffer.allocate(bytesLength);
+            bufRef.set(buf);
+        } else {
+            buf.clear();
+        }
         CoderResult result;
         do {
-            byteBuf.clear();
-            bufDataInput.readFully(byteBuf, Math.min(remainingLengthToRead, byteBuf.limit()));
-            byteBuf.flip();
-            remainingLengthToRead -= byteBuf.remaining();
-            result = decoder.decode(byteBuf, charBuf, true);
+            buf.clear();
+            assert buf.capacity() >= bytesLength;
+            bufDataInput.readFully(buf, bytesLength);
+            buf.flip();
+            result = decoder.decode(buf, charBuf, true);
             if (result.isUnderflow()) {
-                if (remainingLengthToRead > 0) {
-                    continue;
-                } else {
-                    charBuf.flip();
-                    return charBuf.toString();
+                result = decoder.flush(charBuf);
+                if (result.isOverflow()) {
+                    throw new IllegalStateException("Unexpected overflow");
                 }
+                charBuf.flip();
+                return charBuf.toString();
             } else if (result.isOverflow()) {
                 throw new UnsupportedOperationException();
             } else if (result.isError()) {

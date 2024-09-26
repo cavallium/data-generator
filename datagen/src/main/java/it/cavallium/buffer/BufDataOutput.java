@@ -12,22 +12,23 @@ import java.util.Arrays;
 import java.util.Objects;
 
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.VisibleForTesting;
 
 public class BufDataOutput implements SafeDataOutput {
 
 	private final SafeByteArrayOutputStream buf;
-	private final SafeDataOutputStream dOut;
+	private final SafeByteArrayDataOutputStream dOut;
 	private final int limit;
 
 	public BufDataOutput(SafeByteArrayOutputStream buf) {
 		this.buf = buf;
-		this.dOut = new SafeDataOutputStream(buf);
+		this.dOut = new SafeByteArrayDataOutputStream(buf);
 		limit = Integer.MAX_VALUE;
 	}
 
 	public BufDataOutput(SafeByteArrayOutputStream buf, int maxSize) {
 		this.buf = buf;
-		this.dOut = new SafeDataOutputStream(buf);
+		this.dOut = new SafeByteArrayDataOutputStream(buf);
 		this.limit = maxSize;
 	}
 
@@ -218,17 +219,17 @@ public class BufDataOutput implements SafeDataOutput {
 	@Override
 	public void writeShortText(String s, Charset charset) {
 		if (charset == StandardCharsets.UTF_8) {
-			var beforeWrite = this.buf.position();
-			writeShort(0);
+			var beforeWrite = (int) this.position();
+			this.advancePosition(Short.BYTES);
 			ZeroAllocationEncoder.INSTANCE.encodeTo(s, this);
-			var afterWrite = this.buf.position();
-			this.buf.position(beforeWrite);
+			var afterWrite = (int) this.position();
+			this.rewindPosition(afterWrite - beforeWrite);
 			var len = Math.toIntExact(afterWrite - beforeWrite - Short.BYTES);
 			if (len > Short.MAX_VALUE) {
 				throw new IndexOutOfBoundsException("String too long: " + len + " bytes");
 			}
-			this.writeShort(len);
-			this.buf.position(afterWrite);
+			dOut.writeShort(len);
+			dOut.advancePosition(len);
 		} else {
 			var out = s.getBytes(charset);
 			if (out.length > Short.MAX_VALUE) {
@@ -242,20 +243,49 @@ public class BufDataOutput implements SafeDataOutput {
 
 	@Override
 	public void writeMediumText(String s, Charset charset) {
-		if (charset == StandardCharsets.UTF_8) {
-			var beforeWrite = this.buf.position();
-			writeInt(0);
-			ZeroAllocationEncoder.INSTANCE.encodeTo(s, this);
-			var afterWrite = this.buf.position();
-			this.buf.position(beforeWrite);
-			this.writeInt(Math.toIntExact(afterWrite - beforeWrite - Integer.BYTES));
-			this.buf.position(afterWrite);
-		} else {
-			var out = s.getBytes(charset);
-			checkOutOfBounds(Integer.BYTES + out.length);
-			dOut.writeInt(out.length);
-			dOut.write(out);
-		}
+		// todo: charbuffer is still slow, check in future java versions
+		// if (charset == StandardCharsets.UTF_8) {
+		// 	writeMediumTextZeroCopy(s);
+		// } else {
+		writeMediumTextLegacy(s, charset);
+		// }
+	}
+
+	@VisibleForTesting
+	public void writeMediumTextZeroCopy(String s) {
+		var beforeWrite = (int) this.position();
+		this.advancePosition(Integer.BYTES);
+		ZeroAllocationEncoder.INSTANCE.encodeTo(s, this);
+		var afterWrite = (int) this.position();
+		this.rewindPosition(afterWrite - beforeWrite);
+		var len = Math.toIntExact(afterWrite - beforeWrite - Integer.BYTES);
+		dOut.writeInt(len);
+		dOut.advancePosition(len);
+	}
+
+	@VisibleForTesting
+	public void writeMediumTextLegacy(String s, Charset charset) {
+		var out = s.getBytes(charset);
+		checkOutOfBounds(Integer.BYTES + out.length);
+		dOut.writeInt(out.length);
+		dOut.write(out);
+	}
+
+	public void resetUnderlyingBuffer() {
+		dOut.resetUnderlyingBuffer();
+	}
+
+	public void rewindPosition(int count) {
+		dOut.rewindPosition(count);
+	}
+
+	public void advancePosition(int count) {
+		checkOutOfBounds(count);
+		dOut.advancePosition(count);
+	}
+
+	public long position() {
+		return dOut.position();
 	}
 
 	public Buf asList() {

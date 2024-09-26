@@ -131,7 +131,7 @@ public class SafeByteArrayInputStream extends SafeMeasurableInputStream implemen
 	public void readNBytes(int length, ByteBuffer buffer) {
 		Objects.checkFromIndexSize(0, length, buffer.remaining());
 		if (this.available() < length) {
-			throw new IndexOutOfBoundsException(this.length);
+			throw new IndexOutOfBoundsException(length);
 		}
 		buffer.put(array, offset + this.position, length);
 		position += length;
@@ -150,11 +150,16 @@ public class SafeByteArrayInputStream extends SafeMeasurableInputStream implemen
 	}
 
 	@Override
+	public byte[] readAllBytes() {
+		var result = Arrays.copyOfRange(this.array, this.offset + position, this.offset + length);
+		position = length;
+		return result;
+
+	}
+
+	@Override
 	public byte[] readNBytes(int length) {
-		if (this.available() < length) {
-			throw new IndexOutOfBoundsException(this.length);
-		}
-		var result = Arrays.copyOfRange(this.array, this.offset + position, this.offset + position + length);
+		var result = Arrays.copyOfRange(this.array, this.offset + position, this.offset + position + Math.min(length, this.available()));
 		position += length;
 		return result;
 	}
@@ -162,7 +167,7 @@ public class SafeByteArrayInputStream extends SafeMeasurableInputStream implemen
 	@Override
 	public String readString(int length, Charset charset) {
 		if (this.available() < length) {
-			throw new IndexOutOfBoundsException(this.length);
+			throw new IndexOutOfBoundsException(length + " > " + this.available());
 		}
 		var result = new String(this.array, offset + position, length, charset);
 		position += length;
