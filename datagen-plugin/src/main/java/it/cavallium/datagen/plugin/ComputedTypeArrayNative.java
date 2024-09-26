@@ -4,17 +4,7 @@ import com.squareup.javapoet.ClassName;
 import com.squareup.javapoet.ParameterizedTypeName;
 import com.squareup.javapoet.TypeName;
 import it.cavallium.datagen.NativeNullable;
-import it.cavallium.datagen.nativedata.ArrayInt52Serializer;
-import it.cavallium.datagen.nativedata.ArrayStringSerializer;
-import it.cavallium.datagen.nativedata.ArraybooleanSerializer;
-import it.cavallium.datagen.nativedata.ArraybyteSerializer;
-import it.cavallium.datagen.nativedata.ArraycharSerializer;
-import it.cavallium.datagen.nativedata.ArraydoubleSerializer;
-import it.cavallium.datagen.nativedata.ArrayfloatSerializer;
-import it.cavallium.datagen.nativedata.ArrayintSerializer;
-import it.cavallium.datagen.nativedata.ArraylongSerializer;
-import it.cavallium.datagen.nativedata.ArrayshortSerializer;
-import it.cavallium.datagen.nativedata.Serializers;
+import it.cavallium.datagen.nativedata.*;
 import it.unimi.dsi.fastutil.booleans.BooleanList;
 import it.unimi.dsi.fastutil.bytes.ByteList;
 import it.unimi.dsi.fastutil.chars.CharList;
@@ -30,13 +20,15 @@ import java.util.stream.Stream;
 public final class ComputedTypeArrayNative implements ComputedTypeArray {
 
 	private final String baseType;
+	private final boolean byteStrings;
 
 	private ComputedTypeNative computedChild;
 	private final ComputedTypeSupplier computedTypeSupplier;
 
-	public ComputedTypeArrayNative(String baseType, ComputedTypeSupplier computedTypeSupplier) {
+	public ComputedTypeArrayNative(String baseType, ComputedTypeSupplier computedTypeSupplier, boolean byteStrings) {
 		this.baseType = baseType;
 		this.computedTypeSupplier = computedTypeSupplier;
+		this.byteStrings = byteStrings;
 	}
 
 	public ComputedType getBase() {
@@ -113,7 +105,7 @@ public final class ComputedTypeArrayNative implements ComputedTypeArray {
 			case "long" -> ClassName.get(ArraylongSerializer.class);
 			case "float" -> ClassName.get(ArrayfloatSerializer.class);
 			case "double" -> ClassName.get(ArraydoubleSerializer.class);
-			case "String" -> ClassName.get(ArrayStringSerializer.class);
+			case "String" -> byteStrings ? ClassName.get(ArrayBinaryStringSerializer.class) : ClassName.get(ArrayStringSerializer.class);
 			case "Int52" -> ClassName.get(ArrayInt52Serializer.class);
 			default -> throw new UnsupportedOperationException();
 		};

@@ -2,10 +2,8 @@ package it.cavallium.datagen.plugin;
 
 import com.squareup.javapoet.ClassName;
 import com.squareup.javapoet.TypeName;
-import it.cavallium.datagen.nativedata.Int52Serializer;
-import it.cavallium.datagen.nativedata.Serializers;
-import it.cavallium.datagen.nativedata.StringSerializer;
-import it.cavallium.datagen.nativedata.Int52;
+import it.cavallium.datagen.nativedata.*;
+
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -17,12 +15,14 @@ public final class ComputedTypeNative implements ComputedType {
 
 	private final String type;
 	private final ComputedTypeSupplier computedTypeSupplier;
+	private final boolean binaryStrings;
 	private boolean primitive;
 
-	public ComputedTypeNative(String type, ComputedTypeSupplier computedTypeSupplier) {
+	public ComputedTypeNative(String type, ComputedTypeSupplier computedTypeSupplier, boolean binaryStrings) {
 		this.type = type;
 		this.computedTypeSupplier = computedTypeSupplier;
 		this.primitive = PRIMITIVE_TYPES.contains(type);
+		this.binaryStrings = binaryStrings;
 	}
 
 	public String getName() {
@@ -32,7 +32,7 @@ public final class ComputedTypeNative implements ComputedType {
 	@Override
 	public TypeName getJTypeName(String basePackageName) {
 		return switch (type) {
-			case "String" -> ClassName.get(String.class);
+			case "String" -> binaryStrings ? ClassName.get(BinaryString.class) : ClassName.get(String.class);
 			case "boolean" -> TypeName.BOOLEAN;
 			case "short" -> TypeName.SHORT;
 			case "char" -> TypeName.CHAR;
@@ -54,7 +54,7 @@ public final class ComputedTypeNative implements ComputedType {
 	@Override
 	public TypeName getJSerializerName(String basePackageName) {
 		return switch (type) {
-			case "String" -> ClassName.get(StringSerializer.class);
+			case "String" -> binaryStrings ? ClassName.get(BinaryStringSerializer.class) : ClassName.get(StringSerializer.class);
 			case "boolean", "byte", "short", "char", "int", "long", "float", "double" ->
 					throw new UnsupportedOperationException("Type " + type
 							+ " is a native type, so it doesn't have a serializer");
@@ -107,10 +107,10 @@ public final class ComputedTypeNative implements ComputedType {
 		return computedTypeSupplier.getDependents(getName());
 	}
 
-	public static List<ComputedTypeNative> get(ComputedTypeSupplier computedTypeSupplier) {
+	public static List<ComputedTypeNative> get(ComputedTypeSupplier computedTypeSupplier, boolean binaryStrings) {
 		return Stream
 				.of("String", "boolean", "short", "char", "int", "long", "float", "double", "byte", "Int52")
-				.map(name -> new ComputedTypeNative(name, computedTypeSupplier))
+				.map(name -> new ComputedTypeNative(name, computedTypeSupplier, binaryStrings))
 				.toList();
 	}
 

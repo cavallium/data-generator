@@ -69,14 +69,13 @@ public class SourcesGenerator {
 
 	private static final Logger logger = LoggerFactory.getLogger(SourcesGenerator.class);
 	private static final boolean OVERRIDE_ALL_NULLABLE_METHODS = false;
-	private static final String SERIAL_VERSION = "5";
+	private static final String SERIAL_VERSION = "6";
 
-	private final DataModel dataModel;
+	private final SourcesGeneratorConfiguration configuration;
 
 	private SourcesGenerator(InputStream yamlDataStream) {
 		Yaml yaml = new Yaml();
-		var configuration = yaml.loadAs(yamlDataStream, SourcesGeneratorConfiguration.class);
-		this.dataModel = configuration.buildDataModel();
+		this.configuration = yaml.loadAs(yamlDataStream, SourcesGeneratorConfiguration.class);
 	}
 
 	public static SourcesGenerator load(InputStream yamlData) {
@@ -101,8 +100,15 @@ public class SourcesGenerator {
 	 * @param useRecordBuilders if true, the data will have @RecordBuilder annotation
 	 * @param force           force overwrite
 	 * @param deepCheckBeforeCreatingNewEqualInstances if true, use equals, if false, use ==
+	 * @param binaryStrings   use binary strings
 	 */
-	public void generateSources(String basePackageName, Path outPath, boolean useRecordBuilders, boolean force, boolean deepCheckBeforeCreatingNewEqualInstances, boolean generateOldSerializers) throws IOException {
+	public void generateSources(String basePackageName,
+								Path outPath,
+								boolean useRecordBuilders,
+								boolean force,
+								boolean deepCheckBeforeCreatingNewEqualInstances,
+								boolean generateOldSerializers,
+								boolean binaryStrings) throws IOException {
 		Path basePackageNamePath;
 		{
 			Path basePackageNamePathPartial = outPath;
@@ -112,22 +118,25 @@ public class SourcesGenerator {
 			basePackageNamePath = basePackageNamePathPartial;
 		}
 		var hashPath = basePackageNamePath.resolve(".hash");
+		var dataModel = configuration.buildDataModel(binaryStrings);
 		var curHash = dataModel.computeHash();
 		if (Files.isRegularFile(hashPath) && Files.isReadable(hashPath)) {
 			var lines = Files.readAllLines(hashPath, StandardCharsets.UTF_8);
-			if (lines.size() >= 6) {
+			if (lines.size() >= 7) {
 				var prevBasePackageName = lines.get(0);
 				var prevRecordBuilders = lines.get(1);
 				var prevHash = lines.get(2);
 				var prevDeepCheckBeforeCreatingNewEqualInstances = lines.get(3);
 				var prevGenerateOldSerializers = lines.get(4);
 				var prevSerialVersion = lines.get(5);
+				var prevBinaryStrings = lines.get(6);
 
 				if (!force
 						&& prevBasePackageName.equals(basePackageName)
 						&& (prevRecordBuilders.equalsIgnoreCase("true") == useRecordBuilders)
 						&& (prevDeepCheckBeforeCreatingNewEqualInstances.equalsIgnoreCase("true") == deepCheckBeforeCreatingNewEqualInstances)
 						&& (prevGenerateOldSerializers.equalsIgnoreCase("true") == generateOldSerializers)
+						&& (prevBinaryStrings.equalsIgnoreCase("true") == binaryStrings)
 						&& (prevSerialVersion.equals(SERIAL_VERSION))
 						&& prevHash.equals(Integer.toString(curHash))) {
 					logger.info("Skipped sources generation because it didn't change");
@@ -154,7 +163,8 @@ public class SourcesGenerator {
 					.collect(Collectors.toCollection(HashSet::new));
 		}
 
-		var genParams = new ClassGeneratorParams(generatedFilesToDelete, dataModel, basePackageName, outPath, deepCheckBeforeCreatingNewEqualInstances, useRecordBuilders, generateOldSerializers);
+		var genParams = new ClassGeneratorParams(generatedFilesToDelete, dataModel, basePackageName, outPath,
+				deepCheckBeforeCreatingNewEqualInstances, useRecordBuilders, generateOldSerializers, binaryStrings);
 
 		// Create the Versions class
 		new GenVersions(genParams).run();
@@ -202,7 +212,13 @@ public class SourcesGenerator {
 		new GenUpgraderSuperX(genParams).run();
 
 		// Update the hash at the end
-		var newHashRaw = basePackageName + '\n' + useRecordBuilders + '\n' + deepCheckBeforeCreatingNewEqualInstances + '\n' + curHash + '\n';
+		var newHashRaw = basePackageName + '\n'
+				+ useRecordBuilders + '\n'
+				+ deepCheckBeforeCreatingNewEqualInstances + '\n'
+				+ generateOldSerializers + '\n'
+				+ binaryStrings + '\n'
+				+ SERIAL_VERSION + '\n'
+				+ curHash + '\n';
 		String oldHashRaw;
 		if (Files.exists(hashPath)) {
 			oldHashRaw = Files.readString(hashPath, StandardCharsets.UTF_8);

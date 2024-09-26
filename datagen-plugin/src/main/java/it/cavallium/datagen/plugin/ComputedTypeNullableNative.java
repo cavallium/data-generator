@@ -2,27 +2,8 @@ package it.cavallium.datagen.plugin;
 
 import com.squareup.javapoet.ClassName;
 import com.squareup.javapoet.TypeName;
-import it.cavallium.datagen.nativedata.NullableInt52;
-import it.cavallium.datagen.nativedata.NullableInt52Serializer;
-import it.cavallium.datagen.nativedata.NullableString;
-import it.cavallium.datagen.nativedata.NullableStringSerializer;
-import it.cavallium.datagen.nativedata.Nullableboolean;
-import it.cavallium.datagen.nativedata.NullablebooleanSerializer;
-import it.cavallium.datagen.nativedata.Nullablebyte;
-import it.cavallium.datagen.nativedata.NullablebyteSerializer;
-import it.cavallium.datagen.nativedata.Nullablechar;
-import it.cavallium.datagen.nativedata.NullablecharSerializer;
-import it.cavallium.datagen.nativedata.Nullabledouble;
-import it.cavallium.datagen.nativedata.NullabledoubleSerializer;
-import it.cavallium.datagen.nativedata.Nullablefloat;
-import it.cavallium.datagen.nativedata.NullablefloatSerializer;
-import it.cavallium.datagen.nativedata.Nullableint;
-import it.cavallium.datagen.nativedata.NullableintSerializer;
-import it.cavallium.datagen.nativedata.Nullablelong;
-import it.cavallium.datagen.nativedata.NullablelongSerializer;
-import it.cavallium.datagen.nativedata.Nullableshort;
-import it.cavallium.datagen.nativedata.NullableshortSerializer;
-import it.cavallium.datagen.nativedata.Serializers;
+import it.cavallium.datagen.nativedata.*;
+
 import java.util.Objects;
 import java.util.stream.Stream;
 
@@ -30,14 +11,16 @@ public final class ComputedTypeNullableNative implements ComputedTypeNullable {
 
 	private final String baseType;
 	private final ComputedVersion latestVersion;
+	private final boolean binaryStrings;
 
 	private ComputedTypeNative computedChild;
 	private final ComputedTypeSupplier computedTypeSupplier;
 
-	public ComputedTypeNullableNative(String baseType, ComputedVersion latestVersion, ComputedTypeSupplier computedTypeSupplier) {
+	public ComputedTypeNullableNative(String baseType, ComputedVersion latestVersion, ComputedTypeSupplier computedTypeSupplier, boolean binaryStrings) {
 		this.baseType = baseType;
 		this.latestVersion = latestVersion;
 		this.computedTypeSupplier = computedTypeSupplier;
+		this.binaryStrings = binaryStrings;
 	}
 
 	public ComputedTypeNative getBase() {
@@ -93,7 +76,7 @@ public final class ComputedTypeNullableNative implements ComputedTypeNullable {
 			case "long" -> ClassName.get(Nullablelong.class);
 			case "float" -> ClassName.get(Nullablefloat.class);
 			case "double" -> ClassName.get(Nullabledouble.class);
-			case "String" -> ClassName.get(NullableString.class);
+			case "String" -> binaryStrings ? ClassName.get(NullableBinaryString.class) : ClassName.get(NullableString.class);
 			case "Int52" -> ClassName.get(NullableInt52.class);
 			default -> ClassName.get(latestVersion.getDataNullablesPackage(basePackageName), "Nullable" + baseType);
 		};
@@ -115,7 +98,7 @@ public final class ComputedTypeNullableNative implements ComputedTypeNullable {
 			case "long" -> ClassName.get(NullablelongSerializer.class);
 			case "float" -> ClassName.get(NullablefloatSerializer.class);
 			case "double" -> ClassName.get(NullabledoubleSerializer.class);
-			case "String" -> ClassName.get(NullableStringSerializer.class);
+			case "String" -> binaryStrings ? ClassName.get(NullableBinaryStringSerializer.class) : ClassName.get(NullableStringSerializer.class);
 			case "Int52" -> ClassName.get(NullableInt52Serializer.class);
 			default -> throw new UnsupportedOperationException();
 		};

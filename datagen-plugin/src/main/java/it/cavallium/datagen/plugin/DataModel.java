@@ -58,12 +58,13 @@ public class DataModel {
 	private final Int2ObjectMap<Map<String, List<TransformationConfiguration>>> baseTypeDataChanges;
 
 	public DataModel(int hash,
-			String currentVersionKey,
-			Map<String, InterfaceDataConfiguration> interfacesData,
-			Map<String, ClassConfiguration> baseTypesData,
-			Map<String, Set<String>> superTypesData,
-			Map<String, CustomTypesConfiguration> customTypesData,
-			Map<String, VersionConfiguration> rawVersions) {
+					 String currentVersionKey,
+					 Map<String, InterfaceDataConfiguration> interfacesData,
+					 Map<String, ClassConfiguration> baseTypesData,
+					 Map<String, Set<String>> superTypesData,
+					 Map<String, CustomTypesConfiguration> customTypesData,
+					 Map<String, VersionConfiguration> rawVersions,
+					 boolean binaryStrings) {
 
 		this.hash = hash;
 
@@ -363,7 +364,7 @@ public class DataModel {
 						nullableRawTypes.stream()
 								.filter(NATIVE_TYPES::contains)
 								.map(baseType ->
-										new ComputedTypeNullableNative(baseType, computedVersions.get(latestVersion), computedTypeSupplier))
+										new ComputedTypeNullableNative(baseType, computedVersions.get(latestVersion), computedTypeSupplier, binaryStrings))
 								.forEach(versionBaseTypes::add);
 					}
 					// Compute array types
@@ -393,7 +394,7 @@ public class DataModel {
 								.forEach(versionBaseTypes::add);
 					}
 					// Compute native types
-					versionBaseTypes.addAll(ComputedTypeNative.get(computedTypeSupplier));
+					versionBaseTypes.addAll(ComputedTypeNative.get(computedTypeSupplier, binaryStrings));
 
 					var allLatestTypes = versionBaseTypes.stream().distinct().collect(Collectors.toMap(ComputedType::getName, identity()));
 

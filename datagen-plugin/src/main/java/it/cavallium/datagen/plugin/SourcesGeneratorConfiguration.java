@@ -37,14 +37,15 @@ public class SourcesGeneratorConfiguration {
 		return hash;
 	}
 
-	public DataModel buildDataModel() {
+	public DataModel buildDataModel(boolean binaryStrings) {
 		return new DataModel(hashCode(),
 				currentVersion,
 				Objects.requireNonNullElse(interfacesData, Map.of()),
 				Objects.requireNonNullElse(baseTypesData, Map.of()),
 				Objects.requireNonNullElse(superTypesData, Map.of()),
 				Objects.requireNonNullElse(customTypesData, Map.of()),
-				Objects.requireNonNullElse(versions, Map.of())
+				Objects.requireNonNullElse(versions, Map.of()),
+				binaryStrings
 		);
 	}
 }
