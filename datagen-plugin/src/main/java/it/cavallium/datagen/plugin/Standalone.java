@@ -19,7 +19,8 @@ public class Standalone {
 				parseBoolean(args[3]),
 				parseBoolean(args[4]),
 				parseBoolean(args[5]),
-				parseBoolean(args[6])
+				parseBoolean(args[6]),
+				parseBoolean(args[7])
 		);
 	}
 }

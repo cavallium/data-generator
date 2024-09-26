@@ -32,6 +32,9 @@ public class MavenPlugin extends AbstractMojo {
 	@Parameter(defaultValue = "false")
 	private String generateTestResources;
 
+	@Parameter(defaultValue = "false")
+	private String binaryStrings;
+
 	/**
 	 * @parameter default-value="${project}"
 	 * @required
@@ -50,7 +53,7 @@ public class MavenPlugin extends AbstractMojo {
 			Path outPath = genRecordsPath.resolve("java");
 			this.project.addCompileSourceRoot(outPath.toString());
 			sourcesGenerator.generateSources(basePackageName, outPath, Boolean.parseBoolean(useRecordBuilder), false, Boolean.parseBoolean(deepCheckBeforeCreatingNewEqualInstances),
-					Boolean.parseBoolean(generateOldSerializers));
+					Boolean.parseBoolean(generateOldSerializers), Boolean.parseBoolean(binaryStrings));
 		} catch (IOException e) {
 			throw new MojoExecutionException("Exception while generating classes", e);
 		}

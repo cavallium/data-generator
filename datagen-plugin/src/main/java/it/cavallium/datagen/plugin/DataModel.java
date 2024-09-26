@@ -390,7 +390,7 @@ public class DataModel {
 						arrayRawTypes.stream()
 								.filter(NATIVE_TYPES::contains)
 								.map(baseType ->
-										new ComputedTypeArrayNative(baseType, computedTypeSupplier))
+										new ComputedTypeArrayNative(baseType, computedTypeSupplier, binaryStrings))
 								.forEach(versionBaseTypes::add);
 					}
 					// Compute native types
