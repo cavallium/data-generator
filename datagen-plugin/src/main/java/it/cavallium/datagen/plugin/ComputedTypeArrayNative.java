@@ -113,7 +113,7 @@ public final class ComputedTypeArrayNative implements ComputedTypeArray {
 	@Override
 	public FieldLocation getJSerializerInstance(String basePackageName) {
 		if (baseType.equals("String") && binaryStrings) {
-			return new FieldLocation(ClassName.get(Serializers.class), "NullableBinaryStringSerializerInstance");
+			return new FieldLocation(ClassName.get(Serializers.class), "ArrayBinaryStringSerializerInstance");
 		} else {
 			var className = ClassName.get(Serializers.class);
 			var serializerFieldName = "Array" + baseType + "SerializerInstance";
