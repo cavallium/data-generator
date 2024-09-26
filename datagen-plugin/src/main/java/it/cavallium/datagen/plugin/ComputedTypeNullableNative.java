@@ -106,13 +106,17 @@ public final class ComputedTypeNullableNative implements ComputedTypeNullable {
 
 	@Override
 	public FieldLocation getJSerializerInstance(String basePackageName) {
-		var className = switch (baseType) {
-			case "boolean", "byte", "short", "char", "int", "long", "float", "double", "String", "Int52" ->
-					ClassName.get(Serializers.class);
-			default -> throw new UnsupportedOperationException();
-		};
-		var serializerFieldName = "Nullable" + baseType + "SerializerInstance";
-		return new FieldLocation(className, serializerFieldName);
+		if (baseType.equals("String") && binaryStrings) {
+			return new FieldLocation(ClassName.get(Serializers.class), "NullableBinaryStringSerializerInstance");
+		} else {
+			var className = switch (baseType) {
+				case "boolean", "byte", "short", "char", "int", "long", "float", "double", "String", "Int52" ->
+						ClassName.get(Serializers.class);
+				default -> throw new UnsupportedOperationException();
+			};
+			var serializerFieldName = "Nullable" + baseType + "SerializerInstance";
+			return new FieldLocation(className, serializerFieldName);
+		}
 	}
 
 	@Override

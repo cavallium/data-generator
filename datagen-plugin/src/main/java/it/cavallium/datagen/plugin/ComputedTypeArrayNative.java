@@ -3,7 +3,6 @@ package it.cavallium.datagen.plugin;
 import com.squareup.javapoet.ClassName;
 import com.squareup.javapoet.ParameterizedTypeName;
 import com.squareup.javapoet.TypeName;
-import it.cavallium.datagen.NativeNullable;
 import it.cavallium.datagen.nativedata.*;
 import it.unimi.dsi.fastutil.booleans.BooleanList;
 import it.unimi.dsi.fastutil.bytes.ByteList;
@@ -20,15 +19,15 @@ import java.util.stream.Stream;
 public final class ComputedTypeArrayNative implements ComputedTypeArray {
 
 	private final String baseType;
-	private final boolean byteStrings;
+	private final boolean binaryStrings;
 
 	private ComputedTypeNative computedChild;
 	private final ComputedTypeSupplier computedTypeSupplier;
 
-	public ComputedTypeArrayNative(String baseType, ComputedTypeSupplier computedTypeSupplier, boolean byteStrings) {
+	public ComputedTypeArrayNative(String baseType, ComputedTypeSupplier computedTypeSupplier, boolean binaryStrings) {
 		this.baseType = baseType;
 		this.computedTypeSupplier = computedTypeSupplier;
-		this.byteStrings = byteStrings;
+		this.binaryStrings = binaryStrings;
 	}
 
 	public ComputedType getBase() {
@@ -105,7 +104,7 @@ public final class ComputedTypeArrayNative implements ComputedTypeArray {
 			case "long" -> ClassName.get(ArraylongSerializer.class);
 			case "float" -> ClassName.get(ArrayfloatSerializer.class);
 			case "double" -> ClassName.get(ArraydoubleSerializer.class);
-			case "String" -> byteStrings ? ClassName.get(ArrayBinaryStringSerializer.class) : ClassName.get(ArrayStringSerializer.class);
+			case "String" -> binaryStrings ? ClassName.get(ArrayBinaryStringSerializer.class) : ClassName.get(ArrayStringSerializer.class);
 			case "Int52" -> ClassName.get(ArrayInt52Serializer.class);
 			default -> throw new UnsupportedOperationException();
 		};
@@ -113,9 +112,13 @@ public final class ComputedTypeArrayNative implements ComputedTypeArray {
 
 	@Override
 	public FieldLocation getJSerializerInstance(String basePackageName) {
-		var className = ClassName.get(Serializers.class);
-		var serializerFieldName = "Array" + baseType + "SerializerInstance";
-		return new FieldLocation(className, serializerFieldName);
+		if (baseType.equals("String") && binaryStrings) {
+			return new FieldLocation(ClassName.get(Serializers.class), "NullableBinaryStringSerializerInstance");
+		} else {
+			var className = ClassName.get(Serializers.class);
+			var serializerFieldName = "Array" + baseType + "SerializerInstance";
+			return new FieldLocation(className, serializerFieldName);
+		}
 	}
 
 	@Override

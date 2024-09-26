@@ -65,7 +65,11 @@ public final class ComputedTypeNative implements ComputedType {
 
 	@Override
 	public FieldLocation getJSerializerInstance(String basePackageName) {
-		return new FieldLocation(ClassName.get(Serializers.class), type + "SerializerInstance");
+		if (type.equals("String") && binaryStrings) {
+			return new FieldLocation(ClassName.get(Serializers.class), "BinaryStringSerializerInstance");
+		} else {
+			return new FieldLocation(ClassName.get(Serializers.class), type + "SerializerInstance");
+		}
 	}
 
 	@Override
