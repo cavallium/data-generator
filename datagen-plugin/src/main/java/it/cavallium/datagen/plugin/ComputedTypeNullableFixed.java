@@ -81,8 +81,7 @@ public final class ComputedTypeNullableFixed implements ComputedTypeNullable {
 	}
 
 	private TypeName getJTypeNameGenericOfVersion(ComputedVersion version, String basePackageName) {
-		return ParameterizedTypeName.get(ClassName.get(TypedNullable.class),
-				ClassName.get(version.getDataPackage(basePackageName), baseType));
+		return ParameterizedTypeName.get(ClassName.get(TypedNullable.class), this.child().getJTypeName(basePackageName));
 	}
 
 	@Override
