@@ -95,6 +95,16 @@ public interface Buf extends ByteList, RandomAccess {
 	int getBackingByteArrayLength();
 
 	/**
+	 * Unsafe operation, same as Offset
+	 */
+	int getBackingByteArrayFrom();
+
+	/**
+	 * Unsafe operation, same as offset + length
+	 */
+	int getBackingByteArrayTo();
+
+	/**
 	 * Get this element as an array with equal or bigger size, only if it's already an array, otherwise return null
 	 * The returned array may be bigger than expected!
 	 */

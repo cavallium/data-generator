@@ -181,6 +181,16 @@ class ByteListBuf extends ByteArrayList implements Buf {
 	}
 
 	@Override
+	public int getBackingByteArrayFrom() {
+		return 0;
+	}
+
+	@Override
+	public int getBackingByteArrayTo() {
+		return this.size;
+	}
+
+	@Override
 	public byte @Nullable [] asUnboundedArrayStrict() {
 		return a;
 	}
@@ -415,6 +425,16 @@ class ByteListBuf extends ByteArrayList implements Buf {
 		@Override
 		public int getBackingByteArrayLength() {
 			return this.to - this.from;
+		}
+
+		@Override
+		public int getBackingByteArrayFrom() {
+			return this.from;
+		}
+
+		@Override
+		public int getBackingByteArrayTo() {
+			return this.to;
 		}
 
 		@Override
