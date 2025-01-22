@@ -80,6 +80,21 @@ public interface Buf extends ByteList, RandomAccess {
 	ByteBuffer asHeapByteBuffer();
 
 	/**
+	 * Unsafe operation
+	 */
+	byte[] getBackingByteArray();
+
+	/**
+	 * Unsafe operation
+	 */
+	int getBackingByteArrayOffset();
+
+	/**
+	 * Unsafe operation
+	 */
+	int getBackingByteArrayLength();
+
+	/**
 	 * Get this element as an array with equal or bigger size, only if it's already an array, otherwise return null
 	 * The returned array may be bigger than expected!
 	 */
