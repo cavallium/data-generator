@@ -20,6 +20,8 @@ import it.unimi.dsi.fastutil.bytes.ByteSpliterator;
 import it.unimi.dsi.fastutil.bytes.ByteSpliterators;
 import it.unimi.dsi.fastutil.bytes.ByteUnaryOperator;
 import java.io.Serial;
+import java.nio.Buffer;
+import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.util.Arrays;
 import java.util.Collection;
@@ -157,6 +159,11 @@ class ByteListBuf extends ByteArrayList implements Buf {
 	@Override
 	public byte[] asUnboundedArray() {
 		return a;
+	}
+
+	@Override
+	public ByteBuffer asHeapByteBuffer() {
+		return ByteBuffer.wrap(a, 0, size());
 	}
 
 	@Override
@@ -374,6 +381,11 @@ class ByteListBuf extends ByteArrayList implements Buf {
 			} else {
 				return null;
 			}
+		}
+
+		@Override
+		public Buffer asHeapByteBuffer() {
+			return ByteBuffer.wrap(a, this.from, this.to);
 		}
 
 		@Override
