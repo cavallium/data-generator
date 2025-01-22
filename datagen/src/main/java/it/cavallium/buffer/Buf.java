@@ -6,7 +6,7 @@ import it.cavallium.stream.SafeByteArrayOutputStream;
 import it.cavallium.stream.SafeDataOutput;
 import it.unimi.dsi.fastutil.bytes.ByteArrayList;
 import it.unimi.dsi.fastutil.bytes.ByteList;
-import java.nio.Buffer;
+import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.util.RandomAccess;
 import org.jetbrains.annotations.NotNull;
@@ -77,7 +77,7 @@ public interface Buf extends ByteList, RandomAccess {
 	 */
 	byte[] asUnboundedArray();
 
-	Buffer asHeapByteBuffer();
+	ByteBuffer asHeapByteBuffer();
 
 	/**
 	 * Get this element as an array with equal or bigger size, only if it's already an array, otherwise return null
