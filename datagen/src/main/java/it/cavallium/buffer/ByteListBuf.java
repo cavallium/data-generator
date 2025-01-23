@@ -233,6 +233,15 @@ class ByteListBuf extends ByteArrayList implements Buf {
 	}
 
 	@Override
+	public void setBytesFromBuf(int offset, Buf source, int sourceOffset, int length) {
+		assert isMutable() : IMMUTABLE_ERROR;
+		checkFromIndexSize(offset, length, size);
+		checkFromIndexSize(sourceOffset, length, source.size());
+		System.arraycopy(source.getBackingByteArray(), source.getBackingByteArrayFrom() + sourceOffset, this.a,
+				offset, length);
+	}
+
+	@Override
 	public SafeByteArrayInputStream binaryInputStream() {
 		return new SafeByteArrayInputStream(this.a, 0, this.size);
 	}
@@ -328,6 +337,14 @@ class ByteListBuf extends ByteArrayList implements Buf {
 		@Override
 		public Buf copy() {
 			return Buf.wrap(Arrays.copyOfRange(a, from, to));
+		}
+
+		@Override
+		public void setBytesFromBuf(int offset, Buf source, int sourceOffset, int length) {
+			assert isMutable() : IMMUTABLE_ERROR;
+			checkFromIndexSize(offset, length, size());
+			checkFromIndexSize(sourceOffset, length, source.size());
+			System.arraycopy(source.getBackingByteArray(), source.getBackingByteArrayFrom() + sourceOffset, a, this.from + offset, length);
 		}
 
 		@Override

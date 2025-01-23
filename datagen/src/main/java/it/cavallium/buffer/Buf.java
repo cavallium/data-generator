@@ -124,6 +124,15 @@ public interface Buf extends ByteList, RandomAccess {
 
 	Buf copy();
 
+	/**
+	 * Copy data from the defined buf
+	 * @param offset this buf offset where the data is copied
+	 * @param source the source buf
+	 * @param sourceOffset the source buf offset from where the data is copied
+	 * @param length the length of data being copied
+	 */
+	void setBytesFromBuf(int offset, Buf source, int sourceOffset, int length);
+
 	SafeByteArrayInputStream binaryInputStream();
 
 	void writeTo(SafeDataOutput dataOutput);
