@@ -173,11 +173,20 @@ public interface Buf extends ByteList, RandomAccess {
 	 * @param i byte offset
 	 */
 	default int getInt(int i) {
-		byte b1 = getByte(i);
-		byte b2 = getByte(i + 1);
-		byte b3 = getByte(i + 2);
-		byte b4 = getByte(i + 3);
-		return b1 << 24 | (b2 & 0xFF) << 16 | (b3 & 0xFF) << 8 | (b4 & 0xFF);
+		return getByte(i) << 24
+				| (getByte(i + 1) & 0xFF) << 16
+				| (getByte(i + 2) & 0xFF) << 8
+				| (getByte(i + 3) & 0xFF);
+	}
+
+	/**
+	 * @param i byte offset
+	 */
+	default int getIntLE(int i) {
+		return (getByte(i) & 0xFF)
+				| (getByte(i + 1) & 0xFF) << 8
+				| (getByte(i + 2) & 0xFF) << 16
+				| getByte(i + 3) << 24;
 	}
 
 	/**
@@ -288,6 +297,16 @@ public interface Buf extends ByteList, RandomAccess {
 		set(i + 1, (byte) (val >> 16));
 		set(i + 2, (byte) (val >> 8));
 		set(i + 3, (byte) val);
+	}
+
+	/**
+	 * @param i byte offset
+	 */
+	default void setIntLE(int i, int val) {
+		set(i, (byte) val);
+		set(i + 1, (byte) (val >> 8));
+		set(i + 2, (byte) (val >> 16));
+		set(i + 3, (byte) (val >> 24));
 	}
 
 	/**
