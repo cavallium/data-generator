@@ -11,8 +11,8 @@ public class ComputedVersion implements Comparable<ComputedVersion> {
 	private final String name;
 	private final int version;
 	private final boolean current;
-	public DetailsConfiguration details;
-	public List<VersionTransformation> transformations;
+	public final DetailsConfiguration details;
+	public final List<VersionTransformation> transformations;
 
 	public ComputedVersion(ParsedVersion value, int version, boolean current, String versionName) {
 		this.details = value.details;

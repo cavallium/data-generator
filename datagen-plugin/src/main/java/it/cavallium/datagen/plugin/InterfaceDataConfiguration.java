@@ -8,9 +8,9 @@ import java.util.Set;
 
 public class InterfaceDataConfiguration {
 
-	public Set<String> extendInterfaces = new HashSet<>();
-	public Map<String, String> commonData = new HashMap<>();
-	public Map<String, String> commonGetters = new HashMap<>();
+	public final Set<String> extendInterfaces = new HashSet<>();
+	public final Map<String, String> commonData = new HashMap<>();
+	public final Map<String, String> commonGetters = new HashMap<>();
 
 	@Override
 	public boolean equals(Object o) {

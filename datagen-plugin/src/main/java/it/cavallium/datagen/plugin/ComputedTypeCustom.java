@@ -1,8 +1,8 @@
 package it.cavallium.datagen.plugin;
 
-import com.squareup.javapoet.ClassName;
-import com.squareup.javapoet.ParameterizedTypeName;
-import com.squareup.javapoet.TypeName;
+import com.palantir.javapoet.ClassName;
+import com.palantir.javapoet.ParameterizedTypeName;
+import com.palantir.javapoet.TypeName;
 import java.util.Objects;
 import java.util.stream.Stream;
 

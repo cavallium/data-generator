@@ -1,9 +1,10 @@
 package it.cavallium.datagen.plugin.classgen;
 
-import com.squareup.javapoet.ClassName;
-import com.squareup.javapoet.MethodSpec;
-import com.squareup.javapoet.ParameterSpec;
-import com.squareup.javapoet.TypeSpec;
+import com.palantir.javapoet.ClassName;
+import com.palantir.javapoet.FieldSpec;
+import com.palantir.javapoet.MethodSpec;
+import com.palantir.javapoet.ParameterSpec;
+import com.palantir.javapoet.TypeSpec;
 import io.soabase.recordbuilder.core.RecordBuilder;
 import it.cavallium.datagen.plugin.ClassGenerator;
 import it.cavallium.datagen.plugin.ComputedTypeBase;
@@ -35,8 +36,14 @@ public class GenDataBaseX extends ClassGenerator {
 	private GeneratedClass generateTypeVersioned(ComputedVersion version, ComputedTypeBase base) {
 		var type = (ClassName) base.getJTypeName(basePackageName);
 		var classBuilder = TypeSpec.recordBuilder(type.simpleName());
-
+		var classConstructorBuilder = MethodSpec.constructorBuilder();
 		classBuilder.addModifiers(Modifier.PUBLIC);
+
+		var builderClassBuilder = TypeSpec.classBuilder(base.getJBuilderName(basePackageName));
+		builderClassBuilder.addModifiers(Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL);
+		var builderPrivateConstructorBuilder = MethodSpec.constructorBuilder()
+				.addModifiers(Modifier.PRIVATE)
+				.addParameter(ParameterSpec.builder(type, "source").build());
 
 		if (useRecordBuilders && base.getVersion().isCurrent()) {
 			classBuilder.addAnnotation(RecordBuilder.class);
@@ -51,6 +58,9 @@ public class GenDataBaseX extends ClassGenerator {
 
 		dataModel.getSuperTypesOf(base, true).forEach(superType -> {
 			classBuilder.addSuperinterface(superType.getJTypeName(basePackageName));
+			if (superType.getVersion().isCurrent()) {
+				builderClassBuilder.addSuperinterface(superType.getJBuilderName(basePackageName));
+			}
 		});
 
 		dataModel.getSuperTypesOf(base, false).forEach(superType -> {
@@ -67,6 +77,26 @@ public class GenDataBaseX extends ClassGenerator {
 				.methodBuilder("of")
 				.addModifiers(Modifier.PUBLIC, Modifier.STATIC);
 
+		var builderMethod = MethodSpec
+				.methodBuilder("builder")
+				.addModifiers(Modifier.PUBLIC)
+				.addAnnotation(NotNull.class)
+				.returns(base.getJBuilderName(basePackageName));
+
+		var buildMethod = MethodSpec
+				.methodBuilder("build")
+				.addModifiers(Modifier.PUBLIC)
+				.addAnnotation(NotNull.class);
+
+		var builderToStringMethod = MethodSpec
+				.methodBuilder("toString")
+				.addAnnotation(Override.class)
+				.addModifiers(Modifier.PUBLIC)
+				.returns(String.class);
+		builderToStringMethod.addCode("return \"$N.Builder[", base.getName());
+
+		boolean[] isFirstParameter = new boolean[] {true};
+
 		base.getData().forEach((fieldName, fieldType) -> {
 			var fieldTypeName = fieldType.getJTypeNameGeneric(basePackageName);
 
@@ -76,7 +106,15 @@ public class GenDataBaseX extends ClassGenerator {
 					.build();
 
 			ofMethod.addParameter(param);
-			classBuilder.addRecordComponent(param);
+			classConstructorBuilder.addParameter(param);
+			builderClassBuilder.addField(FieldSpec.builder(fieldTypeName, fieldName, Modifier.PRIVATE).build());
+			builderPrivateConstructorBuilder.addStatement("this.$N = source.$N", fieldName, fieldName);
+			if (isFirstParameter[0]) {
+				isFirstParameter[0] = false;
+			} else {
+				builderToStringMethod.addCode(", ");
+			}
+			builderToStringMethod.addCode("$N=\" + $N + \"", fieldName, fieldName);
 
 			var setter = MethodSpec
 					.methodBuilder("set" + StringUtils.capitalize(fieldName))
@@ -84,6 +122,8 @@ public class GenDataBaseX extends ClassGenerator {
 					.addParameter(ParameterSpec.builder(fieldTypeName, fieldName).addAnnotation(NotNull.class).build())
 					.addAnnotation(NotNull.class)
 					.returns(type);
+			var builderSetter = setter.build().toBuilder();
+			builderSetter.returns(ClassName.get(type.packageName(), type.simpleName(), "Builder"));
 
 			if (!fieldTypeName.isPrimitive()) {
 				setter.addStatement("$T.requireNonNull($N)", Objects.class, fieldName);
@@ -96,8 +136,17 @@ public class GenDataBaseX extends ClassGenerator {
 			setter.addCode(String.join(", ", base.getData().keySet()));
 			setter.addStatement(")");
 
+			builderSetter.addStatement("this.$N = $N", fieldName, fieldName);
+			builderSetter.addStatement("return this");
+
 			classBuilder.addMethod(setter.build());
+			builderClassBuilder.addMethod(builderSetter.build());
 		});
+
+		classBuilder.recordConstructor(classConstructorBuilder.build());
+
+		builderClassBuilder.addMethod(MethodSpec.constructorBuilder().addModifiers(Modifier.PUBLIC).build());
+		builderClassBuilder.addMethod(builderPrivateConstructorBuilder.build());
 
 		classBuilder.addMethod(MethodSpec
 				.methodBuilder("getBaseType$")
@@ -108,12 +157,23 @@ public class GenDataBaseX extends ClassGenerator {
 				.build());
 
 		ofMethod.addCode("return new $T(", type);
+		buildMethod.addCode("return new $T(", type);
 		ofMethod.addCode(String.join(", ", base.getData().keySet()));
+		buildMethod.addCode(String.join(", ", base.getData().keySet()));
 		ofMethod.addStatement(")");
+		buildMethod.addStatement(")");
 		ofMethod.returns(type);
+		buildMethod.returns(type);
 		if (version.isCurrent()) {
 			classBuilder.addMethod(ofMethod.build());
 		}
+
+		builderMethod.addStatement("return new $T(this)", base.getJBuilderName(basePackageName));
+
+		builderClassBuilder.addMethod(buildMethod.build());
+
+		builderToStringMethod.addStatement("]\"");
+		builderClassBuilder.addMethod(builderToStringMethod.build());
 
 		final String stringRepresenter = base.getStringRepresenter();
 		if (version.isCurrent() && stringRepresenter != null && !stringRepresenter.isBlank()) {
@@ -123,6 +183,11 @@ public class GenDataBaseX extends ClassGenerator {
 			toStringMethod.returns(String.class);
 			toStringMethod.addStatement("return " + stringRepresenter + "(this)");
 			classBuilder.addMethod(toStringMethod.build());
+		}
+
+		if (version.isCurrent()) {
+			classBuilder.addMethod(builderMethod.build());
+			classBuilder.addType(builderClassBuilder.build());
 		}
 
 		return new GeneratedClass(type.packageName(), classBuilder);

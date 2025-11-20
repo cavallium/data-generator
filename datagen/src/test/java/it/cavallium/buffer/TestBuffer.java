@@ -569,7 +569,7 @@ public class TestBuffer {
             if (smaller2[smaller2.length - 1] > 0) {
                 smaller2[smaller2.length - 1]--;
                 assertTrue(bufArg.b.compareTo(Buf.wrap(smaller2)) > 0);
-            };
+            }
             assertTrue(bufArg.b.compareTo(Buf.create()) > 0);
         }
     }

@@ -1,16 +1,16 @@
 package it.cavallium.datagen.plugin.classgen;
 
-import com.squareup.javapoet.ClassName;
-import com.squareup.javapoet.CodeBlock;
-import com.squareup.javapoet.FieldSpec;
-import com.squareup.javapoet.MethodSpec;
-import com.squareup.javapoet.ParameterSpec;
-import com.squareup.javapoet.ParameterizedTypeName;
-import com.squareup.javapoet.TypeName;
-import com.squareup.javapoet.TypeSpec;
-import com.squareup.javapoet.TypeSpec.Builder;
-import com.squareup.javapoet.TypeVariableName;
-import com.squareup.javapoet.WildcardTypeName;
+import com.palantir.javapoet.ClassName;
+import com.palantir.javapoet.CodeBlock;
+import com.palantir.javapoet.FieldSpec;
+import com.palantir.javapoet.MethodSpec;
+import com.palantir.javapoet.ParameterSpec;
+import com.palantir.javapoet.ParameterizedTypeName;
+import com.palantir.javapoet.TypeName;
+import com.palantir.javapoet.TypeSpec;
+import com.palantir.javapoet.TypeSpec.Builder;
+import com.palantir.javapoet.TypeVariableName;
+import com.palantir.javapoet.WildcardTypeName;
 import it.cavallium.datagen.plugin.ClassGenerator;
 import it.cavallium.datagen.plugin.ComputedType;
 import it.cavallium.datagen.plugin.ComputedVersion;

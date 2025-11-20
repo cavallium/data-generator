@@ -1,7 +1,7 @@
 package it.cavallium.datagen.plugin.classgen;
 
-import com.squareup.javapoet.ClassName;
-import com.squareup.javapoet.TypeSpec;
+import com.palantir.javapoet.ClassName;
+import com.palantir.javapoet.TypeSpec;
 import it.cavallium.datagen.nativedata.INullable;
 import it.cavallium.datagen.plugin.ClassGenerator;
 import it.cavallium.datagen.plugin.ComputedVersion;

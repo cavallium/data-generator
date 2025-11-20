@@ -164,8 +164,6 @@ public class DataModel {
 					throw new IllegalArgumentException("Type " + type + " has been defined more than once (check base, super, and custom types)!");
 				});
 
-		record RawVersionedType(String type, int version) {}
-
 		// Compute the numeric versions map
 		Int2ObjectMap<ParsedVersion> parsedVersions = new Int2ObjectLinkedOpenHashMap<>();
 		rawVersions.forEach((k, v) -> parsedVersions.put(nameToVersion.getInt(k), new ParsedVersion(v)));

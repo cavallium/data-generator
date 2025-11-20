@@ -1,6 +1,6 @@
 package it.cavallium.datagen.plugin.classgen;
 
-import com.squareup.javapoet.TypeSpec;
+import com.palantir.javapoet.TypeSpec;
 import it.cavallium.datagen.plugin.ClassGenerator;
 import java.util.stream.Stream;
 import javax.lang.model.element.Modifier;

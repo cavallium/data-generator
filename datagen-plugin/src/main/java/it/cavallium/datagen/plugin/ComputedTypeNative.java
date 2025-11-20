@@ -1,7 +1,7 @@
 package it.cavallium.datagen.plugin;
 
-import com.squareup.javapoet.ClassName;
-import com.squareup.javapoet.TypeName;
+import com.palantir.javapoet.ClassName;
+import com.palantir.javapoet.TypeName;
 import it.cavallium.datagen.nativedata.*;
 
 import java.util.List;
@@ -16,7 +16,7 @@ public final class ComputedTypeNative implements ComputedType {
 	private final String type;
 	private final ComputedTypeSupplier computedTypeSupplier;
 	private final boolean binaryStrings;
-	private boolean primitive;
+	private final boolean primitive;
 
 	public ComputedTypeNative(String type, ComputedTypeSupplier computedTypeSupplier, boolean binaryStrings) {
 		this.type = type;

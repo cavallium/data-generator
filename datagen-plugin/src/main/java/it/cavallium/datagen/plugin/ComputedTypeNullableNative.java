@@ -1,7 +1,7 @@
 package it.cavallium.datagen.plugin;
 
-import com.squareup.javapoet.ClassName;
-import com.squareup.javapoet.TypeName;
+import com.palantir.javapoet.ClassName;
+import com.palantir.javapoet.TypeName;
 import it.cavallium.datagen.nativedata.*;
 
 import java.util.Objects;

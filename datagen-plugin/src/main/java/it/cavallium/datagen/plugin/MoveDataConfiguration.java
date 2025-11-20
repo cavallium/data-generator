@@ -1,9 +1,7 @@
 package it.cavallium.datagen.plugin;
 
-import java.util.List;
 import java.util.Objects;
 
-import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 public final class MoveDataConfiguration implements TransformationConfiguration {

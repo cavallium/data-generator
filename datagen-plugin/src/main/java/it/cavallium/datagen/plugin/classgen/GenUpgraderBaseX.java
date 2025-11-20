@@ -1,20 +1,34 @@
 package it.cavallium.datagen.plugin.classgen;
 
-import com.squareup.javapoet.ClassName;
-import com.squareup.javapoet.CodeBlock;
-import com.squareup.javapoet.FieldSpec;
-import com.squareup.javapoet.MethodSpec;
-import com.squareup.javapoet.ParameterSpec;
-import com.squareup.javapoet.ParameterizedTypeName;
-import com.squareup.javapoet.TypeName;
-import com.squareup.javapoet.TypeSpec;
-import com.squareup.javapoet.TypeSpec.Builder;
-import it.cavallium.datagen.*;
-import it.cavallium.datagen.plugin.*;
+import com.palantir.javapoet.ClassName;
+import com.palantir.javapoet.CodeBlock;
+import com.palantir.javapoet.FieldSpec;
+import com.palantir.javapoet.MethodSpec;
+import com.palantir.javapoet.ParameterSpec;
+import com.palantir.javapoet.ParameterizedTypeName;
+import com.palantir.javapoet.TypeName;
+import com.palantir.javapoet.TypeSpec;
+import com.palantir.javapoet.TypeSpec.Builder;
+import it.cavallium.datagen.DataContext;
+import it.cavallium.datagen.DataContextNone;
+import it.cavallium.datagen.DataInitializer;
+import it.cavallium.datagen.DataUpgrader;
+import it.cavallium.datagen.DataUpgraderSimple;
+import it.cavallium.datagen.plugin.ClassGenerator;
+import it.cavallium.datagen.plugin.ComputedType;
 import it.cavallium.datagen.plugin.ComputedType.VersionedComputedType;
+import it.cavallium.datagen.plugin.ComputedTypeBase;
+import it.cavallium.datagen.plugin.ComputedVersion;
+import it.cavallium.datagen.plugin.DataModel;
+import it.cavallium.datagen.plugin.JInterfaceLocation;
 import it.cavallium.datagen.plugin.JInterfaceLocation.JInterfaceLocationClassName;
 import it.cavallium.datagen.plugin.JInterfaceLocation.JInterfaceLocationInstanceField;
-
+import it.cavallium.datagen.plugin.MoveDataConfiguration;
+import it.cavallium.datagen.plugin.NewDataConfiguration;
+import it.cavallium.datagen.plugin.RemoveDataConfiguration;
+import it.cavallium.datagen.plugin.SourcesGenerator;
+import it.cavallium.datagen.plugin.TransformationConfiguration;
+import it.cavallium.datagen.plugin.UpgradeDataConfiguration;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -26,7 +40,6 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import javax.lang.model.element.Modifier;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 public class GenUpgraderBaseX extends ClassGenerator {
 
@@ -284,9 +297,10 @@ public class GenUpgraderBaseX extends ClassGenerator {
 
 				codeBlockBuilder.add("new $T(", typeName);
 				boolean first = true;
+				var contextTypeClassConstructorBuilder = MethodSpec.constructorBuilder();
 				for (String contextParameter : contextParameters) {
 					var fieldType = typeBase.getData().get(contextParameter);
-					contextTypeClassBuilder.addRecordComponent(ParameterSpec.builder(fieldType.getJTypeNameGeneric(basePackageName), contextParameter).build());
+					contextTypeClassConstructorBuilder.addParameter(ParameterSpec.builder(fieldType.getJTypeNameGeneric(basePackageName), contextParameter).build());
 
 					if (first) {
 						first = false;
@@ -295,6 +309,7 @@ public class GenUpgraderBaseX extends ClassGenerator {
 					}
 					codeBlockBuilder.add("data.$N()", contextParameter);
 				}
+				contextTypeClassBuilder.recordConstructor(contextTypeClassConstructorBuilder.build());
 				codeBlockBuilder.add(")");
 
 				var clazz = contextTypeClassBuilder.build();

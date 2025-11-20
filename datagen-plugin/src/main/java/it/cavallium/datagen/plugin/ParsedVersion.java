@@ -15,10 +15,6 @@ public class ParsedVersion {
 		}
 	}
 
-	public ParsedVersion() {
-
-	}
-
 	@Override
 	public boolean equals(Object o) {
 		if (this == o) {

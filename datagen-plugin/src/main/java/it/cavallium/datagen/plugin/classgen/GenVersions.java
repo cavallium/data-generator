@@ -1,11 +1,11 @@
 package it.cavallium.datagen.plugin.classgen;
 
-import com.squareup.javapoet.ArrayTypeName;
-import com.squareup.javapoet.ClassName;
-import com.squareup.javapoet.CodeBlock;
-import com.squareup.javapoet.FieldSpec;
-import com.squareup.javapoet.TypeName;
-import com.squareup.javapoet.TypeSpec;
+import com.palantir.javapoet.ArrayTypeName;
+import com.palantir.javapoet.ClassName;
+import com.palantir.javapoet.CodeBlock;
+import com.palantir.javapoet.FieldSpec;
+import com.palantir.javapoet.TypeName;
+import com.palantir.javapoet.TypeSpec;
 import it.cavallium.datagen.plugin.ClassGenerator;
 import it.cavallium.datagen.plugin.ComputedVersion;
 import java.util.ArrayList;

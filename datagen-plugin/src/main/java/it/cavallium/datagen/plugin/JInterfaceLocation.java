@@ -1,6 +1,6 @@
 package it.cavallium.datagen.plugin;
 
-import com.squareup.javapoet.ClassName;
+import com.palantir.javapoet.ClassName;
 import org.apache.commons.lang3.StringUtils;
 
 public sealed interface JInterfaceLocation {

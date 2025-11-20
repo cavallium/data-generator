@@ -1,13 +1,15 @@
 package it.cavallium.datagen.plugin.classgen;
 
-import com.squareup.javapoet.ClassName;
-import com.squareup.javapoet.MethodSpec;
-import com.squareup.javapoet.ParameterSpec;
-import com.squareup.javapoet.TypeName;
-import com.squareup.javapoet.TypeSpec;
+import com.palantir.javapoet.ClassName;
+import com.palantir.javapoet.MethodSpec;
+import com.palantir.javapoet.ParameterSpec;
+import com.palantir.javapoet.TypeSpec;
 import it.cavallium.datagen.plugin.ClassGenerator;
+import it.cavallium.datagen.plugin.ComputedType;
+import it.cavallium.datagen.plugin.ComputedType.BuildableComputedType;
 import it.cavallium.datagen.plugin.ComputedTypeSuper;
 import it.cavallium.datagen.plugin.ComputedVersion;
+import java.util.List;
 import java.util.stream.Stream;
 import javax.lang.model.element.Modifier;
 import org.apache.commons.lang3.StringUtils;
@@ -34,18 +36,31 @@ public class GenDataSuperX extends ClassGenerator {
 	private GeneratedClass generateTypeVersioned(ComputedVersion version, ComputedTypeSuper typeSuper) {
 		var type = (ClassName) typeSuper.getJTypeName(basePackageName);
 		var classBuilder = TypeSpec.interfaceBuilder(type.simpleName());
-
 		classBuilder.addModifiers(Modifier.PUBLIC);
+
+		var builderClassBuilder = TypeSpec.interfaceBuilder("Builder");
+		builderClassBuilder.addModifiers(Modifier.PUBLIC, Modifier.STATIC);
 
 		if (version.isCurrent()) {
 			classBuilder.addModifiers(Modifier.SEALED);
-			Stream<TypeName> superTypesThatExtendThisSuperType = dataModel.getSuperTypesComputed(version)
-					.filter(computedTypeSuper -> dataModel.getExtendsInterfaces(computedTypeSuper).anyMatch(typeSuper::equals))
-					.map(computedTypeSuper -> computedTypeSuper.getJTypeName(basePackageName));
-			Stream<TypeName> subTypes = typeSuper.subTypes().stream()
-					.map(subType -> subType.getJTypeName(basePackageName));
-			Stream<TypeName> permittedSubclasses = Stream.concat(superTypesThatExtendThisSuperType, subTypes).distinct();
-			classBuilder.addPermittedSubclasses(permittedSubclasses.toList());
+			builderClassBuilder.addModifiers(Modifier.SEALED);
+			Stream<ComputedTypeSuper> superTypesThatExtendThisSuperType = dataModel.getSuperTypesComputed(version)
+					.filter(computedTypeSuper -> dataModel.getExtendsInterfaces(computedTypeSuper).anyMatch(typeSuper::equals));
+			Stream<ComputedType> subTypes = typeSuper.subTypes().stream();
+			List<ComputedType> permittedSubclasses = Stream.concat(superTypesThatExtendThisSuperType, subTypes)
+					.distinct()
+					.toList();
+			classBuilder.addPermittedSubclasses(permittedSubclasses.stream()
+							.map(computedType -> computedType.getJTypeName(basePackageName))
+							.toList());
+			builderClassBuilder.addPermittedSubclasses(permittedSubclasses.stream()
+					.<ClassName>mapMulti((computedType, consumer) -> {
+						if (computedType instanceof BuildableComputedType buildableComputedType
+								&& buildableComputedType.getVersion().isCurrent()) {
+							consumer.accept(buildableComputedType.getJBuilderName(basePackageName));
+						}
+					})
+					.toList());
 		}
 
 		dataModel.getTypeSameVersions(typeSuper).forEach(v -> {
@@ -56,7 +71,10 @@ public class GenDataSuperX extends ClassGenerator {
 		Stream
 				.concat(dataModel.getSuperTypesOf(typeSuper, true), dataModel.getExtendsInterfaces(typeSuper))
 				.distinct()
-				.forEach(superType -> classBuilder.addSuperinterface(superType.getJTypeName(basePackageName)));
+				.forEach(superType -> {
+					classBuilder.addSuperinterface(superType.getJTypeName(basePackageName));
+					builderClassBuilder.addSuperinterface(superType.getJBuilderName(basePackageName));
+				});
 
 		Stream
 				.concat(dataModel.getCommonInterfaceData(typeSuper), dataModel.getCommonInterfaceGetters(typeSuper))
@@ -89,6 +107,24 @@ public class GenDataSuperX extends ClassGenerator {
 				.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
 				.returns(int.class)
 				.build());
+
+
+		var buildMethod = MethodSpec
+				.methodBuilder("build")
+				.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+				.addAnnotation(NotNull.class)
+				.returns(type);
+		builderClassBuilder.addMethod(buildMethod.build());
+
+		var builderMethod = MethodSpec
+				.methodBuilder("builder")
+				.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+				.addAnnotation(NotNull.class)
+				.returns(typeSuper.getJBuilderName(basePackageName));
+		if (version.isCurrent()) {
+			classBuilder.addMethod(builderMethod.build());
+			classBuilder.addType(builderClassBuilder.build());
+		}
 
 		return new GeneratedClass(type.packageName(), classBuilder);
 	}

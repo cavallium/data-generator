@@ -1,14 +1,14 @@
 package it.cavallium.datagen.plugin;
 
-import com.squareup.javapoet.ClassName;
-import com.squareup.javapoet.CodeBlock;
-import com.squareup.javapoet.TypeName;
-import it.cavallium.datagen.plugin.ComputedType.VersionedComputedType;
+import com.palantir.javapoet.ClassName;
+import com.palantir.javapoet.CodeBlock;
+import com.palantir.javapoet.TypeName;
+import it.cavallium.datagen.plugin.ComputedType.BuildableComputedType;
 import java.util.LinkedHashMap;
 import java.util.Objects;
 import java.util.stream.Stream;
 
-public final class ComputedTypeBase implements VersionedComputedType {
+public final class ComputedTypeBase implements BuildableComputedType {
 
 	private final VersionedType type;
 	private final String stringRepresenter;
@@ -103,6 +103,11 @@ public final class ComputedTypeBase implements VersionedComputedType {
 	}
 
 	@Override
+	public ClassName getJBuilderName(String basePackageName) {
+		return ClassName.get(getVersion().getDataPackage(basePackageName), type.type(), "Builder");
+	}
+
+	@Override
 	public TypeName getJTypeNameGeneric(String basePackageName) {
 		return getJTypeName(basePackageName);
 	}
@@ -138,7 +143,7 @@ public final class ComputedTypeBase implements VersionedComputedType {
 		cb.add(CodeBlock.of("$T.$N.upgrade(", upgraderInstance.className(), upgraderInstance.fieldName()));
 		cb.add(content);
 		cb.add(")");
-		return VersionedComputedType.super.wrapWithUpgrade(basePackageName, cb.build(), next);
+		return BuildableComputedType.super.wrapWithUpgrade(basePackageName, cb.build(), next);
 	}
 
 	@Override

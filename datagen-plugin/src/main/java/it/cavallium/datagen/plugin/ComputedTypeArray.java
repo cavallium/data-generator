@@ -1,6 +1,6 @@
 package it.cavallium.datagen.plugin;
 
-import com.squareup.javapoet.ClassName;
+import com.palantir.javapoet.ClassName;
 
 public sealed interface ComputedTypeArray extends ComputedType permits ComputedTypeArrayFixed, ComputedTypeArrayNative,
 		ComputedTypeArrayVersioned {

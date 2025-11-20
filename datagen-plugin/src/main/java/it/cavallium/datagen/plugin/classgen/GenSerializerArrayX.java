@@ -1,14 +1,13 @@
 package it.cavallium.datagen.plugin.classgen;
 
-import com.squareup.javapoet.ArrayTypeName;
-import com.squareup.javapoet.ClassName;
-import com.squareup.javapoet.MethodSpec;
-import com.squareup.javapoet.ParameterSpec;
-import com.squareup.javapoet.ParameterizedTypeName;
-import com.squareup.javapoet.TypeName;
-import com.squareup.javapoet.TypeSpec;
-import com.squareup.javapoet.TypeSpec.Builder;
-import com.squareup.javapoet.WildcardTypeName;
+import com.palantir.javapoet.ArrayTypeName;
+import com.palantir.javapoet.ClassName;
+import com.palantir.javapoet.MethodSpec;
+import com.palantir.javapoet.ParameterSpec;
+import com.palantir.javapoet.ParameterizedTypeName;
+import com.palantir.javapoet.TypeSpec;
+import com.palantir.javapoet.TypeSpec.Builder;
+import com.palantir.javapoet.WildcardTypeName;
 import it.cavallium.datagen.DataSerializer;
 import it.cavallium.datagen.NotSerializableException;
 import it.cavallium.datagen.nativedata.ImmutableWrappedArrayList;
@@ -131,7 +130,7 @@ public class GenSerializerArrayX extends ClassGenerator {
 		} else {
 			method.addStatement("return ($T) ($T) $T.of(a)",
 					ParameterizedTypeName.get(ClassName.get(ImmutableWrappedArrayList.class), arrayComponentTypeName),
-					ParameterizedTypeName.get(ClassName.get(ImmutableWrappedArrayList.class), WildcardTypeName.subtypeOf(TypeName.OBJECT)),
+					ParameterizedTypeName.get(ClassName.get(ImmutableWrappedArrayList.class), WildcardTypeName.subtypeOf(Object.class)),
 					ClassName.get(ImmutableWrappedArrayList.class)
 			);
 		}

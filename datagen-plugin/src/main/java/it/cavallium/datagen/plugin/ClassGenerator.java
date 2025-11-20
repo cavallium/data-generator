@@ -4,9 +4,9 @@ import static java.nio.file.StandardOpenOption.CREATE;
 import static java.nio.file.StandardOpenOption.TRUNCATE_EXISTING;
 import static java.nio.file.StandardOpenOption.WRITE;
 
-import com.squareup.javapoet.JavaFile;
-import com.squareup.javapoet.TypeSpec;
-import com.squareup.javapoet.TypeSpec.Builder;
+import com.palantir.javapoet.JavaFile;
+import com.palantir.javapoet.TypeSpec;
+import com.palantir.javapoet.TypeSpec.Builder;
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.nio.charset.StandardCharsets;
@@ -58,7 +58,7 @@ public abstract class ClassGenerator {
 		if (Files.notExists(outJavaFile)) {
 			Files.createDirectories(outJavaFile);
 		}
-		outJavaFile = outJavaFile.resolve(typeSpec.name + ".java");
+		outJavaFile = outJavaFile.resolve(typeSpec.name() + ".java");
 		JavaFile.builder(classPackage, typeSpec).build().writeTo(sb);
 		String newFile = sb.toString();
 		boolean mustWrite;

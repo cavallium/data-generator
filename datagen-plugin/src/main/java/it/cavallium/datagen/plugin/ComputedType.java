@@ -1,13 +1,14 @@
 package it.cavallium.datagen.plugin;
 
-import com.squareup.javapoet.CodeBlock;
-import com.squareup.javapoet.TypeName;
+import com.palantir.javapoet.ClassName;
+import com.palantir.javapoet.CodeBlock;
+import com.palantir.javapoet.TypeName;
 import it.cavallium.datagen.plugin.ComputedType.VersionedComputedType;
 import java.util.LinkedHashMap;
 import java.util.stream.Stream;
 
-public sealed interface ComputedType permits VersionedComputedType, ComputedTypeArray, ComputedTypeCustom,
-		ComputedTypeNative, ComputedTypeNullable {
+public sealed interface ComputedType permits VersionedComputedType, ComputedTypeArray,
+		ComputedTypeCustom, ComputedTypeNative, ComputedTypeNullable {
 
 	String getName();
 
@@ -26,8 +27,13 @@ public sealed interface ComputedType permits VersionedComputedType, ComputedType
 		return content;
 	}
 
-	sealed interface VersionedComputedType extends ComputedType permits ComputedTypeArrayVersioned, ComputedTypeBase,
-			ComputedTypeNullableVersioned, ComputedTypeSuper {
+	sealed interface BuildableComputedType extends VersionedComputedType permits ComputedTypeBase, ComputedTypeSuper {
+
+		ClassName getJBuilderName(String basePackageName);
+	}
+
+	sealed interface VersionedComputedType extends ComputedType permits BuildableComputedType, ComputedTypeArrayVersioned,
+			ComputedTypeNullableVersioned {
 
 		ComputedVersion getVersion();
 

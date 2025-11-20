@@ -1,11 +1,11 @@
 package it.cavallium.datagen.plugin.classgen;
 
-import com.squareup.javapoet.ClassName;
-import com.squareup.javapoet.FieldSpec;
-import com.squareup.javapoet.MethodSpec;
-import com.squareup.javapoet.ParameterSpec;
-import com.squareup.javapoet.ParameterizedTypeName;
-import com.squareup.javapoet.TypeSpec;
+import com.palantir.javapoet.ClassName;
+import com.palantir.javapoet.FieldSpec;
+import com.palantir.javapoet.MethodSpec;
+import com.palantir.javapoet.ParameterSpec;
+import com.palantir.javapoet.ParameterizedTypeName;
+import com.palantir.javapoet.TypeSpec;
 import it.cavallium.datagen.TypedNullable;
 import it.cavallium.datagen.nativedata.INullable;
 import it.cavallium.datagen.plugin.ClassGenerator;
@@ -53,7 +53,7 @@ public class GenNullableX extends ClassGenerator {
 		var baseType = base.getJTypeName(basePackageName);
 
 		classBuilder.addModifiers(Modifier.PUBLIC);
-		classBuilder.addRecordComponent(ParameterSpec.builder(baseType, "value").build());
+		classBuilder.recordConstructor(MethodSpec.constructorBuilder().addParameter(ParameterSpec.builder(baseType, "value").build()).build());
 
 		var iNullableITypeClass = ClassName.get(version.getDataNullablesPackage(basePackageName), "INullableIType");
 		var iNullableClass = ClassName.get(INullable.class);
