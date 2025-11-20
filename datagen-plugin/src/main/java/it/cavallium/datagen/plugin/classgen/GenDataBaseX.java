@@ -1,6 +1,7 @@
 package it.cavallium.datagen.plugin.classgen;
 
 import com.palantir.javapoet.ClassName;
+import com.palantir.javapoet.CodeBlock;
 import com.palantir.javapoet.FieldSpec;
 import com.palantir.javapoet.MethodSpec;
 import com.palantir.javapoet.ParameterSpec;
@@ -88,12 +89,20 @@ public class GenDataBaseX extends ClassGenerator {
 				.addModifiers(Modifier.PUBLIC)
 				.addAnnotation(NotNull.class);
 
+		var buildIfChangedMethod = MethodSpec
+				.methodBuilder("buildIfChanged")
+				.addModifiers(Modifier.PUBLIC)
+				.addAnnotation(NotNull.class)
+				.addParameter(type, "original");
+
 		var builderToStringMethod = MethodSpec
 				.methodBuilder("toString")
 				.addAnnotation(Override.class)
 				.addModifiers(Modifier.PUBLIC)
 				.returns(String.class);
 		builderToStringMethod.addCode("return \"$N.Builder[", base.getName());
+
+		buildIfChangedMethod.addCode("return ");
 
 		boolean[] isFirstParameter = new boolean[] {true};
 
@@ -113,6 +122,7 @@ public class GenDataBaseX extends ClassGenerator {
 				isFirstParameter[0] = false;
 			} else {
 				builderToStringMethod.addCode(", ");
+				buildIfChangedMethod.addCode(" && ");
 			}
 			builderToStringMethod.addCode("$N=\" + $N + \"", fieldName, fieldName);
 
@@ -127,12 +137,13 @@ public class GenDataBaseX extends ClassGenerator {
 
 			if (!fieldTypeName.isPrimitive()) {
 				setter.addStatement("$T.requireNonNull($N)", Objects.class, fieldName);
+				builderSetter.addStatement("$T.requireNonNull($N)", Objects.class, fieldName);
+				buildMethod.addStatement("$T.requireNonNull($N)", Objects.class, fieldName);
 			}
-			if (fieldTypeName.isPrimitive() || !deepCheckBeforeCreatingNewEqualInstances) {
-				setter.addCode("return $N == this.$N ? this : new $T(", fieldName, fieldName, type);
-			} else {
-				setter.addCode("return $T.equals($N, this.$N) ? this : new $T(", Objects.class, fieldName, fieldName, type);
-			}
+			setter.addCode("return ");
+			buildIfChangedMethod.addCode(getCompareFunctionCodeBlock(fieldTypeName.isPrimitive(), deepCheckBeforeCreatingNewEqualInstances, fieldName, "original"));
+			setter.addCode(getCompareFunctionCodeBlock(fieldTypeName.isPrimitive(), deepCheckBeforeCreatingNewEqualInstances, fieldName, "this"));
+			setter.addCode(" ? this : new $T(", type);
 			setter.addCode(String.join(", ", base.getData().keySet()));
 			setter.addStatement(")");
 
@@ -142,6 +153,12 @@ public class GenDataBaseX extends ClassGenerator {
 			classBuilder.addMethod(setter.build());
 			builderClassBuilder.addMethod(builderSetter.build());
 		});
+
+		if (isFirstParameter[0]) {
+			buildIfChangedMethod.addStatement("original");
+		} else {
+			buildIfChangedMethod.addStatement(" ? original : this.build()");
+		}
 
 		classBuilder.recordConstructor(classConstructorBuilder.build());
 
@@ -164,6 +181,7 @@ public class GenDataBaseX extends ClassGenerator {
 		buildMethod.addStatement(")");
 		ofMethod.returns(type);
 		buildMethod.returns(type);
+		buildIfChangedMethod.returns(type);
 		if (version.isCurrent()) {
 			classBuilder.addMethod(ofMethod.build());
 		}
@@ -171,6 +189,7 @@ public class GenDataBaseX extends ClassGenerator {
 		builderMethod.addStatement("return new $T(this)", base.getJBuilderName(basePackageName));
 
 		builderClassBuilder.addMethod(buildMethod.build());
+		builderClassBuilder.addMethod(buildIfChangedMethod.build());
 
 		builderToStringMethod.addStatement("]\"");
 		builderClassBuilder.addMethod(builderToStringMethod.build());
@@ -191,5 +210,16 @@ public class GenDataBaseX extends ClassGenerator {
 		}
 
 		return new GeneratedClass(type.packageName(), classBuilder);
+	}
+
+	private CodeBlock getCompareFunctionCodeBlock(boolean primitive,
+			boolean deepCheckBeforeCreatingNewEqualInstances,
+			String fieldName,
+			String otherClassFieldName) {
+		if (primitive || !deepCheckBeforeCreatingNewEqualInstances) {
+			return CodeBlock.builder().add("$N == $L.$N", fieldName, otherClassFieldName, fieldName).build();
+		} else {
+			return CodeBlock.builder().add("$T.equals($N, $L.$N)", Objects.class, fieldName, otherClassFieldName, fieldName).build();
+		}
 	}
 }
