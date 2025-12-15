@@ -42,25 +42,28 @@ public class GenDataSuperX extends ClassGenerator {
 		builderClassBuilder.addModifiers(Modifier.PUBLIC, Modifier.STATIC);
 
 		if (version.isCurrent()) {
-			classBuilder.addModifiers(Modifier.SEALED);
-			builderClassBuilder.addModifiers(Modifier.SEALED);
 			Stream<ComputedTypeSuper> superTypesThatExtendThisSuperType = dataModel.getSuperTypesComputed(version)
 					.filter(computedTypeSuper -> dataModel.getExtendsInterfaces(computedTypeSuper).anyMatch(typeSuper::equals));
 			Stream<ComputedType> subTypes = typeSuper.subTypes().stream();
 			List<ComputedType> permittedSubclasses = Stream.concat(superTypesThatExtendThisSuperType, subTypes)
 					.distinct()
 					.toList();
-			classBuilder.addPermittedSubclasses(permittedSubclasses.stream()
-							.map(computedType -> computedType.getJTypeName(basePackageName))
-							.toList());
-			builderClassBuilder.addPermittedSubclasses(permittedSubclasses.stream()
+			var permittedBuilderSubclasses = permittedSubclasses.stream()
 					.<ClassName>mapMulti((computedType, consumer) -> {
 						if (computedType instanceof BuildableComputedType buildableComputedType
 								&& buildableComputedType.getVersion().isCurrent()) {
 							consumer.accept(buildableComputedType.getJBuilderName(basePackageName));
 						}
 					})
-					.toList());
+					.toList();
+			classBuilder.addModifiers(Modifier.SEALED);
+			if (!permittedBuilderSubclasses.isEmpty()) {
+				builderClassBuilder.addModifiers(Modifier.SEALED);
+			}
+			classBuilder.addPermittedSubclasses(permittedSubclasses.stream()
+							.map(computedType -> computedType.getJTypeName(basePackageName))
+							.toList());
+			builderClassBuilder.addPermittedSubclasses(permittedBuilderSubclasses);
 		}
 
 		dataModel.getTypeSameVersions(typeSuper).forEach(v -> {
