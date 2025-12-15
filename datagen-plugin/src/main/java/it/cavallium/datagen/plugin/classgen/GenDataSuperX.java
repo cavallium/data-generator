@@ -56,7 +56,9 @@ public class GenDataSuperX extends ClassGenerator {
 						}
 					})
 					.toList();
-			classBuilder.addModifiers(Modifier.SEALED);
+			if (!permittedSubclasses.isEmpty()) {
+				classBuilder.addModifiers(Modifier.SEALED);
+			}
 			if (!permittedBuilderSubclasses.isEmpty()) {
 				builderClassBuilder.addModifiers(Modifier.SEALED);
 			}
