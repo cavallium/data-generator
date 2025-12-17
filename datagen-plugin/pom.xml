@@ -16,8 +16,8 @@
 	<properties>
 		<revision>1.0.0.0-SNAPSHOT</revision>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-		<fastutil.version>8.5.12</fastutil.version>
-		<maven.version>4.0.0-alpha-3</maven.version>
+		<fastutil.version>8.5.18</fastutil.version>
+		<maven.version>4.0.0-rc-5</maven.version>
 	</properties>
 	<repositories>
     <repository>
@@ -64,7 +64,7 @@
 					<dependency>
 						<groupId>org.apache.maven.plugin-tools</groupId>
 						<artifactId>maven-plugin-tools-annotations</artifactId>
-						<version>3.7.1</version>
+						<version>3.15.2</version>
 					</dependency>
 				</dependencies>
 				<configuration>
@@ -73,19 +73,19 @@
 			</plugin>
 			<plugin>
 				<artifactId>maven-surefire-plugin</artifactId>
-				<version>3.0.0-M5</version>
+				<version>3.5.4</version>
 				<dependencies>
 					<dependency>
 						<groupId>org.junit.jupiter</groupId>
 						<artifactId>junit-jupiter-engine</artifactId>
-						<version>5.9.0</version>
+						<version>6.0.1</version>
 					</dependency>
 				</dependencies>
 			</plugin>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-compiler-plugin</artifactId>
-				<version>3.11.0</version>
+				<version>3.14.1</version>
 				<configuration>
 					<release>25</release>
 					<encoding>UTF-8</encoding>
@@ -94,7 +94,7 @@
 			<plugin>
 				<groupId>org.codehaus.mojo</groupId>
 				<artifactId>flatten-maven-plugin</artifactId>
-				<version>1.1.0</version>
+				<version>1.7.3</version>
 				<configuration>
 					<updatePomFile>true</updatePomFile>
 					<flattenMode>oss</flattenMode>
@@ -182,18 +182,18 @@
 		<dependency>
 			<groupId>commons-io</groupId>
 			<artifactId>commons-io</artifactId>
-			<version>2.11.0</version>
+			<version>2.21.0</version>
 		</dependency>
 		<!--suppress VulnerableLibrariesLocal -->
 		<dependency>
 			<groupId>org.yaml</groupId>
 			<artifactId>snakeyaml</artifactId>
-			<version>2.0</version>
+			<version>2.5</version>
 		</dependency>
     <dependency>
       <groupId>com.palantir.javapoet</groupId>
       <artifactId>javapoet</artifactId>
-      <version>0.8.0</version>
+      <version>0.9.0</version>
     </dependency>
 		<dependency>
 			<groupId>org.jetbrains</groupId>
@@ -220,33 +220,28 @@
 		<dependency>
 			<groupId>org.apache.maven.plugin-tools</groupId>
 			<artifactId>maven-plugin-annotations</artifactId>
-			<version>3.8.1</version>
+			<version>4.0.0-beta-2</version>
 			<scope>provided</scope>
 		</dependency>
 		<dependency>
 			<groupId>io.soabase.record-builder</groupId>
 			<artifactId>record-builder-core</artifactId>
-			<version>35</version>
+			<version>51</version>
 		</dependency>
 		<dependency>
 			<groupId>org.slf4j</groupId>
 			<artifactId>slf4j-api</artifactId>
-			<version>2.0.5</version>
+			<version>2.0.17</version>
 		</dependency>
 		<dependency>
 			<groupId>org.apache.logging.log4j</groupId>
 			<artifactId>log4j-core</artifactId>
-      <version>2.20.0</version>
-    </dependency>
-		<dependency>
-			<groupId>org.apache.commons</groupId>
-			<artifactId>commons-lang3</artifactId>
-			<version>3.12.0</version>
-		</dependency>
+      <version>2.25.2</version>
+    	</dependency>
 		<dependency>
 			<groupId>org.apache.logging.log4j</groupId>
 			<artifactId>log4j-slf4j2-impl</artifactId>
-			<version>2.20.0</version>
+			<version>2.25.2</version>
 			<exclusions>
 				<exclusion>
 					<groupId>junit</groupId>
@@ -259,9 +254,14 @@
 			</exclusions>
 		</dependency>
 		<dependency>
+			<groupId>org.apache.commons</groupId>
+			<artifactId>commons-lang3</artifactId>
+			<version>3.20.0</version>
+		</dependency>
+		<dependency>
 			<groupId>org.junit.jupiter</groupId>
 			<artifactId>junit-jupiter-api</artifactId>
-			<version>5.9.2</version>
+			<version>6.0.1</version>
 			<scope>test</scope>
 			<exclusions>
 				<exclusion>
