@@ -492,7 +492,7 @@ public class ImmutableWrappedArrayList<K> extends AbstractObjectList<K> implemen
 				if (n < 0) {
 					throw new IllegalArgumentException("Argument must be nonnegative: " + n);
 				}
-				final int remaining = size - pos;
+				final int remaining = pos;
 				if (n < remaining) {
 					pos -= n;
 				} else {
