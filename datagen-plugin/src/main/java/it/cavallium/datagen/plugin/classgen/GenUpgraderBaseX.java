@@ -95,10 +95,10 @@ public class GenUpgraderBaseX extends ClassGenerator {
 		List<String> expectedResultFields = nextTypeBase.getData().keySet().stream().toList();
 
 		AtomicInteger nextInitializerStaticFieldId = new AtomicInteger();
-		HashMap<String, String> initializerStaticFieldNames = new HashMap<>();
-		HashMap<String, ContextInfo> contextStaticFieldCodeBlocks = new HashMap<>();
+		HashMap<TypeLocationKey, String> initializerStaticFieldNames = new HashMap<>();
+		HashMap<FieldLocationKey, ContextInfo> contextStaticFieldCodeBlocks = new HashMap<>();
 		AtomicInteger nextUpgraderStaticFieldId = new AtomicInteger();
-		HashMap<String, String> upgraderStaticFieldNames = new HashMap<>();
+		HashMap<TypeLocationKey, String> upgraderStaticFieldNames = new HashMap<>();
 		List<TransformationConfiguration> transformations = dataModel.getChanges(nextTypeBase);
 		method.addCode("return new $T(\n$>", nextTypeBaseClassName);
 		record ResultField(String name, ComputedType type, CodeBlock code) {}
@@ -247,11 +247,11 @@ public class GenUpgraderBaseX extends ClassGenerator {
 	}
 
 	private String createInitializerStaticField(AtomicInteger nextInitializerStaticFieldId,
-												HashMap<String, String> initializerStaticFieldNames,
+												HashMap<TypeLocationKey, String> initializerStaticFieldNames,
 												Builder classBuilder,
 												JInterfaceLocation initializerLocation,
 												TypeName genericInitializerClass) {
-		var identifier = initializerLocation.getIdentifier();
+		var identifier = new TypeLocationKey(initializerLocation.getIdentifier(), genericInitializerClass);
 		var initializerName = initializerStaticFieldNames.get(identifier);
 		if (initializerName == null) {
 			initializerName = "I" + nextInitializerStaticFieldId.getAndIncrement();
@@ -272,14 +272,16 @@ public class GenUpgraderBaseX extends ClassGenerator {
 	}
 
 	record ContextInfo(TypeName typeName, CodeBlock contextApply) {}
+	record TypeLocationKey(String identifier, TypeName typeName) {}
+	record FieldLocationKey(String identifier, String fieldName) {}
 
 	private ContextInfo createContextStaticClass(ComputedTypeBase typeBase,
 			String fieldName,
-											   HashMap<String, ContextInfo> contextStaticFieldCodeBlocks,
+											   HashMap<FieldLocationKey, ContextInfo> contextStaticFieldCodeBlocks,
 											   Builder classBuilder,
 											   JInterfaceLocation initializerLocation,
 											   @NotNull List<String> contextParameters) {
-		var identifier = initializerLocation.getIdentifier();
+		var identifier = new FieldLocationKey(initializerLocation.getIdentifier(), fieldName);
 		var contextStaticFieldCodeBlock = contextStaticFieldCodeBlocks.get(identifier);
 		if (contextStaticFieldCodeBlock == null) {
 			var codeBlockBuilder = CodeBlock.builder();
@@ -323,11 +325,11 @@ public class GenUpgraderBaseX extends ClassGenerator {
 	}
 
 	private String createUpgraderStaticField(AtomicInteger nextUpgraderStaticFieldId,
-			HashMap<String, String> upgraderStaticFieldNames,
+			HashMap<TypeLocationKey, String> upgraderStaticFieldNames,
 			Builder classBuilder,
 			JInterfaceLocation upgraderLocation,
 			TypeName genericUpgraderClass) {
-		var identifier = upgraderLocation.getIdentifier();
+		var identifier = new TypeLocationKey(upgraderLocation.getIdentifier(), genericUpgraderClass);
 		var upgraderName = upgraderStaticFieldNames.get(identifier);
 		if (upgraderName == null) {
 			upgraderName = "U" + nextUpgraderStaticFieldId.getAndIncrement();
