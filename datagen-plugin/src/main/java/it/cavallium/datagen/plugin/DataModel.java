@@ -155,6 +155,7 @@ public class DataModel {
         List<String> baseTypes = new ArrayList<>(baseTypesData.keySet());
         baseTypesData.forEach((typeName, typeConfig) -> {
             if (typeConfig.stringRepresenter != null && !typeConfig.stringRepresenter.isBlank()
+                    && !typeConfig.stringRepresenter.contains(".")
                     && (typeConfig.data == null || !typeConfig.data.containsKey(typeConfig.stringRepresenter))) {
                 throw new IllegalArgumentException("Type " + typeName + " stringRepresenter \""
                         + typeConfig.stringRepresenter + "\" is not a field of that type");
