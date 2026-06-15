@@ -95,7 +95,7 @@ interfacesData:
 
 baseTypesData:
   User:
-    stringRepresenter: username         # which field represents this object as string (optional)
+    stringRepresenter: username         # field returned by generated toString() (optional)
     data:
       id: long
       username: String
@@ -121,9 +121,9 @@ versions:
           to: handle
       - newData:
           transformClass: User
-          name: createdAt
+          to: createdAt
           type: long
-          defaultValue: 0
+          initializer: com.example.model.CreatedAtInitializer
 ```
 
 Supported transformations
@@ -147,15 +147,14 @@ transformations:
       from: deprecatedField
   - newData:
       transformClass: User
-      name: tags
+      to: tags
       type: String[]
-      defaultValue: []
+      initializer: com.example.model.TagsInitializer
   - upgradeData:
       transformClass: User
-      field: age
-      fromType: int
-      toType: long
-      expression: "(long)age"   # simple Java expression evaluated in upgrader
+      from: age
+      type: long
+      upgrader: com.example.model.AgeToLongUpgrader
 ```
 
 Custom types
@@ -283,7 +282,6 @@ YAML reference (high level)
 - `versions.<ver>`:
   - `previousVersion`: points to the previous version key (except for the first)
   - `transformations`: list of `moveData` | `removeData` | `newData` | `upgradeData` entries
-  - `typeVersions` and `dependentTypes`: advanced controls for per‑type activation and ordering
 - `baseTypesData.<Type>`:
   - `stringRepresenter`: optional, designates which field is used in `toString`
   - `data`: ordered map of `field: type`
@@ -301,7 +299,7 @@ Limitations and notes
 ---------------------
 - Arrays cannot be nullable (`-X[]` is rejected)
 - When changing field order, prefer `moveData` with `index` to keep binary compatibility expectations explicit
-- Keep `typeVersions`/`dependentTypes` for advanced multi‑version layouts only
+- `typeVersions`/`dependentTypes` are reserved names and are currently rejected if present
 
 Building and running
 --------------------
@@ -311,8 +309,7 @@ Building and running
 
 Examples directory
 ------------------
-Minimal YAML lives in your project; a placeholder test resource exists in this repo under
-`datagen-plugin/src/test/resources/test.yaml`.
+Minimal schemas are covered by plugin tests under `datagen-plugin/src/test/java`.
 
 License
 -------

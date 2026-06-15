@@ -12,6 +12,8 @@ public class ParsedVersion {
 		this.details = versionConfiguration.details;
 		if (versionConfiguration.transformations != null) {
 			this.transformations = versionConfiguration.transformations.stream().map(VersionTransformation::copy).toList();
+		} else {
+			this.transformations = List.of();
 		}
 	}
 

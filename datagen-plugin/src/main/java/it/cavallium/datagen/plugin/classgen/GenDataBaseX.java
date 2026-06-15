@@ -200,7 +200,7 @@ public class GenDataBaseX extends ClassGenerator {
 			toStringMethod.addModifiers(Modifier.PUBLIC);
 			toStringMethod.addAnnotation(Override.class);
 			toStringMethod.returns(String.class);
-			toStringMethod.addStatement("return " + stringRepresenter + "(this)");
+			toStringMethod.addStatement("return $T.valueOf($N())", String.class, stringRepresenter);
 			classBuilder.addMethod(toStringMethod.build());
 		}
 

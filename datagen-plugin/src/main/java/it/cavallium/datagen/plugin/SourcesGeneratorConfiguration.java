@@ -31,6 +31,7 @@ public class SourcesGeneratorConfiguration {
 		int hash = 0;
 		hash += ConfigUtils.hashCode(currentVersion);
 		hash += ConfigUtils.hashCode(interfacesData);
+		hash += ConfigUtils.hashCode(baseTypesData);
 		hash += ConfigUtils.hashCode(superTypesData);
 		hash += ConfigUtils.hashCode(customTypesData);
 		hash += ConfigUtils.hashCode(versions);
