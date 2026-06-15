@@ -9,12 +9,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import it.cavallium.buffer.Buf;
 import it.cavallium.buffer.BufDataOutput;
 import it.cavallium.datagen.nativedata.Int52;
+
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.stream.Stream;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -38,8 +40,8 @@ public class TestOutput {
         subBufOutData.writeInt(2);
         subBufOutData.writeShort(1);
         subBufOutData.writeChar(1);
-        subBufOutData.write(new byte[] {1, 2});
-        subBufOutData.write(new byte[] {0, 0, 3, 4, 0, 0}, 2, 2);
+        subBufOutData.write(new byte[]{1, 2});
+        subBufOutData.write(new byte[]{0, 0, 3, 4, 0, 0}, 2, 2);
         assertEquals(Integer.BYTES, Integer.BYTES * 3 + Short.BYTES + Character.BYTES + 4, subBufOutData.size());
         assertDoesNotThrow(subBufOutData::toString);
         assertDoesNotThrow(subBufOut::toString);
@@ -198,10 +200,10 @@ public class TestOutput {
         baos.write(0);
         baos.write(0);
         baos.write(0);
-        var x = new byte[] {1, 2, 3, 4};
+        var x = new byte[]{1, 2, 3, 4};
         baos.write(x);
         baos.write(x, 1, 2);
-        assertArrayEquals(new byte[] {0, 0, 0, 1, 2, 3, 4, 2, 3}, baos.toByteArray());
+        assertArrayEquals(new byte[]{0, 0, 0, 1, 2, 3, 4, 2, 3}, baos.toByteArray());
     }
 
     @ParameterizedTest
@@ -212,10 +214,10 @@ public class TestOutput {
         baos.write(10);
         baos.trim();
         assertEquals(1, baos.array.length);
-        assertArrayEquals(new byte[] {10}, baos.array);
+        assertArrayEquals(new byte[]{10}, baos.array);
         baos.ensureWritable(2);
         assertEquals(3, baos.array.length);
-        assertArrayEquals(new byte[] {10, 0, 0}, baos.array);
+        assertArrayEquals(new byte[]{10, 0, 0}, baos.array);
     }
 
     @ParameterizedTest
@@ -231,6 +233,18 @@ public class TestOutput {
         assertEquals(0, baos.position());
         assertEquals(0, baos.length());
         assertEquals(2, baos.array.length);
+    }
+
+    @Test
+    public void testBulkWriteAdvancesPositionWhenOverwriting() {
+        var baos = new SafeByteArrayOutputStream();
+        baos.write(new byte[]{0, 0, 0, 0});
+        baos.position(1);
+        baos.write(new byte[]{1, 2});
+        baos.write(3);
+
+        assertArrayEquals(new byte[]{0, 1, 2, 3}, baos.toByteArray());
+        assertEquals(4, baos.position());
     }
 
     public static Stream<SafeByteArrayOutputStream> provideByteArrayOutputStreams() {

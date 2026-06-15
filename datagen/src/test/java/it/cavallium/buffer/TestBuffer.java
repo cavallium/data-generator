@@ -16,6 +16,7 @@ import it.cavallium.stream.SafeDataOutputStream;
 import it.unimi.dsi.fastutil.bytes.ByteArrayList;
 import it.unimi.dsi.fastutil.bytes.ByteCollections;
 import it.unimi.dsi.fastutil.bytes.ByteList;
+
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -26,6 +27,7 @@ import java.util.Spliterators;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -80,13 +82,13 @@ public class TestBuffer {
 
     public static Stream<BufArg> provideBufsCompare() {
         return Stream.concat(provideBufs(),
-            Stream.of(new BufArg("0x50", Buf.wrap((byte) 50), 1, new byte[]{50})));
+                Stream.of(new BufArg("0x50", Buf.wrap((byte) 50), 1, new byte[]{50})));
     }
 
     public static List<BufArg> createPrimaryBufs() {
         var emptyBuf = new BufArg("create()", Buf.create(), 0, new byte[0]);
         var byteListBuf = new BufArg("createByteListBuf()", ByteListBuf.of(), 0, new byte[0]);
-        var byteListBufOf = new BufArg("createByteListBuf(0, 1, 2, 3, 4)", ByteListBuf.of((byte) 0, (byte) 1, (byte) 2, (byte) 3, (byte) 4), 5, new byte[] {0, 1, 2, 3, 4});
+        var byteListBufOf = new BufArg("createByteListBuf(0, 1, 2, 3, 4)", ByteListBuf.of((byte) 0, (byte) 1, (byte) 2, (byte) 3, (byte) 4), 5, new byte[]{0, 1, 2, 3, 4});
         var def0Buf = new BufArg("create(0)", Buf.create(0), 0, new byte[0]);
         var def10Buf = new BufArg("create(10)", Buf.create(10), 0, new byte[0]);
         var def10000Buf = new BufArg("create(10000)", Buf.create(10000), 0, new byte[0]);
@@ -94,7 +96,7 @@ public class TestBuffer {
         var zeroed10Buf = new BufArg("createZeroes(10)", Buf.createZeroes(10), 10, new byte[10]);
         var zeroed10000Buf = new BufArg("createZeroes(10000)", Buf.createZeroes(10000), 10000, new byte[10000]);
         var copyOfEmpty = new BufArg("copyOf(empty)", Buf.copyOf(new byte[0]), 0, new byte[0]);
-        var small = new byte[] {126, 19, 118, 33, -24, -65, 56, 17, 0, 90};
+        var small = new byte[]{126, 19, 118, 33, -24, -65, 56, 17, 0, 90};
         var copyOfSmall = new BufArg("copyOfSmall(small)", Buf.copyOf(small), small.length, small);
         var big = new byte[10000];
         for (int i = 0; i < big.length; i++) {
@@ -126,20 +128,20 @@ public class TestBuffer {
         var wrapSmallByteListCappedRangeOffsetAndLen = new BufArg("wrap(small byte list, 5, same-3)", Buf.wrap(ByteList.of(small.clone()), 5, small.length - 3), small.length - 5 - 3, Arrays.copyOfRange(small, 5, small.length - 3));
 
         return List.of(emptyBuf, byteListBuf, byteListBufOf, def0Buf, def10Buf, def10000Buf, zeroedBuf, zeroed10Buf,
-            zeroed10000Buf, copyOfEmpty, copyOfSmall, copyOfBig, wrapByteArrayList, wrapBufSmall, wrapSmallArray,
-            wrapBigArray, wrapSmallByteList, wrapBigByteList, wrapSmallCapped, wrapBigCapped, wrapSmallCappedSame,
-            wrapBigCappedSame, wrapSmallCappedMinusOne, wrapBigCappedMinusOne, wrapSmallCappedRangeSame,
-            wrapBigCappedRangeSame, wrapSmallCappedRangeOffset, wrapBigCappedRangeOffset,
-            wrapSmallCappedRangeOffsetAndLen, wrapBigCappedRangeOffsetAndLen, wrapSmallCappedRangeLen,
-            wrapBigCappedRangeLen, wrapSmallBufCappedRangeOffsetAndLen, wrapSmallByteArrayListCappedRangeOffsetAndLen,
-            wrapSmallByteListCappedRangeOffsetAndLen);
+                zeroed10000Buf, copyOfEmpty, copyOfSmall, copyOfBig, wrapByteArrayList, wrapBufSmall, wrapSmallArray,
+                wrapBigArray, wrapSmallByteList, wrapBigByteList, wrapSmallCapped, wrapBigCapped, wrapSmallCappedSame,
+                wrapBigCappedSame, wrapSmallCappedMinusOne, wrapBigCappedMinusOne, wrapSmallCappedRangeSame,
+                wrapBigCappedRangeSame, wrapSmallCappedRangeOffset, wrapBigCappedRangeOffset,
+                wrapSmallCappedRangeOffsetAndLen, wrapBigCappedRangeOffsetAndLen, wrapSmallCappedRangeLen,
+                wrapBigCappedRangeLen, wrapSmallBufCappedRangeOffsetAndLen, wrapSmallByteArrayListCappedRangeOffsetAndLen,
+                wrapSmallByteListCappedRangeOffsetAndLen);
     }
 
     public static List<BufArg> createSubListBufs() {
         var sameSizeArgs = createPrimaryBufs().stream().filter(b -> b.initialSize > 0).map(bufArg -> new BufArg(bufArg.name + ".subList(0, same)", bufArg.b.subList(0, bufArg.initialSize), bufArg.initialSize, bufArg.initialContent)).toList();
         var sameSizeArgsBug = createPrimaryBufs().stream().filter(b -> b.initialSize > 0).map(bufArg -> new BufArg(bufArg.name + ".subList(0, same)", bufArg.b.subListForced(0, bufArg.initialSize), bufArg.initialSize, bufArg.initialContent)).toList();
-        var firstHalfArgs = createPrimaryBufs().stream().filter(b -> b.initialSize > 0).map(bufArg -> new BufArg(bufArg.name + ".subList(0, half)", bufArg.b.subList(0, bufArg.initialSize/2), bufArg.initialSize/2, Arrays.copyOfRange(bufArg.initialContent, 0, bufArg.initialSize/2))).toList();
-        var lastHalfArgs = createPrimaryBufs().stream().filter(b -> b.initialSize > 0).map(bufArg -> new BufArg(bufArg.name + ".subList(half, same)", bufArg.b.subList(bufArg.initialSize/2, bufArg.initialSize), bufArg.initialSize - bufArg.initialSize/2, Arrays.copyOfRange(bufArg.initialContent, bufArg.initialSize/2, bufArg.initialSize))).toList();
+        var firstHalfArgs = createPrimaryBufs().stream().filter(b -> b.initialSize > 0).map(bufArg -> new BufArg(bufArg.name + ".subList(0, half)", bufArg.b.subList(0, bufArg.initialSize / 2), bufArg.initialSize / 2, Arrays.copyOfRange(bufArg.initialContent, 0, bufArg.initialSize / 2))).toList();
+        var lastHalfArgs = createPrimaryBufs().stream().filter(b -> b.initialSize > 0).map(bufArg -> new BufArg(bufArg.name + ".subList(half, same)", bufArg.b.subList(bufArg.initialSize / 2, bufArg.initialSize), bufArg.initialSize - bufArg.initialSize / 2, Arrays.copyOfRange(bufArg.initialContent, bufArg.initialSize / 2, bufArg.initialSize))).toList();
         return Stream.concat(Stream.concat(Stream.concat(sameSizeArgs.stream(), sameSizeArgsBug.stream()), firstHalfArgs.stream()), lastHalfArgs.stream()).toList();
     }
 
@@ -212,6 +214,7 @@ public class TestBuffer {
         }
         buf.freeze();
         assertFalse(buf.isMutable());
+        assertThrows(UnsupportedOperationException.class, () -> buf.add((byte) 1));
         if (subList1 != null) {
             Buf subList3 = buf.subList(0, 2);
             Buf subList4 = subList3.subList(0, 1);
@@ -219,6 +222,8 @@ public class TestBuffer {
             assertFalse(subList2.isMutable());
             assertFalse(subList3.isMutable());
             assertFalse(subList4.isMutable());
+            var frozenSubList = subList1;
+            assertThrows(UnsupportedOperationException.class, () -> frozenSubList.set(0, (byte) 1));
         }
         buf.freeze();
         assertFalse(buf.isMutable());
@@ -237,6 +242,12 @@ public class TestBuffer {
         var strictUnboundedArray = bufArg.b.asUnboundedArrayStrict();
         if (strictUnboundedArray != null) {
             assertArrayEquals(bufArg.initialContent, Arrays.copyOf(strictUnboundedArray, bufArg.initialSize));
+        }
+        if (bufArg.initialSize >= 3) {
+            var byteBuffer = bufArg.b.subList(1, 3).asHeapByteBuffer();
+            assertEquals(2, byteBuffer.remaining());
+            assertEquals(bufArg.initialContent[1], byteBuffer.get());
+            assertEquals(bufArg.initialContent[2], byteBuffer.get());
         }
     }
 
@@ -264,7 +275,7 @@ public class TestBuffer {
     }
 
     public static Stream<BufArg> provideWrappedArgs() {
-        byte[] source = new byte[] {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+        byte[] source = new byte[]{0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
         return Stream.of(
                 new BufArg("0-len", Buf.wrap(source.clone()), source.length, source.clone()),
                 new BufArg("2-len", Buf.wrap(source.clone(), 2, source.length), source.length - 2, Arrays.copyOfRange(source, 2, source.length)),
@@ -621,7 +632,8 @@ public class TestBuffer {
         //noinspection SimplifyStreamApiCallChains
         assertArrayEquals(bufArg.initialContent, new ByteArrayList(StreamSupport.stream(bufArg.b.spliterator(), true).toList()).toByteArray());
         //noinspection SimplifyStreamApiCallChains
-        assertArrayEquals(bufArg.initialContent, new ByteArrayList(StreamSupport.stream(bufArg.b.spliterator(), false).peek(c -> {}).toList()).toByteArray());
+        assertArrayEquals(bufArg.initialContent, new ByteArrayList(StreamSupport.stream(bufArg.b.spliterator(), false).peek(c -> {
+        }).toList()).toByteArray());
         assertArrayEquals(bufArg.initialContent, new ByteArrayList(Spliterators.iterator(bufArg.b.spliterator())).toByteArray());
     }
 
@@ -639,9 +651,9 @@ public class TestBuffer {
 
         ByteListBuf blb4 = new ByteListBuf(ByteList.of((byte) 0, (byte) 1, (byte) 2, (byte) 3));
 
-        ByteListBuf blb5 = new ByteListBuf(new byte[] {(byte) 0, (byte) 1, (byte) 2, (byte) 3});
+        ByteListBuf blb5 = new ByteListBuf(new byte[]{(byte) 0, (byte) 1, (byte) 2, (byte) 3});
 
-        ByteListBuf blb6 = new ByteListBuf(new byte[] {(byte) -1, (byte) 0, (byte) 1, (byte) 2, (byte) 3, (byte) 4, (byte) 5, (byte) 6}, 1, 4);
+        ByteListBuf blb6 = new ByteListBuf(new byte[]{(byte) -1, (byte) 0, (byte) 1, (byte) 2, (byte) 3, (byte) 4, (byte) 5, (byte) 6}, 1, 4);
 
         ByteListBuf blb7 = new ByteListBuf(List.of((byte) 0, (byte) 1, (byte) 2, (byte) 3).iterator());
 
