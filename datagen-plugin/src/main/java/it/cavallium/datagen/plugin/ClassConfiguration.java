@@ -1,6 +1,7 @@
 package it.cavallium.datagen.plugin;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Objects;
 
 public final class ClassConfiguration {
@@ -26,7 +27,13 @@ public final class ClassConfiguration {
 			return false;
 		}
 		ClassConfiguration that = (ClassConfiguration) o;
-		return Objects.equals(stringRepresenter, that.stringRepresenter) && Objects.equals(data, that.data);
+		return Objects.equals(stringRepresenter, that.stringRepresenter) && entriesEqual(data, that.data);
+	}
+
+	private static <K, V> boolean entriesEqual(LinkedHashMap<K, V> a, LinkedHashMap<K, V> b) {
+		if (a == b) return true;
+		if (a == null || b == null) return false;
+		return List.copyOf(a.entrySet()).equals(List.copyOf(b.entrySet()));
 	}
 
 	@Override

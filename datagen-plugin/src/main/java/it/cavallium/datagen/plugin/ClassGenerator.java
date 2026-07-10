@@ -23,6 +23,7 @@ public abstract class ClassGenerator {
 	private static final Logger logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
 	private final HashSet<Path> generatedFilesToDelete;
+	private final HashSet<Path> generatedFiles;
 	protected final DataModel dataModel;
 	protected final String basePackageName;
 	private final Path outPath;
@@ -33,6 +34,7 @@ public abstract class ClassGenerator {
 
 	public ClassGenerator(ClassGeneratorParams params) {
 		this.generatedFilesToDelete = params.generatedFilesToDelete;
+		this.generatedFiles = params.generatedFiles;
 		this.dataModel = params.dataModel;
 		this.basePackageName = params.basePackageName;
 		this.outPath = params.outPath;
@@ -78,7 +80,9 @@ public abstract class ClassGenerator {
 	}
 
 	private void markFileAsCreated(Set<Path> generatedFilesToDelete, Path basePath, Path filePath) {
-		generatedFilesToDelete.remove(basePath.relativize(filePath));
+		var relativePath = basePath.relativize(filePath);
+		generatedFilesToDelete.remove(relativePath);
+		generatedFiles.add(relativePath);
 	}
 
 	protected abstract Stream<GeneratedClass> generateClasses();
@@ -86,6 +90,7 @@ public abstract class ClassGenerator {
 	public record GeneratedClass(String packageName, TypeSpec.Builder content) {}
 
 	public record ClassGeneratorParams(HashSet<Path> generatedFilesToDelete,
+									   HashSet<Path> generatedFiles,
 									   DataModel dataModel,
 									   String basePackageName,
 									   Path outPath,

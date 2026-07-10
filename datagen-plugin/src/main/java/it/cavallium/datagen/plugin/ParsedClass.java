@@ -61,7 +61,13 @@ public final class ParsedClass {
 			return false;
 		}
 		ParsedClass that = (ParsedClass) o;
-		return Objects.equals(stringRepresenter, that.stringRepresenter) && Objects.equals(data, that.data);
+		return Objects.equals(stringRepresenter, that.stringRepresenter) && entriesEqual(data, that.data);
+	}
+
+	private static <K, V> boolean entriesEqual(LinkedHashMap<K, V> a, LinkedHashMap<K, V> b) {
+		if (a == b) return true;
+		if (a == null || b == null) return false;
+		return List.copyOf(a.entrySet()).equals(List.copyOf(b.entrySet()));
 	}
 
 	@Override
@@ -86,6 +92,19 @@ public final class ParsedClass {
 			differentThanPrev = new ArrayList<>();
 		}
 		differentThanPrev.add(transformation);
+	}
+
+	public boolean usesStringRepresenterField(String fieldName) {
+		return stringRepresenter != null
+				&& !stringRepresenter.isBlank()
+				&& !stringRepresenter.contains(".")
+				&& stringRepresenter.equals(fieldName);
+	}
+
+	public void renameStringRepresenterField(String from, String to) {
+		if (usesStringRepresenterField(from)) {
+			stringRepresenter = to;
+		}
 	}
 
 	public static final class NoContextParameterException extends RuntimeException {

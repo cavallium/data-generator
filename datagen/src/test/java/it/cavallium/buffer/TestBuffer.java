@@ -229,6 +229,15 @@ public class TestBuffer {
         assertFalse(buf.isMutable());
     }
 
+    @Test
+    public void testFrozenByteListBufTopIsReadOnly() {
+        var buf = ByteListBuf.of((byte) 1, (byte) 2);
+        buf.freeze();
+
+        assertEquals((byte) 2, buf.topByte());
+        assertEquals((byte) 2, buf.top());
+    }
+
     @ParameterizedTest
     @MethodSource("provideBufs")
     public void testAsArray(BufArg bufArg) {

@@ -6,7 +6,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.SortedMap;
 
 class ConfigUtils {
 
@@ -14,7 +13,7 @@ class ConfigUtils {
 		if (map == null) return 0;
 		int hash = 1;
 		var entries = map.entrySet().stream();
-		if (!(map instanceof LinkedHashMap<?, ?>) && !(map instanceof SortedMap<?, ?>)) {
+		if (!(map instanceof LinkedHashMap<?, ?>)) {
 			entries = entries.sorted(Comparator.comparing(e -> String.valueOf(e.getKey())));
 		}
 		for (var e : entries.toList()) {
