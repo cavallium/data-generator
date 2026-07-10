@@ -767,7 +767,6 @@ class ByteListBuf extends ByteArrayList implements Buf {
     @IgnoreCoverage
     @Override
     public byte topByte() {
-        ensureMutable();
         return super.topByte();
     }
 
@@ -952,7 +951,6 @@ class ByteListBuf extends ByteArrayList implements Buf {
     @Deprecated
     @Override
     public Byte top() {
-        ensureMutable();
         return super.top();
     }
 
