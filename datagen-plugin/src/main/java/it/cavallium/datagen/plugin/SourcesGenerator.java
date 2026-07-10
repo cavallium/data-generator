@@ -31,7 +31,9 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
@@ -42,7 +44,8 @@ import org.yaml.snakeyaml.Yaml;
 public class SourcesGenerator {
 
     private static final Logger logger = LoggerFactory.getLogger(SourcesGenerator.class);
-    private static final String SERIAL_VERSION = "6";
+    private static final String SERIAL_VERSION = "7";
+    private static final String GENERATED_FILES_SECTION = "generatedFiles:";
 
     private final SourcesGeneratorConfiguration configuration;
 
@@ -87,25 +90,26 @@ public class SourcesGenerator {
         var hashPath = basePackageNamePath.resolve(".hash");
         var dataModel = configuration.buildDataModel(binaryStrings);
         var curHash = dataModel.computeHash();
+        List<String> hashLines = null;
         if (Files.isRegularFile(hashPath) && Files.isReadable(hashPath)) {
-            var lines = Files.readAllLines(hashPath, StandardCharsets.UTF_8);
-            if (lines.size() >= 7) {
-                var prevBasePackageName = lines.get(0);
-                var prevRecordBuilders = lines.get(1);
-                var prevHash = lines.get(2);
-                var prevDeepCheckBeforeCreatingNewEqualInstances = lines.get(3);
-                var prevGenerateOldSerializers = lines.get(4);
-                var prevSerialVersion = lines.get(5);
-                var prevBinaryStrings = lines.get(6);
+            hashLines = Files.readAllLines(hashPath, StandardCharsets.UTF_8);
+            if (hashLines.size() >= 7) {
+                var prevBasePackageName = hashLines.get(0);
+                var prevRecordBuilders = hashLines.get(1);
+                var prevHash = hashLines.get(2);
+                var prevDeepCheckBeforeCreatingNewEqualInstances = hashLines.get(3);
+                var prevGenerateOldSerializers = hashLines.get(4);
+                var prevSerialVersion = hashLines.get(5);
+                var prevBinaryStrings = hashLines.get(6);
 
                 if (!force
-                        && prevBasePackageName.equals(basePackageName)
-                        && (prevRecordBuilders.equalsIgnoreCase("true") == useRecordBuilders)
-                        && (prevDeepCheckBeforeCreatingNewEqualInstances.equalsIgnoreCase("true") == deepCheckBeforeCreatingNewEqualInstances)
-                        && (prevGenerateOldSerializers.equalsIgnoreCase("true") == generateOldSerializers)
-                        && (prevBinaryStrings.equalsIgnoreCase("true") == binaryStrings)
-                        && (prevSerialVersion.equals(SERIAL_VERSION))
-                        && prevHash.equals(Integer.toString(curHash))) {
+                    && prevBasePackageName.equals(basePackageName)
+                    && (prevRecordBuilders.equalsIgnoreCase("true") == useRecordBuilders)
+                    && (prevDeepCheckBeforeCreatingNewEqualInstances.equalsIgnoreCase("true") == deepCheckBeforeCreatingNewEqualInstances)
+                    && (prevGenerateOldSerializers.equalsIgnoreCase("true") == generateOldSerializers)
+                    && (prevBinaryStrings.equalsIgnoreCase("true") == binaryStrings)
+                    && (prevSerialVersion.equals(SERIAL_VERSION))
+                    && prevHash.equals(Integer.toString(curHash))) {
                     logger.info("Skipped sources generation because it didn't change");
                     return;
                 }
@@ -120,17 +124,10 @@ public class SourcesGenerator {
             Files.createDirectories(basePackageNamePath);
         }
 
-        // Get the files list
-        HashSet<Path> generatedFilesToDelete;
-        try (var stream = Files.find(outPath, Integer.MAX_VALUE, (filePath, fileAttr) -> fileAttr.isRegularFile())) {
-            var relativeBasePackageNamePath = outPath.relativize(basePackageNamePath);
-            generatedFilesToDelete = stream
-                    .map(outPath::relativize)
-                    .filter(path -> path.startsWith(relativeBasePackageNamePath))
-                    .collect(Collectors.toCollection(HashSet::new));
-        }
+        var generatedFilesToDelete = new HashSet<>(readGeneratedFiles(hashLines));
+        var generatedFiles = new HashSet<Path>();
 
-        var genParams = new ClassGeneratorParams(generatedFilesToDelete, dataModel, basePackageName, outPath,
+        var genParams = new ClassGeneratorParams(generatedFilesToDelete, generatedFiles, dataModel, basePackageName, outPath,
                 deepCheckBeforeCreatingNewEqualInstances, useRecordBuilders, generateOldSerializers, binaryStrings);
 
         // Create the Versions class
@@ -178,14 +175,18 @@ public class SourcesGenerator {
 
         new GenUpgraderSuperX(genParams).run();
 
+        generatedFilesToDelete.remove(outPath.relativize(hashPath));
+        for (Path generatedFileToDelete : generatedFilesToDelete) {
+            Path fileToDelete = outPath.resolve(generatedFileToDelete);
+            if (Files.isRegularFile(fileToDelete)) {
+                logger.debug("Deleting stale generated file {}", fileToDelete);
+                Files.delete(fileToDelete);
+            }
+        }
+
         // Update the hash at the end
-        var newHashRaw = basePackageName + '\n'
-                + useRecordBuilders + '\n'
-                + curHash + '\n'
-                + deepCheckBeforeCreatingNewEqualInstances + '\n'
-                + generateOldSerializers + '\n'
-                + SERIAL_VERSION + '\n'
-                + binaryStrings + '\n';
+        var newHashRaw = newHashRaw(basePackageName, useRecordBuilders, curHash,
+                deepCheckBeforeCreatingNewEqualInstances, generateOldSerializers, binaryStrings, generatedFiles);
         String oldHashRaw;
         if (Files.exists(hashPath)) {
             oldHashRaw = Files.readString(hashPath, StandardCharsets.UTF_8);
@@ -201,14 +202,48 @@ public class SourcesGenerator {
                     CREATE
             );
         }
-        generatedFilesToDelete.remove(outPath.relativize(hashPath));
-        for (Path generatedFileToDelete : generatedFilesToDelete) {
-            Path fileToDelete = outPath.resolve(generatedFileToDelete);
-            if (Files.isRegularFile(fileToDelete)) {
-                logger.debug("Deleting stale generated file {}", fileToDelete);
-                Files.delete(fileToDelete);
+    }
+
+    private static List<Path> readGeneratedFiles(List<String> hashLines) {
+        if (hashLines == null) {
+            return List.of();
+        }
+        int generatedFilesStart = hashLines.indexOf(GENERATED_FILES_SECTION);
+        if (generatedFilesStart < 0) {
+            return List.of();
+        }
+        var result = new ArrayList<Path>();
+        for (int i = generatedFilesStart + 1; i < hashLines.size(); i++) {
+            var line = hashLines.get(i);
+            if (!line.isBlank()) {
+                result.add(Path.of(line));
             }
         }
+        return result;
+    }
+
+    private static String newHashRaw(String basePackageName,
+                                     boolean useRecordBuilders,
+                                     int curHash,
+                                     boolean deepCheckBeforeCreatingNewEqualInstances,
+                                     boolean generateOldSerializers,
+                                     boolean binaryStrings,
+                                     HashSet<Path> generatedFiles) {
+        var generatedFileLines = generatedFiles
+                .stream()
+                .map(Path::toString)
+                .sorted()
+                .collect(Collectors.joining("\n"));
+        return basePackageName + '\n'
+                + useRecordBuilders + '\n'
+                + curHash + '\n'
+                + deepCheckBeforeCreatingNewEqualInstances + '\n'
+                + generateOldSerializers + '\n'
+                + SERIAL_VERSION + '\n'
+                + binaryStrings + '\n'
+                + GENERATED_FILES_SECTION + '\n'
+                + generatedFileLines
+                + (generatedFileLines.isEmpty() ? "" : "\n");
     }
 
     public static String capitalize(String field) {

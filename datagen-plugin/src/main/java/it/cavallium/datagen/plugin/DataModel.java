@@ -243,6 +243,7 @@ public class DataModel {
                                         transformCoordinate + " tries to overwrite the existing field \"" + t.to + "\" of value \""
                                                 + prevDef.typeName() + "\" with the field \"" + t.from + "\" of type \"" + definition.orElse(null) + "\"");
                             }
+                            transformClass.renameStringRepresenterField(t.from, t.to);
                         }
                         case "new-data" -> {
                             var t = (NewDataConfiguration) transformation;
@@ -277,6 +278,10 @@ public class DataModel {
                                 throw new IllegalArgumentException(transformCoordinate + " tries to remove the nonexistent field \""
                                         + t.from + "\"");
                             }
+                            if (transformClass.usesStringRepresenterField(t.from)) {
+                                throw new IllegalArgumentException(transformCoordinate
+                                        + " removes the stringRepresenter field \"" + t.from + "\"");
+                            }
                         }
                         case "upgrade-data" -> {
                             var t = (UpgradeDataConfiguration) transformation;
@@ -298,6 +303,7 @@ public class DataModel {
                     }
                 }
 
+                validateStringRepresenters(versionToName.get(versionIndex), newVersionConfiguration);
                 computedClassConfig.put(versionIndex, newVersionConfiguration);
             }
         }
@@ -611,6 +617,17 @@ public class DataModel {
 
     private static RuntimeException throwMultiRootVersions(List<String> rootVersions) {
         return new IllegalArgumentException("Found many root versions: " + String.join(", ", rootVersions));
+    }
+
+    private static void validateStringRepresenters(String versionName, Map<String, ParsedClass> classConfig) {
+        classConfig.forEach((typeName, typeConfig) -> {
+            if (typeConfig.stringRepresenter != null && !typeConfig.stringRepresenter.isBlank()
+                    && !typeConfig.stringRepresenter.contains(".")
+                    && (typeConfig.data == null || !typeConfig.data.containsKey(typeConfig.stringRepresenter))) {
+                throw new IllegalArgumentException("Type " + typeName + " stringRepresenter \""
+                        + typeConfig.stringRepresenter + "\" is not a field of that type in version " + versionName);
+            }
+        });
     }
 
     public static <T> Collector<T, ?, T> toSingleton() {
