@@ -6,6 +6,7 @@ import it.cavallium.stream.SafeByteArrayOutputStream;
 import it.cavallium.stream.SafeDataOutput;
 import it.unimi.dsi.fastutil.bytes.ByteArrayList;
 import it.unimi.dsi.fastutil.bytes.ByteList;
+import java.lang.foreign.MemorySegment;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.util.RandomAccess;
@@ -78,6 +79,44 @@ public interface Buf extends ByteList, RandomAccess {
 	byte[] asUnboundedArray();
 
 	ByteBuffer asHeapByteBuffer();
+
+	/**
+	 * Returns an exact view of this buffer as a {@link MemorySegment}, copying
+	 * only when the implementation cannot expose its storage directly.
+	 *
+	 * <p>The returned segment does not transfer or extend ownership of the
+	 * underlying storage. In particular, callers must not use a native segment
+	 * after the owner that supplied this {@code Buf} has released it.
+	 */
+	default MemorySegment asMemorySegment() {
+		MemorySegment segment = asMemorySegmentStrict();
+		return segment != null ? segment : MemorySegment.ofArray(asArray());
+	}
+
+	/**
+	 * Returns an exact zero-copy {@link MemorySegment} view when one is
+	 * available, or {@code null} when conversion would require a copy.
+	 * Ownership remains with this buffer's storage owner.
+	 */
+	default @Nullable MemorySegment asMemorySegmentStrict() {
+		final byte[] array;
+		try {
+			array = getBackingByteArray();
+		} catch (UnsupportedOperationException unsupported) {
+			return null;
+		}
+		return MemorySegment.ofArray(array)
+				.asSlice(getBackingByteArrayOffset(), getBackingByteArrayLength());
+	}
+
+	/**
+	 * Returns an exact byte-buffer view, preserving heap or native backing when
+	 * possible. Ownership and lifetime are the same as for
+	 * {@link #asMemorySegment()}.
+	 */
+	default ByteBuffer asByteBuffer() {
+		return asMemorySegment().asByteBuffer();
+	}
 
 	/**
 	 * Unsafe operation

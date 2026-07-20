@@ -21,6 +21,7 @@ import it.unimi.dsi.fastutil.bytes.ByteSpliterators;
 import it.unimi.dsi.fastutil.bytes.ByteUnaryOperator;
 
 import java.io.Serial;
+import java.lang.foreign.MemorySegment;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.util.Arrays;
@@ -239,8 +240,7 @@ class ByteListBuf extends ByteArrayList implements Buf {
         ensureMutable();
         checkFromIndexSize(offset, length, size);
         checkFromIndexSize(sourceOffset, length, source.size());
-        System.arraycopy(source.getBackingByteArray(), source.getBackingByteArrayFrom() + sourceOffset, this.a,
-                offset, length);
+        copyIntoArray(source, sourceOffset, this.a, offset, length);
     }
 
     @Override
@@ -346,7 +346,7 @@ class ByteListBuf extends ByteArrayList implements Buf {
             ensureMutable();
             checkFromIndexSize(offset, length, size());
             checkFromIndexSize(sourceOffset, length, source.size());
-            System.arraycopy(source.getBackingByteArray(), source.getBackingByteArrayFrom() + sourceOffset, a, this.from + offset, length);
+            copyIntoArray(source, sourceOffset, a, this.from + offset, length);
         }
 
         @Override
@@ -628,6 +628,20 @@ class ByteListBuf extends ByteArrayList implements Buf {
         public String getString(int i, int length, Charset charset) {
             checkFromIndexSize(i, length, to - from);
             return new String(a, from + i, length, charset);
+        }
+    }
+
+    private static void copyIntoArray(Buf source, int sourceOffset, byte[] target, int targetOffset, int length) {
+        if (length == 0) {
+            return;
+        }
+        MemorySegment sourceSegment = source.asMemorySegmentStrict();
+        if (sourceSegment != null) {
+            MemorySegment.copy(sourceSegment, sourceOffset, MemorySegment.ofArray(target), targetOffset, length);
+            return;
+        }
+        for (int i = 0; i < length; i++) {
+            target[targetOffset + i] = source.getByte(sourceOffset + i);
         }
     }
 

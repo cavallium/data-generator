@@ -15,10 +15,12 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * A Zero-Copy implementation of {@link Buf} backed by a native {@link MemorySegment}.
+ * A zero-copy implementation of {@link Buf} backed by an exact
+ * {@link MemorySegment} view.
  * <p>
- * This class is designed for high-performance off-heap access, particularly for RocksDB Merge Operators. It allows
- * reading native memory directly without copying it to the Java Heap.
+ * This class does not own or extend the lifetime of the segment. The caller
+ * remains responsible for keeping its scope alive for every access, including
+ * access through slices, byte buffers, and frozen views.
  */
 public class MemorySegmentBuf extends AbstractByteList implements Buf {
 
@@ -125,10 +127,22 @@ public class MemorySegmentBuf extends AbstractByteList implements Buf {
 
 	@Override
 	public ByteBuffer asHeapByteBuffer() {
-		// ByteBuffer.wrap requires a heap array. We must copy.
-		// Note: We could return a DirectByteBuffer via segment.asByteBuffer(),
-		// but the method name implies "Heap".
-		return ByteBuffer.wrap(asArray());
+		return segment.isNative() ? ByteBuffer.wrap(asArray()) : segment.asByteBuffer();
+	}
+
+	@Override
+	public MemorySegment asMemorySegment() {
+		return segment;
+	}
+
+	@Override
+	public MemorySegment asMemorySegmentStrict() {
+		return segment;
+	}
+
+	@Override
+	public ByteBuffer asByteBuffer() {
+		return segment.asByteBuffer();
 	}
 
 	@Override
@@ -166,10 +180,15 @@ public class MemorySegmentBuf extends AbstractByteList implements Buf {
 
 	@Override
 	public Buf freeze() {
-		// MemorySegments are effectively frozen views usually.
-		// If we wanted to enforce it, we could wrap in a read-only segment,
-		// but for high-performance merge ops, we assume it's used correctly.
-		return this;
+		return segment.isReadOnly() ? this : new MemorySegmentBuf(segment.asReadOnly(), size);
+	}
+
+	@Override
+	public byte set(int index, byte value) {
+		ensureMutable();
+		byte previous = segment.get(ValueLayout.JAVA_BYTE, index);
+		segment.set(ValueLayout.JAVA_BYTE, index, value);
+		return previous;
 	}
 
 	// --- Slicing & Copying ---
@@ -211,18 +230,17 @@ public class MemorySegmentBuf extends AbstractByteList implements Buf {
 
 	@Override
 	public void setBytesFromBuf(int offset, Buf source, int sourceOffset, int length) {
-		if (!isMutable()) {
-			throw new UnsupportedOperationException("Immutable");
-		}
+		ensureMutable();
 		Objects.checkFromIndexSize(offset, length, size);
-		// Source check is done by source getters/accessors
+		Objects.checkFromIndexSize(sourceOffset, length, source.size());
 
 		if (length == 0) {
 			return;
 		}
 
-		if (source instanceof MemorySegmentBuf msb) {
-			MemorySegment.copy(msb.segment, sourceOffset, this.segment, offset, length);
+		MemorySegment sourceSegment = source.asMemorySegmentStrict();
+		if (sourceSegment != null) {
+			MemorySegment.copy(sourceSegment, sourceOffset, this.segment, offset, length);
 		} else {
 			byte[] srcArr = source.asArrayStrict();
 			if (srcArr != null) {
@@ -237,6 +255,12 @@ public class MemorySegmentBuf extends AbstractByteList implements Buf {
 					segment.set(ValueLayout.JAVA_BYTE, offset + i, source.getByte(sourceOffset + i));
 				}
 			}
+		}
+	}
+
+	private void ensureMutable() {
+		if (!isMutable()) {
+			throw new UnsupportedOperationException("The buffer is immutable");
 		}
 	}
 
@@ -292,20 +316,10 @@ public class MemorySegmentBuf extends AbstractByteList implements Buf {
 			return true;
 		}
 
-		// Optimization: Native vs Native Comparison (Vectorized)
-		if (b instanceof MemorySegmentBuf msb) {
-			// mismatch returns -1 if equal
-			long mismatch = segment.asSlice(aStartIndex, length).mismatch(msb.segment.asSlice(bStartIndex, length));
-			return mismatch == -1;
-		}
-
-		// Optimization: Native vs Array
-		byte[] bArr = b.asArrayStrict();
-		if (bArr != null) {
-			int realOffset = b.getBackingByteArrayOffset() + bStartIndex;
-			long mismatch = segment
-					.asSlice(aStartIndex, length)
-					.mismatch(MemorySegment.ofArray(bArr).asSlice(realOffset, length));
+		MemorySegment otherSegment = b.asMemorySegmentStrict();
+		if (otherSegment != null) {
+			long mismatch = segment.asSlice(aStartIndex, length)
+					.mismatch(otherSegment.asSlice(bStartIndex, length));
 			return mismatch == -1;
 		}
 
