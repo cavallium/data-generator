@@ -307,6 +307,7 @@
 						<configuration>
 							<release>25</release>
 							<encoding>UTF-8</encoding>
+							<proc>full</proc>
 							<excludes>
 								<exclude>src/main/java/module-info.java</exclude>
 							</excludes>

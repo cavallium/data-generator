@@ -6,6 +6,8 @@ public final class CustomTypesConfiguration {
 
 	private String javaClass;
 	public String serializer;
+	/** Optional {@code DataSkipper} implementation used when projections cross this type. */
+	public String skipper;
 
 	public void setJavaClass(String javaClass) {
 		this.javaClass = javaClass;
@@ -24,7 +26,8 @@ public final class CustomTypesConfiguration {
 			return false;
 		}
 		CustomTypesConfiguration that = (CustomTypesConfiguration) o;
-		return Objects.equals(javaClass, that.javaClass) && Objects.equals(serializer, that.serializer);
+		return Objects.equals(javaClass, that.javaClass) && Objects.equals(serializer, that.serializer)
+				&& Objects.equals(skipper, that.skipper);
 	}
 
 	@Override
@@ -32,6 +35,7 @@ public final class CustomTypesConfiguration {
 		int hash = 0;
 		hash += ConfigUtils.hashCode(javaClass);
 		hash += ConfigUtils.hashCode(serializer);
+		hash += ConfigUtils.hashCode(skipper);
 		return hash;
 	}
 
@@ -39,6 +43,7 @@ public final class CustomTypesConfiguration {
 		var c = new CustomTypesConfiguration();
 		c.javaClass = this.javaClass;
 		c.serializer = this.serializer;
+		c.skipper = this.skipper;
 		return c;
 	}
 }

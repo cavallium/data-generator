@@ -54,10 +54,23 @@ public class DataModel {
     private final Int2ObjectMap<ComputedVersion> versions;
     private final Map<String, Set<String>> superTypes;
     private final Map<String, CustomTypesConfiguration> customTypes;
+	private final Map<String, ProjectionConfiguration> projections;
     private final Int2ObjectMap<Map<String, ComputedType>> computedTypes;
     private final Map<VersionedType, VersionedType> versionedTypePrevVersion;
     private final Map<VersionedType, VersionedType> versionedTypeNextVersion;
     private final Int2ObjectMap<Map<String, List<TransformationConfiguration>>> baseTypeDataChanges;
+
+	public DataModel(int hash,
+			String currentVersionKey,
+			Map<String, InterfaceDataConfiguration> interfacesData,
+			Map<String, ClassConfiguration> baseTypesData,
+			Map<String, Set<String>> superTypesData,
+			Map<String, CustomTypesConfiguration> customTypesData,
+			Map<String, VersionConfiguration> rawVersions,
+			boolean binaryStrings) {
+		this(hash, currentVersionKey, interfacesData, baseTypesData, superTypesData, customTypesData,
+				Map.of(), rawVersions, binaryStrings);
+	}
 
     public DataModel(int hash,
                      String currentVersionKey,
@@ -65,6 +78,7 @@ public class DataModel {
                      Map<String, ClassConfiguration> baseTypesData,
                      Map<String, Set<String>> superTypesData,
                      Map<String, CustomTypesConfiguration> customTypesData,
+					 Map<String, ProjectionConfiguration> projectionsData,
                      Map<String, VersionConfiguration> rawVersions,
                      boolean binaryStrings) {
 
@@ -368,11 +382,13 @@ public class DataModel {
                     });
                     // Compute nullable types
                     {
-                        var nullableRawTypes = computedClassConfig.values().stream()
+                        var nullableRawTypes = Stream.concat(computedClassConfig.values().stream()
                                 .flatMap(x -> x.values().stream())
                                 .flatMap(x -> x.getData().values().stream())
                                 .filter(x -> x.typeName().startsWith("-"))
-                                .map(nullableName -> nullableName.typeName().substring(1))
+                                .map(nullableName -> nullableName.typeName().substring(1)),
+								projectionNullableLeafTypes(projectionsData, computedClassConfig.get(latestVersion)))
+								.distinct()
                                 .toList();
                         // Compute nullable versioned types
                         nullableRawTypes.stream()
@@ -599,6 +615,7 @@ public class DataModel {
         this.currentVersion = computedVersions.get(versionsCount - 1);
         this.superTypes = superTypesData;
         this.customTypes = customTypesData;
+		this.projections = projectionsData;
         this.computedTypes = computedTypes;
         this.versionedTypePrevVersion = versionedTypePrevVersion;
         this.versionedTypeNextVersion = versionedTypeNextVersion;
@@ -629,6 +646,40 @@ public class DataModel {
             }
         });
     }
+
+	private static Stream<String> projectionNullableLeafTypes(
+			Map<String, ProjectionConfiguration> projections,
+			Map<String, ParsedClass> currentClasses) {
+		var result = new ArrayList<String>();
+		projections.forEach((projectionName, projection) -> {
+			if (projection == null || projection.sourceType == null || projection.fields == null) return;
+			for (var configuredField : projection.fields.entrySet()) {
+				String path = configuredField.getValue();
+				if (path == null || path.isBlank()) continue;
+				ParsedClass owner = currentClasses.get(projection.sourceType);
+				boolean nullable = false;
+				String[] segments = path.split("\\.", -1);
+				String fieldType = null;
+				for (int i = 0; i < segments.length; i++) {
+					if (owner == null) break;
+					ParsedClass.FieldInfo field = owner.getData().get(segments[i]);
+					if (field == null) break;
+					fieldType = field.typeName();
+					if (fieldType.startsWith("-")) {
+						nullable = true;
+						fieldType = fieldType.substring(1);
+					}
+					if (i + 1 < segments.length) {
+						owner = currentClasses.get(fieldType);
+					}
+				}
+				if (nullable && fieldType != null && !fieldType.startsWith("§")) {
+					result.add(fieldType);
+				}
+			}
+		});
+		return result.stream();
+	}
 
     public static <T> Collector<T, ?, T> toSingleton() {
         return toSingleton(x -> new IllegalStateException());
@@ -765,6 +816,10 @@ public class DataModel {
     public Map<String, CustomTypesConfiguration> getCustomTypes() {
         return customTypes;
     }
+
+	public Map<String, ProjectionConfiguration> getProjections() {
+		return projections;
+	}
 
     public Int2ObjectMap<Map<String, ComputedType>> getComputedTypes() {
         return computedTypes;
@@ -941,4 +996,11 @@ public class DataModel {
         }
         return baseTypeDataChanges.get(prev.getVersion().getVersion() + 1).get(nextType.getName());
     }
+
+	public List<TransformationConfiguration> getChanges(int logicalVersion, String baseTypeName) {
+		if (logicalVersion <= 0 || logicalVersion > currentVersion.getVersion()) {
+			return List.of();
+		}
+		return Objects.requireNonNullElse(baseTypeDataChanges.get(logicalVersion).get(baseTypeName), List.of());
+	}
 }

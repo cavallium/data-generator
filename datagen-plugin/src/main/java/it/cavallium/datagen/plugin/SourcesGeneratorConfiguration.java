@@ -10,6 +10,7 @@ public class SourcesGeneratorConfiguration {
 	public Map<String, ClassConfiguration> baseTypesData;
 	public Map<String, Set<String>> superTypesData;
 	public Map<String, CustomTypesConfiguration> customTypesData;
+	public Map<String, ProjectionConfiguration> projectionsData;
 	public Map<String, VersionConfiguration> versions;
 
 	@Override
@@ -23,7 +24,8 @@ public class SourcesGeneratorConfiguration {
 		SourcesGeneratorConfiguration that = (SourcesGeneratorConfiguration) o;
 		return Objects.equals(currentVersion, that.currentVersion) && Objects.equals(interfacesData, that.interfacesData)
 				&& Objects.equals(baseTypesData, that.baseTypesData) && Objects.equals(superTypesData, that.superTypesData)
-				&& Objects.equals(customTypesData, that.customTypesData) && Objects.equals(versions, that.versions);
+				&& Objects.equals(customTypesData, that.customTypesData) && Objects.equals(projectionsData, that.projectionsData)
+				&& Objects.equals(versions, that.versions);
 	}
 
 	@Override
@@ -34,6 +36,7 @@ public class SourcesGeneratorConfiguration {
 		hash += ConfigUtils.hashCode(baseTypesData);
 		hash += ConfigUtils.hashCode(superTypesData);
 		hash += ConfigUtils.hashCode(customTypesData);
+		hash += ConfigUtils.hashCode(projectionsData);
 		hash += ConfigUtils.hashCode(versions);
 		return hash;
 	}
@@ -45,6 +48,7 @@ public class SourcesGeneratorConfiguration {
 				Objects.requireNonNullElse(baseTypesData, Map.of()),
 				Objects.requireNonNullElse(superTypesData, Map.of()),
 				Objects.requireNonNullElse(customTypesData, Map.of()),
+				Objects.requireNonNullElse(projectionsData, Map.of()),
 				Objects.requireNonNullElse(versions, Map.of()),
 				binaryStrings
 		);

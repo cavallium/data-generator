@@ -73,6 +73,7 @@ YAML structure at a glance (keys map 1:1 to plugin config classes):
 - `baseTypesData`: concrete types and their fields
 - `superTypesData`: map of type → list of interfaces it implements
 - `customTypesData`: map of logical type → custom Java class and its serializer
+- `projectionsData`: map of projection name → source record and ordered result field paths
 - `versions`: ordered map of versionKey → version definition
 
 Primitive type notation and modifiers:
@@ -165,6 +166,8 @@ customTypesData:
   Money:
     javaClass: com.example.types.Money
     serializer: com.example.types.MoneySerializer
+    # Required only when a projection must cross an unselected Money value.
+    skipper: com.example.types.MoneySkipper
 
 baseTypesData:
   Invoice:
@@ -172,6 +175,44 @@ baseTypesData:
       total: Money
       items: Money[]
 ```
+
+Projection readers
+------------------
+For hot paths that need only a few fields from a large record, declare an ordered projection:
+
+```yaml
+projectionsData:
+  ImportedMessageSender:
+    sourceType: ImportedMessage
+    fields:
+      messageId: messageId
+      senderId: sender.id
+      chatEntityId: chatEntityId
+```
+
+The map key becomes `ImportedMessageSenderProjection` in the generated `projections` package.
+Field keys are result component names and values are dot-separated source paths. Records and
+nullable records can be traversed. Arrays, super-type unions, and custom values are terminal and
+can still be selected as complete owned values.
+
+Each projection exposes:
+
+```java
+Result read(int version, SafeDataInput input);
+void readInto(int version, SafeDataInput input, Sink sink);
+Reader newReader();
+```
+
+`Result` is an owned record. `readInto` passes nullable values as a presence boolean followed by
+the unwrapped value, avoiding nullable-wrapper allocation. A `Reader` owns one reusable
+`BufDataCursor`; create one per worker lane and do not share it between threads. Its `Buf` overloads
+unbind the source in `finally` before constructing a result or invoking user sink code, so the
+source can be recycled as soon as the call returns.
+
+Projection generation follows field moves, initializers, upgrader context dependencies, and type
+upgrades for every serialized version. It skips intervening structural data without materializing
+it and stops after the final required field. A custom value is opaque, so crossing one requires a
+`skipper` class implementing `DataSkipper`; generation fails when that contract is missing.
 
 Interfaces and shared data
 --------------------------

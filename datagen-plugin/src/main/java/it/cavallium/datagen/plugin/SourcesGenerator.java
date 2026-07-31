@@ -16,6 +16,7 @@ import it.cavallium.datagen.plugin.classgen.GenINullableSuperType;
 import it.cavallium.datagen.plugin.classgen.GenIType;
 import it.cavallium.datagen.plugin.classgen.GenIVersion;
 import it.cavallium.datagen.plugin.classgen.GenNullableX;
+import it.cavallium.datagen.plugin.classgen.GenProjection;
 import it.cavallium.datagen.plugin.classgen.GenSerializerArrayX;
 import it.cavallium.datagen.plugin.classgen.GenSerializerBaseX;
 import it.cavallium.datagen.plugin.classgen.GenSerializerNullableX;
@@ -44,7 +45,7 @@ import org.yaml.snakeyaml.Yaml;
 public class SourcesGenerator {
 
     private static final Logger logger = LoggerFactory.getLogger(SourcesGenerator.class);
-    private static final String SERIAL_VERSION = "7";
+    private static final String SERIAL_VERSION = "8";
     private static final String GENERATED_FILES_SECTION = "generatedFiles:";
 
     private final SourcesGeneratorConfiguration configuration;
@@ -174,6 +175,8 @@ public class SourcesGenerator {
         new GenUpgraderBaseX(genParams).run();
 
         new GenUpgraderSuperX(genParams).run();
+
+		new GenProjection(genParams).run();
 
         generatedFilesToDelete.remove(outPath.relativize(hashPath));
         for (Path generatedFileToDelete : generatedFilesToDelete) {
