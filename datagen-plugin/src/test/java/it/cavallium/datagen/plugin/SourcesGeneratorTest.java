@@ -10,6 +10,14 @@ import it.cavallium.buffer.Buf;
 import it.cavallium.buffer.BufDataInput;
 import it.cavallium.buffer.BufDataOutput;
 import it.cavallium.buffer.MemorySegmentBuf;
+import it.cavallium.datagen.nativedata.BinaryString;
+import it.cavallium.datagen.nativedata.Int52;
+import it.cavallium.datagen.nativedata.NullableBinaryString;
+import it.cavallium.datagen.nativedata.NullableBinaryStringSerializer;
+import it.cavallium.datagen.nativedata.NullableInt52;
+import it.cavallium.datagen.nativedata.NullableInt52Serializer;
+import it.cavallium.datagen.nativedata.NullableString;
+import it.cavallium.datagen.nativedata.NullableStringSerializer;
 import it.cavallium.stream.SafeDataInput;
 import java.io.ByteArrayInputStream;
 import java.lang.foreign.Arena;
@@ -323,6 +331,63 @@ class SourcesGeneratorTest {
 	}
 
 	@Test
+	void projectionUsesNativeNullableWireFormatsForReadsAndSkips(@TempDir Path temp) throws Exception {
+		for (boolean binaryStrings : List.of(false, true)) {
+			Path variant = temp.resolve(binaryStrings ? "binary" : "text");
+			Path sources = variant.resolve("sources");
+			generate("""
+					currentVersion: v1
+					interfacesData:
+					  Entity: {}
+					superTypesData:
+					  Entity:
+					    - Message
+					baseTypesData:
+					  Message:
+					    data:
+					      selectedText: -String
+					      skippedText: -String
+					      afterText: int
+					      selectedInt52: -Int52
+					      skippedInt52: -Int52
+					      tail: long
+					projectionsData:
+					  NativeNullableProjection:
+					    sourceType: Message
+					    fields:
+					      selectedText: selectedText
+					      afterText: afterText
+					      selectedInt52: selectedInt52
+					      tail: tail
+					versions:
+					  v1:
+					""", sources, binaryStrings);
+
+			try (var loader = compileGeneratedSources(sources, variant.resolve("classes"))) {
+				Class<?> projection = loader.loadClass("org.example.projections.NativeNullableProjection");
+				Class<?> resultType = loader.loadClass("org.example.projections.NativeNullableProjection$Result");
+
+				Object present = projection.getMethod("read", int.class, SafeDataInput.class)
+						.invoke(null, 0, BufDataInput.create(serializedNativeNullableFixture(true, binaryStrings)));
+				assertEquals(expectedNullableText(true, binaryStrings),
+						resultType.getMethod("selectedText").invoke(present));
+				assertEquals(123, resultType.getMethod("afterText").invoke(present));
+				assertEquals(NullableInt52.of(Int52.fromLong(456)),
+						resultType.getMethod("selectedInt52").invoke(present));
+				assertEquals(999L, resultType.getMethod("tail").invoke(present));
+
+				Object empty = projection.getMethod("read", int.class, SafeDataInput.class)
+						.invoke(null, 0, BufDataInput.create(serializedNativeNullableFixture(false, binaryStrings)));
+				assertEquals(expectedNullableText(false, binaryStrings),
+						resultType.getMethod("selectedText").invoke(empty));
+				assertEquals(123, resultType.getMethod("afterText").invoke(empty));
+				assertEquals(NullableInt52.empty(), resultType.getMethod("selectedInt52").invoke(empty));
+				assertEquals(999L, resultType.getMethod("tail").invoke(empty));
+			}
+		}
+	}
+
+	@Test
 	void rejectsCrossedCustomTypeWithoutExplicitSkipper(@TempDir Path out) {
 		IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, () -> generate("""
 				currentVersion: v1
@@ -454,6 +519,39 @@ class SourcesGeneratorTest {
 		return output.asList();
 	}
 
+	private static Buf serializedNativeNullableFixture(boolean present, boolean binaryStrings) {
+		BufDataOutput output = BufDataOutput.create();
+		if (binaryStrings) {
+			NullableBinaryStringSerializer.INSTANCE.serialize(output, present
+					? NullableBinaryString.of(new BinaryString("selected".getBytes(StandardCharsets.UTF_8)))
+					: NullableBinaryString.empty());
+			NullableBinaryStringSerializer.INSTANCE.serialize(output, present
+					? NullableBinaryString.of(new BinaryString("skipped".getBytes(StandardCharsets.UTF_8)))
+					: NullableBinaryString.empty());
+		} else {
+			NullableStringSerializer.INSTANCE.serialize(output,
+					present ? NullableString.of("selected") : NullableString.empty());
+			NullableStringSerializer.INSTANCE.serialize(output,
+					present ? NullableString.of("skipped") : NullableString.empty());
+		}
+		output.writeInt(123);
+		NullableInt52Serializer.INSTANCE.serialize(output,
+				present ? NullableInt52.of(Int52.fromLong(456)) : NullableInt52.empty());
+		NullableInt52Serializer.INSTANCE.serialize(output,
+				present ? NullableInt52.of(Int52.fromLong(789)) : NullableInt52.empty());
+		output.writeLong(999L);
+		return output.asList();
+	}
+
+	private static Object expectedNullableText(boolean present, boolean binaryStrings) {
+		if (binaryStrings) {
+			return present
+					? NullableBinaryString.of(new BinaryString("selected".getBytes(StandardCharsets.UTF_8)))
+					: NullableBinaryString.empty();
+		}
+		return present ? NullableString.of("selected") : NullableString.empty();
+	}
+
 	private static Buf serializedTransformFixture(int version) {
 		BufDataOutput output = BufDataOutput.create();
 		output.writeMediumText("opaque payload", StandardCharsets.UTF_8);
@@ -512,9 +610,13 @@ class SourcesGeneratorTest {
 	}
 
     private static void generate(String yaml, Path out) throws Exception {
+		generate(yaml, out, false);
+	}
+
+	private static void generate(String yaml, Path out, boolean binaryStrings) throws Exception {
         SourcesGenerator
                 .load(new ByteArrayInputStream(yaml.getBytes(StandardCharsets.UTF_8)))
-                .generateSources(BASE_PACKAGE, out, false, false, true, false, false);
+				.generateSources(BASE_PACKAGE, out, false, false, true, false, binaryStrings);
     }
 
     private static String userSchema() {

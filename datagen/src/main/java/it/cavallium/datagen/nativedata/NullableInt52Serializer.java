@@ -1,11 +1,13 @@
 package it.cavallium.datagen.nativedata;
 
 import it.cavallium.datagen.DataSerializer;
+import it.cavallium.datagen.DataSkipper;
+import it.cavallium.datagen.ProjectionReadSupport;
 import it.cavallium.stream.SafeDataInput;
 import it.cavallium.stream.SafeDataOutput;
 import org.jetbrains.annotations.NotNull;
 
-public class NullableInt52Serializer implements DataSerializer<NullableInt52> {
+public class NullableInt52Serializer implements DataSerializer<NullableInt52>, DataSkipper {
 
 	public static final NullableInt52Serializer INSTANCE = new NullableInt52Serializer();
 
@@ -31,6 +33,14 @@ public class NullableInt52Serializer implements DataSerializer<NullableInt52> {
 			secondPart[0] = (byte) (firstByteAndIsPresent & 0b00001111);
 			dataInput.readFully(secondPart, 1, secondPart.length - 1);
 			return NullableInt52.of(Int52.fromLong(Int52Serializer.fromByteArray(secondPart)));
+		}
+	}
+
+	@Override
+	public void skip(SafeDataInput input) {
+		int firstByteAndIsPresent = input.readUnsignedByte();
+		if ((firstByteAndIsPresent & 0b10000000) == 0) {
+			ProjectionReadSupport.skipBytes(input, 6);
 		}
 	}
 }

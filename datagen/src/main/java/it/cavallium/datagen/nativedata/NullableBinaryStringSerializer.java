@@ -1,13 +1,15 @@
 package it.cavallium.datagen.nativedata;
 
 import it.cavallium.datagen.DataSerializer;
+import it.cavallium.datagen.DataSkipper;
+import it.cavallium.datagen.ProjectionReadSupport;
 import it.cavallium.stream.SafeDataInput;
 import it.cavallium.stream.SafeDataOutput;
 import org.jetbrains.annotations.NotNull;
 
 import java.nio.charset.StandardCharsets;
 
-public class NullableBinaryStringSerializer implements DataSerializer<NullableBinaryString> {
+public class NullableBinaryStringSerializer implements DataSerializer<NullableBinaryString>, DataSkipper {
 
 	public static final NullableBinaryStringSerializer INSTANCE = new NullableBinaryStringSerializer();
 
@@ -34,6 +36,13 @@ public class NullableBinaryStringSerializer implements DataSerializer<NullableBi
 			var data = new byte[size];
 			dataInput.readFully(data);
 			return NullableBinaryString.of(new BinaryString(data));
+		}
+	}
+
+	@Override
+	public void skip(SafeDataInput input) {
+		if (input.readBoolean()) {
+			ProjectionReadSupport.skipBytes(input, input.readUnsignedShort());
 		}
 	}
 }

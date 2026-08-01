@@ -1,13 +1,15 @@
 package it.cavallium.datagen.nativedata;
 
 import it.cavallium.datagen.DataSerializer;
+import it.cavallium.datagen.DataSkipper;
+import it.cavallium.datagen.ProjectionReadSupport;
 import it.cavallium.stream.SafeDataInput;
 import it.cavallium.stream.SafeDataOutput;
 import org.jetbrains.annotations.NotNull;
 
 import java.nio.charset.StandardCharsets;
 
-public class NullableStringSerializer implements DataSerializer<NullableString> {
+public class NullableStringSerializer implements DataSerializer<NullableString>, DataSkipper {
 
 	public static final NullableStringSerializer INSTANCE = new NullableStringSerializer();
 
@@ -30,6 +32,13 @@ public class NullableStringSerializer implements DataSerializer<NullableString> 
 			return NullableString.empty();
 		} else {
 			return NullableString.of(dataInput.readShortText(StandardCharsets.UTF_8));
+		}
+	}
+
+	@Override
+	public void skip(SafeDataInput input) {
+		if (input.readBoolean()) {
+			ProjectionReadSupport.skipBytes(input, input.readUnsignedShort());
 		}
 	}
 }

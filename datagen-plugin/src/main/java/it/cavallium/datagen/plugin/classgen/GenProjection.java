@@ -23,6 +23,7 @@ import it.cavallium.datagen.plugin.ComputedTypeBase;
 import it.cavallium.datagen.plugin.ComputedTypeCustom;
 import it.cavallium.datagen.plugin.ComputedTypeNative;
 import it.cavallium.datagen.plugin.ComputedTypeNullable;
+import it.cavallium.datagen.plugin.ComputedTypeNullableNative;
 import it.cavallium.datagen.plugin.ComputedTypeSuper;
 import it.cavallium.datagen.plugin.CustomTypesConfiguration;
 import it.cavallium.datagen.plugin.DataModel;
@@ -784,13 +785,17 @@ public final class GenProjection extends ClassGenerator {
 					if (node.leaf != null) {
 						ReadLeaf leaf = node.leaf;
 						if (declaredType instanceof ComputedTypeNullable nullable) {
-							String present = "present" + nextPresenceId++;
-							method.addStatement("boolean $N = input.readBoolean()", present)
+							int presenceId = nextPresenceId++;
+							String present = "present" + presenceId;
+							String nullableValue = "nullableValue" + presenceId;
+							method.addStatement("$T $N = $L", nullable.getJTypeName(basePackageName), nullableValue,
+									readValue(nullable))
+									.addStatement("boolean $N = $N.isPresent()", present, nullableValue)
 									.addCode(node.presenceName == null
 											? CodeBlock.builder().build()
 											: CodeBlock.of("$N = $N;\n", node.presenceName, present))
 									.beginControlFlow("if ($N)", present)
-									.addStatement("$N = $L", leaf.valueName(), readValue(nullable.getBase()))
+									.addStatement("$N = $N.get()", leaf.valueName(), nullableValue)
 									.addStatement("$N = true", leaf.presenceName())
 									.endControlFlow();
 						} else {
@@ -910,6 +915,13 @@ public final class GenProjection extends ClassGenerator {
 					return generatedName;
 				});
 				method.addStatement("$N.skip(input)", fieldName);
+				return;
+			}
+			if (type instanceof ComputedTypeNullableNative nullableNative
+					&& (nullableNative.getBase().getName().equals("String")
+							|| nullableNative.getBase().getName().equals("Int52"))) {
+				FieldLocation serializer = nullableNative.getJSerializerInstance(basePackageName);
+				method.addStatement("$T.$N.skip(input)", serializer.className(), serializer.fieldName());
 				return;
 			}
 			if (type instanceof ComputedTypeNullable nullable) {
