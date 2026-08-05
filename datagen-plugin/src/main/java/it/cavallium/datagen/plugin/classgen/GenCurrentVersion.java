@@ -484,14 +484,23 @@ public class GenCurrentVersion extends ClassGenerator {
 				.beginControlFlow("return ($T) switch (type)",
 						ParameterizedTypeName.get(boundReaderType, TypeVariableName.get("U")));
 		dataModel.getBaseTypesComputed(dataModel.getCurrentVersion()).forEach(currentType -> {
-			newBoundReader.addCode("case $N -> switch (version) {\n$>", currentType.getName());
+			String helperName = "new" + currentType.getName() + "BoundReader";
+			newBoundReader.addStatement("case $N -> $N(version, limits)", currentType.getName(), helperName);
+			var newTypeBoundReader = MethodSpec.methodBuilder(helperName)
+					.addModifiers(Modifier.PRIVATE, Modifier.STATIC)
+					.returns(ParameterizedTypeName.get(boundReaderType,
+							currentType.getJTypeName(basePackageName)))
+					.addParameter(TypeName.INT, "version")
+					.addParameter(DecodeLimits.class, "limits")
+					.beginControlFlow("return switch (version)");
 			for (ComputedVersion version : dataModel.getVersionsSet()) {
-				newBoundReader.addStatement("case $L -> new $N(limits)", version.getVersion(),
+				newTypeBoundReader.addStatement("case $L -> new $N(limits)", version.getVersion(),
 						currentType.getName() + "V" + version.getVersion() + "Reader");
 			}
-			newBoundReader.addStatement("default -> throw new $T($S + version)", IllegalArgumentException.class,
+			newTypeBoundReader.addStatement("default -> throw new $T($S + version)", IllegalArgumentException.class,
 					"Unsupported serialized version: ")
-					.addCode("$<};\n");
+					.addCode(CodeBlock.of("$<};"));
+			currentVersionClass.addMethod(newTypeBoundReader.build());
 		});
 		newBoundReader.addCode(CodeBlock.of("$<};"));
 		currentVersionClass.addMethod(newBoundReader.build());

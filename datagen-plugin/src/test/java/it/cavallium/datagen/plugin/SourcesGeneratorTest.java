@@ -81,6 +81,33 @@ class SourcesGeneratorTest {
     }
 
 	@Test
+	void shardsVersionedBoundReaderFactoryByBaseType(@TempDir Path temp) throws Exception {
+		Path sources = temp.resolve("sources");
+		generate(boundReaderFactorySchema(3, 4), sources);
+
+		String currentVersionSource = Files.readString(
+				sources.resolve("org/example/current/CurrentVersion.java"));
+		assertTrue(currentVersionSource.contains(
+				"case T0 -> newT0BoundReader(version, limits);"), currentVersionSource);
+		assertTrue(currentVersionSource.contains(
+				"private static BoundReader<T0> newT0BoundReader(int version, DecodeLimits limits)"),
+				currentVersionSource);
+		assertTrue(currentVersionSource.contains("case 0 -> new T0V0Reader(limits);"), currentVersionSource);
+		assertTrue(currentVersionSource.contains("case 3 -> new T0V3Reader(limits);"), currentVersionSource);
+
+		try (var loader = compileGeneratedSources(sources, temp.resolve("classes"))) {
+			Class<?> baseType = loader.loadClass("org.example.BaseType");
+			Class<?> currentVersion = loader.loadClass("org.example.current.CurrentVersion");
+			Object t0 = enumValue(baseType, "T0");
+			for (int version = 0; version < 4; version++) {
+				Object reader = currentVersion.getMethod("newReader", int.class, baseType, DecodeLimits.class)
+						.invoke(null, version, t0, LIMITS);
+				assertTrue(reader.getClass().getSimpleName().equals("T0V" + version + "Reader"));
+			}
+		}
+	}
+
+	@Test
 	@SuppressWarnings("unchecked")
 	void generatesFlattenedOwnedValueModelForCurrentAndHistoricalVersions(@TempDir Path temp) throws Exception {
 		Path sources = temp.resolve("sources");
@@ -4599,6 +4626,21 @@ class SourcesGeneratorTest {
 			yaml.append("    - T").append(index).append('\n');
 		}
 		yaml.append("versions:\n  v1:\n");
+		return yaml.toString();
+	}
+
+	private static String boundReaderFactorySchema(int typeCount, int versionCount) {
+		StringBuilder yaml = new StringBuilder("currentVersion: v" + versionCount + "\nbaseTypesData:\n");
+		for (int index = 0; index < typeCount; index++) {
+			yaml.append("  T").append(index).append(": { data: {} }\n");
+		}
+		yaml.append("versions:\n");
+		for (int version = 1; version <= versionCount; version++) {
+			yaml.append("  v").append(version).append(":\n");
+			if (version > 1) {
+				yaml.append("    previousVersion: v").append(version - 1).append('\n');
+			}
+		}
 		return yaml.toString();
 	}
 
