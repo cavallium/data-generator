@@ -1,5 +1,6 @@
 package it.cavallium.stream;
 
+import it.cavallium.datagen.DecodeBudget;
 import java.io.Closeable;
 import java.io.DataInput;
 import java.nio.ByteBuffer;
@@ -23,6 +24,12 @@ import org.jetbrains.annotations.NotNull;
  * @since   1.0
  */
 public interface SafeDataInput extends Closeable, DataInput {
+
+	/** Returns the mutable budget owned by the reader/input lane that supplied this input. */
+	DecodeBudget decodeBudget();
+
+	/** Returns exact remaining bytes, or {@code -1} only for genuinely forward-only inputs. */
+	long remainingBytesIfKnown();
 
 	/**
 	 * Reads some number of bytes from the contained input stream and

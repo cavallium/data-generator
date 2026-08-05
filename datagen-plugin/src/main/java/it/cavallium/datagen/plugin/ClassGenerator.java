@@ -27,10 +27,9 @@ public abstract class ClassGenerator {
 	protected final DataModel dataModel;
 	protected final String basePackageName;
 	private final Path outPath;
-	protected final boolean deepCheckBeforeCreatingNewEqualInstances;
-	protected final boolean useRecordBuilders;
 	protected final boolean generateOldSerializers;
 	protected final boolean binaryStrings;
+	protected final boolean vectorKernels;
 
 	public ClassGenerator(ClassGeneratorParams params) {
 		this.generatedFilesToDelete = params.generatedFilesToDelete;
@@ -38,10 +37,9 @@ public abstract class ClassGenerator {
 		this.dataModel = params.dataModel;
 		this.basePackageName = params.basePackageName;
 		this.outPath = params.outPath;
-		this.deepCheckBeforeCreatingNewEqualInstances = params.deepCheckBeforeCreatingNewEqualInstances;
-		this.useRecordBuilders = params.useRecordBuilders;
 		this.generateOldSerializers = params.generateOldSerializers;
 		this.binaryStrings = params.binaryStrings;
+		this.vectorKernels = params.vectorKernels;
 	}
 
 	public void run() throws IOException {
@@ -94,8 +92,7 @@ public abstract class ClassGenerator {
 									   DataModel dataModel,
 									   String basePackageName,
 									   Path outPath,
-									   boolean deepCheckBeforeCreatingNewEqualInstances,
-									   boolean useRecordBuilders,
 									   boolean generateOldSerializers,
-									   boolean binaryStrings) {}
+									   boolean binaryStrings,
+									   boolean vectorKernels) {}
 }

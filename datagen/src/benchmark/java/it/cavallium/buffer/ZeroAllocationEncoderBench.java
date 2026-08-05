@@ -1,5 +1,6 @@
 package it.cavallium.buffer;
 
+import it.cavallium.datagen.DecodeLimits;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -89,15 +90,15 @@ public class ZeroAllocationEncoderBench {
             var fullText = String.join(" ", l);
             longText = fullText;
             longTextBytes = longText.getBytes(StandardCharsets.UTF_8);
-            longTextInput = BufDataInput.create(Buf.wrap(longTextBytes));
+            longTextInput = BufDataInput.create(Buf.wrap(longTextBytes), DecodeLimits.unlimited());
             longTextOutput = BufDataOutput.create(longTextBytes.length);
             mediumText = fullText.substring(0, 128);
             mediumTextBytes = mediumText.getBytes(StandardCharsets.UTF_8);
-            mediumTextInput = BufDataInput.create(Buf.wrap(mediumTextBytes));
+            mediumTextInput = BufDataInput.create(Buf.wrap(mediumTextBytes), DecodeLimits.unlimited());
             mediumTextOutput = BufDataOutput.create(mediumTextBytes.length);
             shortText = fullText.substring(0, 15);
             shortTextBytes = shortText.getBytes(StandardCharsets.UTF_8);
-            shortTextInput = BufDataInput.create(Buf.wrap(shortTextBytes));
+            shortTextInput = BufDataInput.create(Buf.wrap(shortTextBytes), DecodeLimits.unlimited());
             shortTextOutput = BufDataOutput.create(shortTextBytes.length);
         }
     }

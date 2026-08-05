@@ -1,5 +1,6 @@
 package it.cavallium.buffer;
 
+import it.cavallium.datagen.DecodeLimits;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -159,13 +160,13 @@ class ZeroAllocationEncoderTest {
         var bdo2 = BufDataOutput.create();
         bdo2.writeMediumText("ciao", StandardCharsets.UTF_8);
         bdo2.writeShortText("ciao2", StandardCharsets.UTF_8);
-        var in = BufDataInput.create(bdo2.asList());
+        var in = BufDataInput.create(bdo2.asList(), DecodeLimits.unlimited());
         Assertions.assertEquals("ciao", in.readMediumText(StandardCharsets.UTF_8));
         Assertions.assertEquals("ciao2", in.readShortText(StandardCharsets.UTF_8));
     }
 
     private void testDecodeString(String s) {
-        var in = BufDataInput.create(Buf.wrap(s.getBytes(StandardCharsets.UTF_8)));
+        var in = BufDataInput.create(Buf.wrap(s.getBytes(StandardCharsets.UTF_8)), DecodeLimits.unlimited());
         var out = INSTANCE.decodeFrom(in, in.available());
         Assertions.assertEquals(s, out);
     }

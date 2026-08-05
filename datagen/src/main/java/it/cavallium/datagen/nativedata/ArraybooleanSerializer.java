@@ -1,28 +1,44 @@
 package it.cavallium.datagen.nativedata;
 
-import it.cavallium.datagen.DataSerializer;
+import it.cavallium.datagen.DataCodec;
+import it.cavallium.datagen.ProjectionReadSupport;
 import it.cavallium.stream.SafeDataInput;
 import it.cavallium.stream.SafeDataOutput;
-import it.unimi.dsi.fastutil.booleans.BooleanList;
 import org.jetbrains.annotations.NotNull;
 
-public class ArraybooleanSerializer implements DataSerializer<BooleanList> {
+public class ArraybooleanSerializer implements DataCodec<boolean[]> {
+
+	private static final boolean[] EMPTY = new boolean[0];
+	public static boolean[] emptyArray() { return EMPTY; }
 
 	@Override
-	public void serialize(SafeDataOutput dataOutput, @NotNull BooleanList data) {
-		dataOutput.writeInt(data.size());
-		for (int i = 0; i < data.size(); i++) {
-			dataOutput.writeBoolean(data.getBoolean(i));
+	public void serialize(SafeDataOutput dataOutput, boolean @NotNull [] data) {
+		dataOutput.writeInt(data.length);
+		for (boolean value : data) {
+			dataOutput.writeBoolean(value);
 		}
 	}
 
 	@NotNull
 	@Override
-	public BooleanList deserialize(SafeDataInput dataInput) {
-		var data = new boolean[dataInput.readInt()];
-		for (int i = 0; i < data.length; i++) {
-			data[i] = dataInput.readBoolean();
+	public boolean[] read(SafeDataInput dataInput) {
+		dataInput.decodeBudget().enterStructure();
+		try {
+			int size = ProjectionReadSupport.readLength(dataInput);
+			if (size == 0) return EMPTY;
+			return ProjectionReadSupport.readBooleanArray(dataInput, size);
+		} finally {
+			dataInput.decodeBudget().exitStructure();
 		}
-		return BooleanList.of(data);
+	}
+
+	@Override
+	public void skip(SafeDataInput dataInput) {
+		dataInput.decodeBudget().enterStructure();
+		try {
+			ProjectionReadSupport.skipFixedArray(dataInput, 1);
+		} finally {
+			dataInput.decodeBudget().exitStructure();
+		}
 	}
 }

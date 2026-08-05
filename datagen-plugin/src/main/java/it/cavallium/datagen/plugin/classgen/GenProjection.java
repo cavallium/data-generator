@@ -10,11 +10,13 @@ import com.palantir.javapoet.TypeName;
 import com.palantir.javapoet.TypeSpec;
 import it.cavallium.buffer.Buf;
 import it.cavallium.buffer.BufDataCursor;
+import it.cavallium.buffer.RandomAccessDataInput;
 import it.cavallium.datagen.DataContextNone;
 import it.cavallium.datagen.DataInitializer;
-import it.cavallium.datagen.DataSkipper;
 import it.cavallium.datagen.DataUpgrader;
 import it.cavallium.datagen.ProjectionReadSupport;
+import it.cavallium.datagen.DecodeLimits;
+import it.cavallium.datagen.MalformedDataException;
 import it.cavallium.datagen.plugin.ClassGenerator;
 import it.cavallium.datagen.plugin.ComputedType;
 import it.cavallium.datagen.plugin.ComputedType.VersionedComputedType;
@@ -27,14 +29,12 @@ import it.cavallium.datagen.plugin.ComputedTypeSuper;
 import it.cavallium.datagen.plugin.CustomTypesConfiguration;
 import it.cavallium.datagen.plugin.DataModel;
 import it.cavallium.datagen.plugin.FieldLocation;
+import it.cavallium.datagen.plugin.GeneratedNameAllocator;
 import it.cavallium.datagen.plugin.JInterfaceLocation;
 import it.cavallium.datagen.plugin.JInterfaceLocation.JInterfaceLocationClassName;
 import it.cavallium.datagen.plugin.JInterfaceLocation.JInterfaceLocationInstanceField;
-import it.cavallium.datagen.plugin.MoveDataConfiguration;
 import it.cavallium.datagen.plugin.NewDataConfiguration;
 import it.cavallium.datagen.plugin.ProjectionConfiguration;
-import it.cavallium.datagen.plugin.RemoveDataConfiguration;
-import it.cavallium.datagen.plugin.TransformationConfiguration;
 import it.cavallium.datagen.plugin.UpgradeDataConfiguration;
 import it.cavallium.stream.SafeDataInput;
 import java.util.ArrayDeque;
@@ -75,9 +75,9 @@ public final class GenProjection extends ClassGenerator {
 		private final ClassName sinkClassName;
 		private final ClassName readerClassName;
 		private final List<ProjectionField> fields;
+		private final ReadPlanCompiler readPlanCompiler;
 		private final Map<SkipperKey, String> skipperMethods = new LinkedHashMap<>();
 		private final Deque<Map.Entry<SkipperKey, ComputedType>> pendingSkippers = new ArrayDeque<>();
-		private final Map<String, String> customSkipperFields = new LinkedHashMap<>();
 		private final IdentityHashMap<Object, TransformSupport> transformSupports = new IdentityHashMap<>();
 		private int nextSkipperId;
 		private int nextTransformId;
@@ -106,6 +106,7 @@ public final class GenProjection extends ClassGenerator {
 					.addModifiers(Modifier.PUBLIC, Modifier.FINAL)
 					.addJavadoc("Reads the configured fields of {@code $L} without materializing the complete payload.\n",
 							sourceType);
+			this.readPlanCompiler = new ReadPlanCompiler(dataModel, this::configurationError);
 
 			var resultFields = new ArrayList<ProjectionField>();
 			int index = 0;
@@ -155,11 +156,13 @@ public final class GenProjection extends ClassGenerator {
 		private void generateSink() {
 			var accept = MethodSpec.methodBuilder("accept")
 					.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT);
+			var names = new GeneratedNameAllocator(fields.stream().map(ProjectionField::name).toList(),
+					List.of("version", "input", "source", "offset", "length", "sink"));
 			for (ProjectionField field : fields) {
 				if (field.isNullable()) {
-					accept.addParameter(TypeName.BOOLEAN, field.name() + "Present");
+					accept.addParameter(TypeName.BOOLEAN, names.allocate("sinkPresent$" + field.index()));
 				}
-				accept.addParameter(field.valueTypeName(), field.name());
+				accept.addParameter(field.valueTypeName(), names.allocate("sinkValue$" + field.index()));
 			}
 			classBuilder.addType(TypeSpec.interfaceBuilder("Sink")
 					.addModifiers(Modifier.PUBLIC)
@@ -175,12 +178,17 @@ public final class GenProjection extends ClassGenerator {
 					.addParameter(TypeName.INT, "version")
 					.addParameter(SafeDataInput.class, "input")
 					.addStatement("$T.requireNonNull(input, $S)", Objects.class, "input")
+					.addStatement("input.decodeBudget().enterRoot()")
+					.beginControlFlow("try")
 					.beginControlFlow("return switch (version)");
 			for (VersionPlan plan : plans) {
 				read.addStatement("case $L -> readV$L(input)", plan.inputVersion, plan.inputVersion);
 			}
 			read.addStatement("default -> throw unsupportedVersion(version)")
-					.addCode("$<};\n");
+					.addCode("$<};\n")
+					.nextControlFlow("finally")
+					.addStatement("input.decodeBudget().exitRoot()")
+					.endControlFlow();
 			classBuilder.addMethod(read.build());
 
 			var readInto = MethodSpec.methodBuilder("readInto")
@@ -190,18 +198,25 @@ public final class GenProjection extends ClassGenerator {
 					.addParameter(sinkClassName, "sink")
 					.addStatement("$T.requireNonNull(input, $S)", Objects.class, "input")
 					.addStatement("$T.requireNonNull(sink, $S)", Objects.class, "sink")
+					.addStatement("input.decodeBudget().enterRoot()")
+					.beginControlFlow("try")
 					.beginControlFlow("switch (version)");
 			for (VersionPlan plan : plans) {
 				readInto.addStatement("case $L -> readIntoV$L(input, sink)", plan.inputVersion, plan.inputVersion);
 			}
 			readInto.addStatement("default -> throw unsupportedVersion(version)")
+					.endControlFlow()
+					.nextControlFlow("finally")
+					.addStatement("input.decodeBudget().exitRoot()")
 					.endControlFlow();
 			classBuilder.addMethod(readInto.build());
 
 			classBuilder.addMethod(MethodSpec.methodBuilder("newReader")
 					.addModifiers(Modifier.PUBLIC, Modifier.STATIC)
 					.returns(readerClassName)
-					.addStatement("return new $T()", readerClassName)
+					.addParameter(DecodeLimits.class, "limits")
+					.addStatement("return new $T($T.requireNonNull(limits, $S))", readerClassName,
+							Objects.class, "limits")
 					.build());
 
 			classBuilder.addMethod(MethodSpec.methodBuilder("unsupportedVersion")
@@ -236,7 +251,11 @@ public final class GenProjection extends ClassGenerator {
 					.addModifiers(Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL)
 					.addJavadoc("Reusable thread-confined reader. It never retains a bound source after an operation returns.\n")
 					.addField(FieldSpec.builder(BufDataCursor.class, "cursor", Modifier.PRIVATE, Modifier.FINAL)
-							.initializer("new $T()", BufDataCursor.class)
+							.build())
+					.addMethod(MethodSpec.constructorBuilder()
+							.addModifiers(Modifier.PRIVATE)
+							.addParameter(DecodeLimits.class, "limits")
+							.addStatement("this.cursor = new $T(limits)", BufDataCursor.class)
 							.build());
 			for (ProjectionField field : fields) {
 				reader.addField(FieldSpec.builder(field.valueTypeName(), readerValueName(field), Modifier.PRIVATE).build());
@@ -302,11 +321,18 @@ public final class GenProjection extends ClassGenerator {
 
 		private void emitReaderBinding(MethodSpec.Builder method) {
 			method.addStatement("cursor.bind(source, offset, length)")
+					.addStatement("cursor.decodeBudget().enterRoot()")
 					.addStatement("boolean success = false")
 					.beginControlFlow("try")
 					.addStatement("readValues(version, cursor)")
+					.addStatement("int trailing = cursor.remainingIncludingClosed()")
+					.beginControlFlow("if (trailing != 0)")
+					.addStatement("throw new $T($S + trailing)", MalformedDataException.class,
+							"Trailing bytes: ")
+					.endControlFlow()
 					.addStatement("success = true")
 					.nextControlFlow("finally")
+					.addStatement("cursor.decodeBudget().exitRoot()")
 					.addStatement("cursor.unbind()")
 					.beginControlFlow("if (!success)")
 					.addStatement("clearValues()")
@@ -751,7 +777,10 @@ public final class GenProjection extends ClassGenerator {
 				}
 
 				private void emitReads(MethodSpec.Builder method) {
-					emitRecord(method, requireBaseType(inputVersion, configuration.sourceType), root, false);
+					// A projection materializes only selected fields, but it still consumes and validates the
+					// complete root value. This keeps stream inputs positioned at the next value and lets the
+					// reusable bounded reader distinguish a truncated record from true trailing bytes.
+					emitRecord(method, requireBaseType(inputVersion, configuration.sourceType), root, true);
 					if (!leaves.isEmpty()) method.addCode("\n");
 				}
 
@@ -759,6 +788,8 @@ public final class GenProjection extends ClassGenerator {
 						ComputedTypeBase record,
 						ReadNode node,
 						boolean consumeToEnd) {
+					method.addStatement("input.decodeBudget().enterStructure()")
+							.beginControlFlow("try");
 					Set<String> remaining = new LinkedHashSet<>(node.children.keySet());
 					for (var field : record.getData().entrySet()) {
 						ReadNode child = node.children.get(field.getKey());
@@ -775,6 +806,9 @@ public final class GenProjection extends ClassGenerator {
 					if (!remaining.isEmpty()) {
 						throw configurationError("fields not found while reading " + record.getName() + ": " + remaining);
 					}
+					method.nextControlFlow("finally")
+							.addStatement("input.decodeBudget().exitStructure()")
+							.endControlFlow();
 				}
 
 				private void emitField(MethodSpec.Builder method,
@@ -784,14 +818,43 @@ public final class GenProjection extends ClassGenerator {
 					if (node.leaf != null) {
 						ReadLeaf leaf = node.leaf;
 						if (declaredType instanceof ComputedTypeNullable nullable) {
-							String present = "present" + nextPresenceId++;
-							method.addStatement("boolean $N = input.readBoolean()", present)
-									.addCode(node.presenceName == null
+							method.addStatement("input.decodeBudget().enterStructure()")
+									.beginControlFlow("try");
+							int presenceId = nextPresenceId++;
+							String present = "present" + presenceId;
+							String first = "first" + presenceId;
+							NullableWireEmitter.emitPresence(method, nullable, CodeBlock.of("input"), present, first);
+							method.addCode(node.presenceName == null
 											? CodeBlock.builder().build()
-											: CodeBlock.of("$N = $N;\n", node.presenceName, present))
-									.beginControlFlow("if ($N)", present)
-									.addStatement("$N = $L", leaf.valueName(), readValue(nullable.getBase()))
-									.addStatement("$N = true", leaf.presenceName())
+											: CodeBlock.of("$N = $N;\n", node.presenceName, present));
+							if (nullable.getBase() instanceof ComputedTypeCustom custom
+									&& custom.getFixedSize() != null) {
+								String randomInput = "nullableInput" + presenceId;
+								String valueStart = "nullableStart" + presenceId;
+								TypeName valueType = nullable.getBase().getJTypeName(basePackageName);
+								method.beginControlFlow("if ($N)", present)
+										.beginControlFlow("if (input instanceof $T $N)", RandomAccessDataInput.class,
+												randomInput)
+										.addStatement("final int $N = $N.reserve($L)", valueStart, randomInput,
+												custom.getFixedSize())
+										.addStatement("$N = ($T) $L.readReserved($N, $N, $L)", leaf.valueName(),
+												valueType, customSession(custom), randomInput, valueStart, custom.getFixedSize())
+										.nextControlFlow("else")
+										.addStatement("$N = ($T) $L.read(input)", leaf.valueName(), valueType,
+												customSession(custom))
+										.endControlFlow()
+										.addStatement("$N = true", leaf.presenceName())
+										.endControlFlow();
+							} else {
+								CodeBlock nullableValue = NullableWireEmitter.valueExpression(nullable, binaryStrings,
+										CodeBlock.of("input"), first, readValue(nullable.getBase()));
+								method.beginControlFlow("if ($N)", present)
+										.addStatement("$N = $L", leaf.valueName(), nullableValue)
+										.addStatement("$N = true", leaf.presenceName())
+										.endControlFlow();
+							}
+							method.nextControlFlow("finally")
+									.addStatement("input.decodeBudget().exitStructure()")
 									.endControlFlow();
 						} else {
 							if (node.presenceName != null) method.addStatement("$N = true", node.presenceName);
@@ -805,14 +868,21 @@ public final class GenProjection extends ClassGenerator {
 
 					if (node.children.isEmpty()) {
 						if (declaredType instanceof ComputedTypeNullable nullable) {
-							String present = "present" + nextPresenceId++;
-							method.addStatement("boolean $N = input.readBoolean()", present)
-									.addStatement("$N = $N", node.presenceName, present);
+							method.addStatement("input.decodeBudget().enterStructure()")
+									.beginControlFlow("try");
+							int presenceId = nextPresenceId++;
+							String present = "present" + presenceId;
+							String first = "first" + presenceId;
 							if (consumeToEnd) {
-								method.beginControlFlow("if ($N)", present)
-										.addStatement("$N(input)", ensureSkipper(nullable.getBase()))
-										.endControlFlow();
+								NullableWireEmitter.emitPresenceOnly(method, nullable, CodeBlock.of("input"), present,
+										first, CodeBlock.of("$N(input)", ensureSkipper(nullable.getBase())));
+							} else {
+								NullableWireEmitter.emitPresence(method, nullable, CodeBlock.of("input"), present, first);
 							}
+							method.addStatement("$N = $N", node.presenceName, present);
+							method.nextControlFlow("finally")
+									.addStatement("input.decodeBudget().exitStructure()")
+									.endControlFlow();
 						} else {
 							method.addStatement("$N = true", node.presenceName);
 							if (consumeToEnd) method.addStatement("$N(input)", ensureSkipper(declaredType));
@@ -822,9 +892,13 @@ public final class GenProjection extends ClassGenerator {
 
 					ComputedType nested = declaredType;
 					if (nested instanceof ComputedTypeNullable nullable) {
-						String present = "present" + nextPresenceId++;
-						method.addStatement("boolean $N = input.readBoolean()", present)
-								.addCode(node.presenceName == null
+						method.addStatement("input.decodeBudget().enterStructure()")
+								.beginControlFlow("try");
+						int presenceId = nextPresenceId++;
+						String present = "present" + presenceId;
+						String first = "first" + presenceId;
+						NullableWireEmitter.emitPresence(method, nullable, CodeBlock.of("input"), present, first);
+						method.addCode(node.presenceName == null
 										? CodeBlock.builder().build()
 										: CodeBlock.of("$N = $N;\n", node.presenceName, present))
 								.beginControlFlow("if ($N)", present);
@@ -834,6 +908,9 @@ public final class GenProjection extends ClassGenerator {
 						}
 						emitRecord(method, nestedRecord, node, consumeToEnd);
 						method.endControlFlow();
+						method.nextControlFlow("finally")
+								.addStatement("input.decodeBudget().exitStructure()")
+								.endControlFlow();
 					} else if (nested instanceof ComputedTypeBase nestedRecord) {
 						if (node.presenceName != null) method.addStatement("$N = true", node.presenceName);
 						emitRecord(method, nestedRecord, node, consumeToEnd);
@@ -848,8 +925,12 @@ public final class GenProjection extends ClassGenerator {
 			if (type instanceof ComputedTypeNative nativeType && nativeType.isPrimitive()) {
 				return CodeBlock.of("input.read$N()", capitalize(nativeType.getName()));
 			}
+			if (type instanceof ComputedTypeCustom custom) {
+				return CodeBlock.of("($T) $L.read(input)", type.getJTypeName(basePackageName),
+						customSession(custom));
+			}
 			FieldLocation serializer = type.getJSerializerInstance(basePackageName);
-			return CodeBlock.of("($T) $T.$N.deserialize(input)", type.getJTypeName(basePackageName),
+			return CodeBlock.of("($T) $T.$N.read(input)", type.getJTypeName(basePackageName),
 					serializer.className(), serializer.fieldName());
 		}
 
@@ -872,7 +953,20 @@ public final class GenProjection extends ClassGenerator {
 				var method = MethodSpec.methodBuilder(name)
 						.addModifiers(Modifier.PRIVATE, Modifier.STATIC)
 						.addParameter(SafeDataInput.class, "input");
+				boolean structural = type instanceof ComputedTypeNullable
+						|| type instanceof ComputedTypeArray
+						|| type instanceof ComputedTypeBase
+						|| type instanceof ComputedTypeSuper;
+				if (structural) {
+					method.addStatement("input.decodeBudget().enterStructure()")
+							.beginControlFlow("try");
+				}
 				emitSkipBody(method, type);
+				if (structural) {
+					method.nextControlFlow("finally")
+							.addStatement("input.decodeBudget().exitStructure()")
+							.endControlFlow();
+				}
 				classBuilder.addMethod(method.build());
 			}
 		}
@@ -891,35 +985,29 @@ public final class GenProjection extends ClassGenerator {
 				if (fixedSize >= 0) {
 					method.addStatement("$T.skipBytes(input, $L)", ProjectionReadSupport.class, fixedSize);
 				} else {
-					method.addStatement("$T.skipBytes(input, input.readInt())", ProjectionReadSupport.class);
+					method.addStatement("$T.skipPayload(input, $T.readLength(input))", ProjectionReadSupport.class,
+							ProjectionReadSupport.class);
 				}
 				return;
 			}
 			if (type instanceof ComputedTypeCustom custom) {
-				CustomTypesConfiguration customConfiguration = dataModel.getCustomTypes().get(custom.getName());
-				if (customConfiguration == null || customConfiguration.skipper == null || customConfiguration.skipper.isBlank()) {
-					throw configurationError("crossing unselected custom type " + custom.getName()
-							+ " requires customTypesData." + custom.getName() + ".skipper");
+				if (custom.getFixedSize() != null) {
+					method.addStatement("$T.skipBytes(input, $L)", ProjectionReadSupport.class,
+							custom.getFixedSize());
+				} else {
+					method.addStatement("$L.skip(input)", customSession(custom));
 				}
-				String fieldName = customSkipperFields.computeIfAbsent(custom.getName(), ignored -> {
-					String generatedName = "SKIPPER_" + customSkipperFields.size();
-					classBuilder.addField(FieldSpec.builder(DataSkipper.class, generatedName,
-							Modifier.PRIVATE, Modifier.STATIC, Modifier.FINAL)
-							.initializer("new $T()", ClassName.bestGuess(customConfiguration.skipper))
-							.build());
-					return generatedName;
-				});
-				method.addStatement("$N.skip(input)", fieldName);
 				return;
 			}
 			if (type instanceof ComputedTypeNullable nullable) {
-				method.beginControlFlow("if (input.readBoolean())")
-						.addStatement("$N(input)", ensureSkipper(nullable.getBase()))
-						.endControlFlow();
+				NullableWireEmitter.emitSkip(method, nullable, CodeBlock.of("input"), "present", "first",
+						CodeBlock.of("$N(input)", ensureSkipper(nullable.getBase())));
 				return;
 			}
 			if (type instanceof ComputedTypeArray array) {
 				method.addStatement("int size = $T.readLength(input)", ProjectionReadSupport.class)
+						.addStatement("$T.prepareArrayAllocation(input, size, $L)", ProjectionReadSupport.class,
+								readPlanCompiler.minimumSerializedSize(array.getBase()))
 						.beginControlFlow("for (int i = 0; i < size; i++)")
 						.addStatement("$N(input)", ensureSkipper(array.getBase()))
 						.endControlFlow();
@@ -937,11 +1025,18 @@ public final class GenProjection extends ClassGenerator {
 				for (int i = 0; i < union.subTypes().size(); i++) {
 					method.addStatement("case $L -> $N(input)", i, ensureSkipper(union.subTypes().get(i)));
 				}
-				method.addStatement("default -> throw new $T(id)", IndexOutOfBoundsException.class)
+				method.addStatement("default -> throw new $T($S + id)", MalformedDataException.class,
+						"Invalid union discriminator: ")
 						.endControlFlow();
 				return;
 			}
 			throw new IllegalStateException("Unsupported projection skipper type: " + type);
+		}
+
+		private CodeBlock customSession(ComputedTypeCustom custom) {
+			var codec = custom.getJSerializerInstance(basePackageName);
+			return CodeBlock.of("input.decodeBudget().codecReadState().session($S, $T.$N)", custom.getName(),
+					codec.className(), codec.fieldName());
 		}
 
 		private TransformSupport createInitializerSupport(NewDataConfiguration initializer,
@@ -991,26 +1086,8 @@ public final class GenProjection extends ClassGenerator {
 		}
 
 		private FieldOrigin traceFieldOrigin(int targetVersion, String ownerName, String targetField) {
-			String name = targetField;
-			NewDataConfiguration initializer = null;
-			Deque<UpgradeDataConfiguration> upgrades = new ArrayDeque<>();
-			List<TransformationConfiguration> changes = dataModel.getChanges(targetVersion, ownerName);
-			for (int i = changes.size() - 1; i >= 0; i--) {
-				TransformationConfiguration change = changes.get(i);
-				if (change instanceof MoveDataConfiguration move && name.equals(move.to)) {
-					name = move.from;
-				} else if (change instanceof UpgradeDataConfiguration upgrade && name.equals(upgrade.from)) {
-					upgrades.addFirst(upgrade);
-				} else if (change instanceof NewDataConfiguration added && name.equals(added.to)) {
-					initializer = added;
-					name = null;
-					break;
-				} else if (change instanceof RemoveDataConfiguration removed && name.equals(removed.from)) {
-					throw configurationError("field " + ownerName + "." + targetField
-							+ " cannot originate from removed field " + removed.from);
-				}
-			}
-			return new FieldOrigin(name, initializer, List.copyOf(upgrades));
+			var origin = readPlanCompiler.traceFieldOrigin(targetVersion, ownerName, targetField);
+			return new FieldOrigin(origin.previousName(), origin.initializer(), origin.upgrades());
 		}
 
 		private PathInfo resolvePath(int logicalVersion, List<String> path) {
@@ -1067,15 +1144,11 @@ public final class GenProjection extends ClassGenerator {
 		}
 
 		private ComputedTypeBase requireBaseType(int logicalVersion, String name) {
-			ComputedType type = typeNamed(logicalVersion, name);
-			if (type instanceof ComputedTypeBase base) return base;
-			throw configurationError(name + " is not a base record in version " + logicalVersion);
+			return readPlanCompiler.requireBase(logicalVersion, name);
 		}
 
 		private ComputedType typeNamed(int logicalVersion, String name) {
-			ComputedType type = dataModel.getComputedTypes(dataModel.getVersion(logicalVersion)).get(name);
-			if (type == null) throw configurationError("unknown type " + name + " in version " + logicalVersion);
-			return type;
+			return readPlanCompiler.typeNamed(logicalVersion, name);
 		}
 
 		private ComputedType unwrap(ComputedType type) {

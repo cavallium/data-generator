@@ -1,5 +1,6 @@
 package it.cavallium.buffer;
 
+import it.cavallium.datagen.DecodeLimits;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -14,7 +15,7 @@ class BufDataOutputTest {
         bdo.writeInt(5);
         bdo.writeMediumText("ciao", StandardCharsets.UTF_8);
         var buf2 = bdo.toList();
-        var bdi = BufDataInput.create(buf2);
+        var bdi = BufDataInput.create(buf2, DecodeLimits.unlimited());
         bdi.skipNBytes(Integer.BYTES);
         Assertions.assertEquals("ciao", bdi.readMediumText(StandardCharsets.UTF_8));
     }

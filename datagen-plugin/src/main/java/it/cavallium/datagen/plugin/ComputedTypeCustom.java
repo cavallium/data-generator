@@ -11,19 +11,22 @@ public final class ComputedTypeCustom implements ComputedType {
 	private final String type;
 	private final ComputedVersion latestVersion;
 	private final String javaClass;
-	private final String serializer;
+	private final String codec;
+	private final Integer fixedSize;
 	private final ComputedTypeSupplier computedTypeSupplier;
 	private final TypeName typeName;
 
 	public ComputedTypeCustom(String type,
 			String javaClass,
-			String serializer,
+			String codec,
+			Integer fixedSize,
 			ComputedTypeSupplier computedTypeSupplier,
 			ComputedVersion latestVersion) {
 		this.type = type;
 		this.latestVersion = latestVersion;
 		this.javaClass = javaClass;
-		this.serializer = serializer;
+		this.codec = codec;
+		this.fixedSize = fixedSize;
 		this.computedTypeSupplier = computedTypeSupplier;
 		{
 			int indexOfGeneric;
@@ -51,8 +54,12 @@ public final class ComputedTypeCustom implements ComputedType {
 		return javaClass;
 	}
 
-	public String getSerializer() {
-		return serializer;
+	public String getCodec() {
+		return codec;
+	}
+
+	public Integer getFixedSize() {
+		return fixedSize;
 	}
 
 	@Override
@@ -72,14 +79,15 @@ public final class ComputedTypeCustom implements ComputedType {
 		if (!Objects.equals(javaClass, that.javaClass)) {
 			return false;
 		}
-		return Objects.equals(serializer, that.serializer);
+		return Objects.equals(codec, that.codec) && Objects.equals(fixedSize, that.fixedSize);
 	}
 
 	@Override
 	public int hashCode() {
 		int result = type != null ? type.hashCode() : 0;
 		result = 31 * result + (javaClass != null ? javaClass.hashCode() : 0);
-		result = 31 * result + (serializer != null ? serializer.hashCode() : 0);
+		result = 31 * result + (codec != null ? codec.hashCode() : 0);
+		result = 31 * result + (fixedSize != null ? fixedSize.hashCode() : 0);
 		return result;
 	}
 
@@ -100,7 +108,7 @@ public final class ComputedTypeCustom implements ComputedType {
 
 	@Override
 	public TypeName getJSerializerName(String basePackageName) {
-		return ClassName.bestGuess(serializer);
+		return ClassName.bestGuess(codec);
 	}
 
 	@Override

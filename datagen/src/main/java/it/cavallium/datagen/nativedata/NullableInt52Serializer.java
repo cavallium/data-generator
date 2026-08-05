@@ -1,11 +1,12 @@
 package it.cavallium.datagen.nativedata;
 
-import it.cavallium.datagen.DataSerializer;
+import it.cavallium.datagen.DataCodec;
+import it.cavallium.datagen.ProjectionReadSupport;
 import it.cavallium.stream.SafeDataInput;
 import it.cavallium.stream.SafeDataOutput;
 import org.jetbrains.annotations.NotNull;
 
-public class NullableInt52Serializer implements DataSerializer<NullableInt52> {
+public class NullableInt52Serializer implements DataCodec<NullableInt52> {
 
 	public static final NullableInt52Serializer INSTANCE = new NullableInt52Serializer();
 
@@ -21,16 +22,31 @@ public class NullableInt52Serializer implements DataSerializer<NullableInt52> {
 
 	@NotNull
 	@Override
-	public NullableInt52 deserialize(SafeDataInput dataInput) {
-		// 0b10000000 = empty, 0b00000000 = with value
-		byte firstByteAndIsPresent = dataInput.readByte();
-		if ((firstByteAndIsPresent & 0b10000000) != 0) {
-			return NullableInt52.empty();
-		} else {
-			byte[] secondPart = new byte[7];
-			secondPart[0] = (byte) (firstByteAndIsPresent & 0b00001111);
-			dataInput.readFully(secondPart, 1, secondPart.length - 1);
-			return NullableInt52.of(Int52.fromLong(Int52Serializer.fromByteArray(secondPart)));
+	public NullableInt52 read(SafeDataInput dataInput) {
+		dataInput.decodeBudget().enterStructure();
+		try {
+			// 0b10000000 = empty, 0b00000000 = with value
+			byte firstByteAndIsPresent = dataInput.readByte();
+			if ((firstByteAndIsPresent & 0b10000000) != 0) {
+				return NullableInt52.empty();
+			} else {
+				return NullableInt52.of(Int52Serializer.readValue(firstByteAndIsPresent, dataInput));
+			}
+		} finally {
+			dataInput.decodeBudget().exitStructure();
+		}
+	}
+
+	@Override
+	public void skip(SafeDataInput dataInput) {
+		dataInput.decodeBudget().enterStructure();
+		try {
+			int first = dataInput.readUnsignedByte();
+			if ((first & 0x80) == 0) {
+				ProjectionReadSupport.skipBytes(dataInput, 6);
+			}
+		} finally {
+			dataInput.decodeBudget().exitStructure();
 		}
 	}
 }

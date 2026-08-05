@@ -1,5 +1,6 @@
 package it.cavallium.buffer;
 
+import it.cavallium.datagen.DecodeLimits;
 import java.util.concurrent.TimeUnit;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
@@ -72,7 +73,7 @@ public class ProjectionReaderBench {
 
 	private static final class Reader {
 
-		private final BufDataCursor cursor = new BufDataCursor();
+		private final BufDataCursor cursor = new BufDataCursor(DecodeLimits.unlimited());
 		private long messageId;
 		private long senderId;
 		private long chatId;

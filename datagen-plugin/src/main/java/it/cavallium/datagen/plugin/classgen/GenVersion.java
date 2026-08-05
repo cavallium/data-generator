@@ -9,7 +9,8 @@ import com.palantir.javapoet.TypeName;
 import com.palantir.javapoet.TypeSpec;
 import com.palantir.javapoet.TypeSpec.Builder;
 import com.palantir.javapoet.TypeVariableName;
-import it.cavallium.datagen.DataSerializer;
+import it.cavallium.datagen.DataCodec;
+import it.cavallium.datagen.FixedDataCodec;
 import it.cavallium.datagen.DataUpgraderSimple;
 import it.cavallium.datagen.plugin.ClassGenerator;
 import it.cavallium.datagen.plugin.ComputedType.VersionedComputedType;
@@ -55,7 +56,7 @@ public class GenVersion extends ClassGenerator {
 
 		generateUpgraderInstance(version, classBuilder);
 
-		generateGetSerializer(version, classBuilder);
+		generateGetCodec(version, classBuilder);
 
 		generateGetVersion(version, classBuilder);
 
@@ -141,6 +142,30 @@ public class GenVersion extends ClassGenerator {
 
 	private void generateSerializerInstance(ComputedVersion version, Builder classBuilder) {
 		var versionClassType = ClassName.get(version.getPackage(basePackageName), "Version");
+		boolean hasFixedCustom = version.isCurrent() && dataModel.getComputedTypes(version)
+				.values().stream()
+				.anyMatch(type -> type instanceof ComputedTypeCustom custom && custom.getFixedSize() != null);
+		if (hasFixedCustom) {
+			classBuilder.addMethod(MethodSpec.methodBuilder("verifyFixedCodec")
+					.addModifiers(Modifier.PRIVATE, Modifier.STATIC)
+					.addTypeVariable(TypeVariableName.get("T"))
+					.returns(ParameterizedTypeName.get(ClassName.get(DataCodec.class), TypeVariableName.get("T")))
+					.addParameter(ParameterizedTypeName.get(ClassName.get(DataCodec.class), TypeVariableName.get("T")),
+							"codec")
+					.addParameter(TypeName.INT, "configuredSize")
+					.addParameter(String.class, "typeName")
+					.beginControlFlow("if (!(codec instanceof $T<?> fixedCodec))", FixedDataCodec.class)
+					.addStatement("throw new $T($S + typeName + $S)", IllegalStateException.class,
+							"Custom type ", " declares fixedSize but its codec does not implement FixedDataCodec")
+					.endControlFlow()
+					.beginControlFlow("if (fixedCodec.fixedSize() != configuredSize)")
+					.addStatement("throw new $T($S + typeName + $S + configuredSize + $S + fixedCodec.fixedSize())",
+							IllegalStateException.class, "Custom type ", " configured fixedSize ",
+							" but codec reports ")
+					.endControlFlow()
+					.addStatement("return codec")
+					.build());
+		}
 		dataModel.getComputedTypes(version).forEach((typeName, type) -> {
 			boolean shouldCreateInstanceField;
 			// Check if the type matches the current version
@@ -163,10 +188,15 @@ public class GenVersion extends ClassGenerator {
 
 			var serializerClassName = type.getJSerializerName(basePackageName);
 
-			var fieldBuilder = FieldSpec.builder(ParameterizedTypeName.get(ClassName.get(DataSerializer.class),
+			var fieldBuilder = FieldSpec.builder(ParameterizedTypeName.get(ClassName.get(DataCodec.class),
 					type.getJTypeNameGeneric(basePackageName)
 			), serializerFieldLocation.fieldName(), Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL);
-			fieldBuilder.initializer("new $T()", serializerClassName);
+			if (type instanceof ComputedTypeCustom custom && custom.getFixedSize() != null) {
+				fieldBuilder.initializer("verifyFixedCodec(new $T(), $L, $S)", serializerClassName,
+						custom.getFixedSize(), custom.getName());
+			} else {
+				fieldBuilder.initializer("new $T()", serializerClassName);
+			}
 			classBuilder.addField(fieldBuilder.build());
 		});
 	}
@@ -204,8 +234,8 @@ public class GenVersion extends ClassGenerator {
 		});
 	}
 
-	private void generateGetSerializer(ComputedVersion version, Builder classBuilder) {
-		var methodBuilder = MethodSpec.methodBuilder("getSerializer");
+	private void generateGetCodec(ComputedVersion version, Builder classBuilder) {
+		var methodBuilder = MethodSpec.methodBuilder("getCodec");
 
 		methodBuilder.addModifiers(Modifier.PUBLIC);
 		methodBuilder.addAnnotation(Override.class);
@@ -216,7 +246,7 @@ public class GenVersion extends ClassGenerator {
 		var baseTypeClassName = ClassName.get(dataModel.getRootPackage(basePackageName), "BaseType");
 		methodBuilder.addParameter(baseTypeClassName, "type");
 
-		var returnType = ParameterizedTypeName.get(ClassName.get(DataSerializer.class), TypeVariableName.get("T"));
+		var returnType = ParameterizedTypeName.get(ClassName.get(DataCodec.class), TypeVariableName.get("T"));
 		methodBuilder.returns(returnType);
 
 		methodBuilder.beginControlFlow("return ($T) switch (type)", returnType);

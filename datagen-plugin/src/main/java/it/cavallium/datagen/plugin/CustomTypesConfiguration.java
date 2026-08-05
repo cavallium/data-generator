@@ -5,9 +5,10 @@ import java.util.Objects;
 public final class CustomTypesConfiguration {
 
 	private String javaClass;
-	public String serializer;
-	/** Optional {@code DataSkipper} implementation used when projections cross this type. */
-	public String skipper;
+	/** The single {@code DataCodec} responsible for serialization, reading, and skipping. */
+	public String codec;
+	/** Optional exact serialized width. Variable-width codecs leave this unset. */
+	public Integer fixedSize;
 
 	public void setJavaClass(String javaClass) {
 		this.javaClass = javaClass;
@@ -26,24 +27,24 @@ public final class CustomTypesConfiguration {
 			return false;
 		}
 		CustomTypesConfiguration that = (CustomTypesConfiguration) o;
-		return Objects.equals(javaClass, that.javaClass) && Objects.equals(serializer, that.serializer)
-				&& Objects.equals(skipper, that.skipper);
+		return Objects.equals(javaClass, that.javaClass) && Objects.equals(codec, that.codec)
+				&& Objects.equals(fixedSize, that.fixedSize);
 	}
 
 	@Override
 	public int hashCode() {
 		int hash = 0;
 		hash += ConfigUtils.hashCode(javaClass);
-		hash += ConfigUtils.hashCode(serializer);
-		hash += ConfigUtils.hashCode(skipper);
+		hash += ConfigUtils.hashCode(codec);
+		hash += ConfigUtils.hashCode(fixedSize);
 		return hash;
 	}
 
 	public CustomTypesConfiguration copy() {
 		var c = new CustomTypesConfiguration();
 		c.javaClass = this.javaClass;
-		c.serializer = this.serializer;
-		c.skipper = this.skipper;
+		c.codec = this.codec;
+		c.fixedSize = this.fixedSize;
 		return c;
 	}
 }

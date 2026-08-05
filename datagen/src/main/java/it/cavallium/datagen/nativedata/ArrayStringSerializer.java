@@ -1,18 +1,21 @@
 package it.cavallium.datagen.nativedata;
 
-import it.cavallium.datagen.DataSerializer;
+import it.cavallium.datagen.DataCodec;
+import it.cavallium.datagen.ProjectionReadSupport;
 import it.cavallium.stream.SafeDataInput;
 import it.cavallium.stream.SafeDataOutput;
 
 import java.nio.charset.StandardCharsets;
-import java.util.List;
 import org.jetbrains.annotations.NotNull;
 
-public class ArrayStringSerializer implements DataSerializer<List<String>> {
+public class ArrayStringSerializer implements DataCodec<String[]> {
+
+	private static final String[] EMPTY = new String[0];
+	public static String[] emptyArray() { return EMPTY; }
 
 	@Override
-	public void serialize(SafeDataOutput dataOutput, @NotNull List<String> data) {
-		dataOutput.writeInt(data.size());
+	public void serialize(SafeDataOutput dataOutput, String @NotNull [] data) {
+		dataOutput.writeInt(data.length);
 		for (String item : data) {
 			dataOutput.writeShortText(item, StandardCharsets.UTF_8);
 		}
@@ -20,11 +23,33 @@ public class ArrayStringSerializer implements DataSerializer<List<String>> {
 
 	@NotNull
 	@Override
-	public List<String> deserialize(SafeDataInput dataInput) {
-		var data = new String[dataInput.readInt()];
-		for (int i = 0; i < data.length; i++) {
-			data[i] = dataInput.readShortText(StandardCharsets.UTF_8);
+	public String[] read(SafeDataInput dataInput) {
+		dataInput.decodeBudget().enterStructure();
+		try {
+			int size = ProjectionReadSupport.readLength(dataInput);
+			ProjectionReadSupport.prepareArrayAllocation(dataInput, size, Short.BYTES);
+			if (size == 0) return EMPTY;
+			var data = new String[size];
+			for (int i = 0; i < data.length; i++) {
+				data[i] = dataInput.readShortText(StandardCharsets.UTF_8);
+			}
+			return data;
+		} finally {
+			dataInput.decodeBudget().exitStructure();
 		}
-		return List.of(data);
+	}
+
+	@Override
+	public void skip(SafeDataInput dataInput) {
+		dataInput.decodeBudget().enterStructure();
+		try {
+			int size = ProjectionReadSupport.readLength(dataInput);
+			ProjectionReadSupport.prepareArrayAllocation(dataInput, size, Short.BYTES);
+			for (int i = 0; i < size; i++) {
+				ProjectionReadSupport.skipPayload(dataInput, dataInput.readUnsignedShort());
+			}
+		} finally {
+			dataInput.decodeBudget().exitStructure();
+		}
 	}
 }

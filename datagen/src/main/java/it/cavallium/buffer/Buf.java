@@ -124,6 +124,20 @@ public interface Buf extends ByteList, RandomAccess {
 	byte[] getBackingByteArray();
 
 	/**
+	 * Returns the backing heap array without copying, or {@code null} when this
+	 * buffer is not heap-backed. Implementations with non-heap storage should
+	 * override this method so callers can probe the storage kind without using
+	 * exceptions for control flow.
+	 */
+	default byte @Nullable [] getBackingByteArrayStrict() {
+		try {
+			return getBackingByteArray();
+		} catch (UnsupportedOperationException unsupported) {
+			return null;
+		}
+	}
+
+	/**
 	 * Unsafe operation
 	 */
 	int getBackingByteArrayOffset();

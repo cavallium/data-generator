@@ -111,9 +111,9 @@ public final class ComputedTypeNullableFixed implements ComputedTypeNullable {
 	public CodeBlock wrapWithUpgrade(String basePackageName, CodeBlock content, ComputedType next) {
 		var builder = CodeBlock.builder();
 		var upgraderInstance = getBase().getJUpgraderInstance(basePackageName);
-		builder.add("new $T($T.upgradeNullable(", next.getJTypeName(basePackageName), UpgradeUtil.class);
-		builder.add(content);
-		builder.add(".getNullable(), $T.$N)", upgraderInstance.className(), upgraderInstance.fieldName());
+		builder.add("$T.ofNullable($T.upgradeNullable(", next.getJTypeName(basePackageName), UpgradeUtil.class);
+		builder.add("($L).getNullable(), $T.$N)", content,
+				upgraderInstance.className(), upgraderInstance.fieldName());
 		builder.add(")");
 		return builder.build();
 	}

@@ -1,0 +1,322 @@
+currentVersion: v3
+customTypesData:
+  FixedInt:
+    javaClass: java.lang.Integer
+    codec: it.cavallium.datagen.benchmark.BenchmarkFixedIntCodec
+    fixedSize: 4
+superTypesData:
+  WideChoice: [Wide0, Wide1, Wide2, Wide3, Wide4, Wide5, Wide6, Wide7, Wide8, Wide9, Wide10, Wide11, Wide12, Wide13, Wide14, Wide15]
+  ViewChoice: [ViewA, ViewB, ViewC, ViewD]
+baseTypesData:
+  Leaf:
+    data:
+      value: int
+      label: String
+  Root:
+    data:
+      discardedInt: int
+      discardedLong: long
+      discardedValues: int[]
+      id: long
+      nested: Leaf
+      leaves: Leaf[]
+      text: String
+  Payload:
+    data:
+      items: Item[]
+      label: String
+  Item:
+    data:
+      value: int
+  OptimizedRoot:
+    data:
+      payload: Payload
+  OpaqueRoot:
+    data:
+      payload: Payload
+  ContextOptimizedRoot:
+    data:
+      placeholder: int
+      payload: Payload
+  ContextOpaqueRoot:
+    data:
+      placeholder: int
+      payload: Payload
+  PrimitiveArrays:
+    data:
+      booleans: boolean[]
+      bytes: byte[]
+      shorts: short[]
+      chars: char[]
+      ints: int[]
+      longs: long[]
+      floats: float[]
+      doubles: double[]
+      int52s: Int52[]
+  BooleanArrayCase: { data: { values: "boolean[]" } }
+  ByteArrayCase: { data: { values: "byte[]" } }
+  ShortArrayCase: { data: { values: "short[]" } }
+  CharArrayCase: { data: { values: "char[]" } }
+  IntArrayCase: { data: { values: "int[]" } }
+  LongArrayCase: { data: { values: "long[]" } }
+  FloatArrayCase: { data: { values: "float[]" } }
+  DoubleArrayCase: { data: { values: "double[]" } }
+  Int52ArrayCase: { data: { values: "Int52[]" } }
+  PrimitiveDense:
+    data:
+      flag: boolean
+      tiny: byte
+      small: short
+      letter: char
+      number: int
+      wide: long
+      ratio: float
+      precise: double
+      compact: Int52
+  FixedCustomRun:
+    data:
+      prefix: int
+      first: FixedInt
+      middle: long
+      second: FixedInt
+      suffix: int
+  FixedCustomArray:
+    data:
+      values: FixedInt[]
+  StringHeavy:
+    data:
+      first: String
+      second: String
+      values: String[]
+      maybe: -String
+  NullableHeavy:
+    data:
+      maybeBoolean: -boolean
+      maybeByte: -byte
+      maybeShort: -short
+      maybeChar: -char
+      maybeInt: -int
+      maybeLong: -long
+      maybeFloat: -float
+      maybeDouble: -double
+      maybeInt52: -Int52
+      maybeString: -String
+      maybeLeaf: -Leaf
+      ints: int[]
+  Wide0: { data: { value: int } }
+  Wide1: { data: { value: int } }
+  Wide2: { data: { value: int } }
+  Wide3: { data: { value: int } }
+  Wide4: { data: { value: int } }
+  Wide5: { data: { value: int } }
+  Wide6: { data: { value: int } }
+  Wide7: { data: { value: int } }
+  Wide8: { data: { value: int } }
+  Wide9: { data: { value: int } }
+  Wide10: { data: { value: int } }
+  Wide11: { data: { value: int } }
+  Wide12: { data: { value: int } }
+  Wide13: { data: { value: int } }
+  Wide14: { data: { value: int } }
+  Wide15: { data: { value: int } }
+  WideRoot:
+    data:
+      choice: WideChoice
+  ViewA: { data: { value: int } }
+  ViewB: { data: { value: int } }
+  ViewC: { data: { value: int } }
+  ViewD: { data: { value: int } }
+  ViewRoot:
+    data:
+      choice: ViewChoice
+  BuiltInRoot:
+    data:
+      invoked: int
+      context: int
+      constructed: int
+      identical: int
+      values: int[]
+      maybe: -int
+versions:
+  v1:
+  v2:
+    previousVersion: v1
+    transformations:
+      - removeData:
+          transformClass: Root
+          from: discardedInt
+      - removeData:
+          transformClass: Root
+          from: discardedLong
+      - removeData:
+          transformClass: Root
+          from: discardedValues
+      - moveData:
+          transformClass: Root
+          from: id
+          to: messageId
+      - moveData:
+          transformClass: Leaf
+          from: value
+          to: score
+      - newData:
+          transformClass: Item
+          to: middle
+          type: long
+          initializer: it.cavallium.datagen.benchmark.BenchmarkLongInitializer
+      - upgradeData:
+          transformClass: OptimizedRoot
+          from: payload
+          type: Payload
+          upgrader: it.cavallium.datagen.benchmark.BenchmarkPayloadUpgrader
+          readTransform:
+            type: Payload
+            custom:
+              className: it.cavallium.datagen.benchmark.BenchmarkPayloadReadUpgrader
+      - upgradeData:
+          transformClass: OpaqueRoot
+          from: payload
+          type: Payload
+          upgrader: it.cavallium.datagen.benchmark.BenchmarkPayloadUpgrader
+      - upgradeData:
+          transformClass: ContextOptimizedRoot
+          from: placeholder
+          type: Payload
+          upgrader: it.cavallium.datagen.benchmark.BenchmarkOptimizedContextPayloadUpgrader
+          readTransform:
+            type: Payload
+            custom:
+              className: it.cavallium.datagen.benchmark.BenchmarkContextPayloadReadUpgrader
+          contextParameters: [payload]
+      - removeData:
+          transformClass: ContextOptimizedRoot
+          from: payload
+      - upgradeData:
+          transformClass: ContextOpaqueRoot
+          from: placeholder
+          type: Payload
+          upgrader: it.cavallium.datagen.benchmark.BenchmarkOpaqueContextPayloadUpgrader
+          contextParameters: [payload]
+      - removeData:
+          transformClass: ContextOpaqueRoot
+          from: payload
+      - upgradeData:
+          transformClass: ViewRoot
+          from: choice
+          type: long
+          upgrader: it.cavallium.datagen.benchmark.BenchmarkOpaqueUpgrader
+          readTransform:
+            custom:
+              className: it.cavallium.datagen.benchmark.BenchmarkChoiceReadUpgrader
+      - upgradeData:
+          transformClass: BuiltInRoot
+          from: invoked
+          type: long
+          upgrader: it.cavallium.datagen.benchmark.BenchmarkOpaqueUpgrader
+          contextParameters: [context]
+          readTransform:
+            invokeStatic:
+              method: it.cavallium.datagen.benchmark.BenchmarkBuiltins.combine
+              arguments:
+                - identity: { source: value }
+                - identity: { source: currentContext.context }
+      - upgradeData:
+          transformClass: BuiltInRoot
+          from: constructed
+          type: long
+          upgrader: it.cavallium.datagen.benchmark.BenchmarkOpaqueUpgrader
+          readTransform:
+            construct:
+              className: java.lang.Long
+              arguments:
+                - identity: { source: value }
+      - upgradeData:
+          transformClass: BuiltInRoot
+          from: identical
+          type: int
+          upgrader: it.cavallium.datagen.benchmark.BenchmarkOpaqueUpgrader
+          readTransform:
+            identity: { source: currentValue }
+      - upgradeData:
+          transformClass: BuiltInRoot
+          from: values
+          type: long[]
+          upgrader: it.cavallium.datagen.benchmark.BenchmarkOpaqueUpgrader
+          readTransform:
+            mapArray:
+              source:
+                identity: { source: value }
+              transform:
+                invokeStatic:
+                  method: it.cavallium.datagen.benchmark.BenchmarkBuiltins.widen
+                  arguments:
+                    - identity: { source: value }
+      - upgradeData:
+          transformClass: BuiltInRoot
+          from: maybe
+          type: -long
+          upgrader: it.cavallium.datagen.benchmark.BenchmarkOpaqueUpgrader
+          readTransform:
+            mapNullable:
+              source:
+                identity: { source: value }
+              transform:
+                invokeStatic:
+                  method: it.cavallium.datagen.benchmark.BenchmarkBuiltins.widen
+                  arguments:
+                    - identity: { source: value }
+      - newData:
+          transformClass: BuiltInRoot
+          to: constantValue
+          type: long
+          initializer: it.cavallium.datagen.benchmark.BenchmarkOpaqueInitializer
+          readTransform:
+            constant: { value: 77 }
+  v3:
+    previousVersion: v2
+    transformations:
+      - newData:
+          transformClass: Leaf
+          to: stamp
+          type: long
+          initializer: it.cavallium.datagen.benchmark.BenchmarkLongInitializer
+      - newData:
+          transformClass: Root
+          to: marker
+          type: long
+          initializer: it.cavallium.datagen.benchmark.BenchmarkLongInitializer
+      - newData:
+          transformClass: Item
+          to: tail
+          type: long
+          initializer: it.cavallium.datagen.benchmark.BenchmarkLongInitializer
+      - newData:
+          transformClass: PrimitiveDense
+          to: marker
+          type: long
+          initializer: it.cavallium.datagen.benchmark.BenchmarkLongInitializer
+      - newData:
+          transformClass: FixedCustomRun
+          to: marker
+          type: long
+          initializer: it.cavallium.datagen.benchmark.BenchmarkLongInitializer
+      - newData:
+          transformClass: FixedCustomArray
+          to: marker
+          type: long
+          initializer: it.cavallium.datagen.benchmark.BenchmarkLongInitializer
+      - newData:
+          transformClass: StringHeavy
+          to: marker
+          type: long
+          initializer: it.cavallium.datagen.benchmark.BenchmarkLongInitializer
+      - newData:
+          transformClass: NullableHeavy
+          to: marker
+          type: long
+          initializer: it.cavallium.datagen.benchmark.BenchmarkLongInitializer
+      - newData:
+          transformClass: WideRoot
+          to: marker
+          type: long
+          initializer: it.cavallium.datagen.benchmark.BenchmarkLongInitializer

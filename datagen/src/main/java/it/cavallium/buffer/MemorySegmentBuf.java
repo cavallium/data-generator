@@ -151,6 +151,11 @@ public class MemorySegmentBuf extends AbstractByteList implements Buf {
 	}
 
 	@Override
+	public byte[] getBackingByteArrayStrict() {
+		return null;
+	}
+
+	@Override
 	public int getBackingByteArrayOffset() {
 		return 0;
 	}

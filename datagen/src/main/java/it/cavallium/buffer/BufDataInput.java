@@ -1,28 +1,24 @@
 package it.cavallium.buffer;
 
-import it.cavallium.stream.SafeByteArrayInputStream;
-import it.cavallium.stream.SafeDataInputStream;
-import org.jetbrains.annotations.NotNull;
+import it.cavallium.datagen.DecodeLimits;
+import java.util.Objects;
 
+/** One-shot direct-storage data input over a complete {@link Buf}. */
+public final class BufDataInput extends BufDataInputCore {
 
-public class BufDataInput extends SafeDataInputStream {
-
-	/**
-	 * Creates a DataInputStream that uses the specified underlying InputStream.
-	 *
-	 * @param in the specified input stream
-	 */
-	private BufDataInput(@NotNull SafeByteArrayInputStream in) {
-		super(in);
+	private BufDataInput(Buf source, DecodeLimits limits) {
+		super(limits);
+		bindSource(source, 0, source.size());
 	}
 
-	public static BufDataInput create(Buf byteList) {
-		return new BufDataInput(byteList.binaryInputStream());
+	public static BufDataInput create(Buf source, DecodeLimits limits) {
+		return new BufDataInput(Objects.requireNonNull(source, "source"),
+				Objects.requireNonNull(limits, "limits"));
 	}
 
 	@Deprecated
 	@Override
 	public void close() {
-		super.close();
+		// Preserve the one-shot input's historical no-op close contract.
 	}
 }

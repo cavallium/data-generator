@@ -17,7 +17,10 @@ import it.cavallium.datagen.DataUpgraderSimple;
 import it.cavallium.datagen.plugin.ClassGenerator;
 import it.cavallium.datagen.plugin.ComputedType;
 import it.cavallium.datagen.plugin.ComputedType.VersionedComputedType;
+import it.cavallium.datagen.plugin.ComputedTypeArray;
 import it.cavallium.datagen.plugin.ComputedTypeBase;
+import it.cavallium.datagen.plugin.ComputedTypeNullable;
+import it.cavallium.datagen.plugin.ComputedTypeSuper;
 import it.cavallium.datagen.plugin.ComputedVersion;
 import it.cavallium.datagen.plugin.DataModel;
 import it.cavallium.datagen.plugin.JInterfaceLocation;
@@ -29,6 +32,7 @@ import it.cavallium.datagen.plugin.RemoveDataConfiguration;
 import it.cavallium.datagen.plugin.SourcesGenerator;
 import it.cavallium.datagen.plugin.TransformationConfiguration;
 import it.cavallium.datagen.plugin.UpgradeDataConfiguration;
+import it.cavallium.stream.SafeDataInput;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -99,8 +103,9 @@ public class GenUpgraderBaseX extends ClassGenerator {
 		HashMap<FieldLocationKey, ContextInfo> contextStaticFieldCodeBlocks = new HashMap<>();
 		AtomicInteger nextUpgraderStaticFieldId = new AtomicInteger();
 		HashMap<TypeLocationKey, String> upgraderStaticFieldNames = new HashMap<>();
+		HashMap<String, ReadUpgradeApi> readUpgradeApis = new HashMap<>();
+		HashMap<String, ReadInitializerApi> readInitializerApis = new HashMap<>();
 		List<TransformationConfiguration> transformations = dataModel.getChanges(nextTypeBase);
-		method.addCode("return new $T(\n$>", nextTypeBaseClassName);
 		record ResultField(String name, ComputedType type, CodeBlock code) {}
 		Stream<ResultField> resultFields;
 		if (transformations.isEmpty()) {
@@ -108,12 +113,12 @@ public class GenUpgraderBaseX extends ClassGenerator {
 					.getData()
 					.entrySet()
 					.stream()
-					.map(e -> new ResultField(e.getKey(), e.getValue(), CodeBlock.of("data.$N()", e.getKey())));
+					.map(e -> new ResultField(e.getKey(), e.getValue(), fieldAccessor(e.getValue(), "data", e.getKey())));
 		} else {
 			record Field(String name, ComputedType type, CodeBlock code, int processFromTx) {}
 			var fields = Stream.concat(
 					typeBase.getData().entrySet().stream()
-							.map(e -> new Field(e.getKey(), e.getValue(), CodeBlock.of("data.$N()", e.getKey()), 0)),
+							.map(e -> new Field(e.getKey(), e.getValue(), fieldAccessor(e.getValue(), "data", e.getKey()), 0)),
 					IntStream
 							.range(0, transformations.size())
 							.mapToObj(i -> Map.entry(i, transformations.get(i)))
@@ -122,8 +127,17 @@ public class GenUpgraderBaseX extends ClassGenerator {
 							.map(e -> {
 								var i = e.getKey();
 								var newDataConfiguration = e.getValue();
-								var computedTypes = dataModel.getComputedTypes(nextTypeBase.getVersion());
-								var newFieldType = Objects.requireNonNull(computedTypes.get(DataModel.fixType(newDataConfiguration.type)));
+							var computedTypes = dataModel.getComputedTypes(nextTypeBase.getVersion());
+							var newFieldType = Objects.requireNonNull(computedTypes.get(DataModel.fixType(newDataConfiguration.type)));
+							if (newDataConfiguration.hasReadTransform()
+									&& newDataConfiguration.getReadTransform().isCustom()) {
+								ComputedType readResultType = newDataConfiguration.hasReadTransformTypeOverride()
+										? Objects.requireNonNull(dataModel.getComputedTypes(dataModel.getCurrentVersion())
+												.get(DataModel.fixType(newDataConfiguration.getReadTransformType())))
+										: newFieldType;
+								createReadInitializerApi(typeBase, newDataConfiguration, readResultType,
+										readInitializerApis, classBuilder);
+							}
 								var initializerLocation = newDataConfiguration.getInitializerLocation();
 
 								var contextInfo = createContextStaticClass(typeBase, e.getValue().to,
@@ -184,6 +198,15 @@ public class GenUpgraderBaseX extends ClassGenerator {
 						var cb = CodeBlock.builder();
 						var newFieldType = Objects
 								.requireNonNull(dataModel.getComputedTypes(nextTypeBase.getVersion()).get(DataModel.fixType(upgradeDataConfiguration.type)));
+						if (upgradeDataConfiguration.hasReadTransform()
+								&& upgradeDataConfiguration.getReadTransform().isCustom()) {
+							ComputedType readResultType = upgradeDataConfiguration.hasReadTransformTypeOverride()
+									? Objects.requireNonNull(dataModel.getComputedTypes(dataModel.getCurrentVersion())
+											.get(DataModel.fixType(upgradeDataConfiguration.getReadTransformType())))
+									: newFieldType;
+							createReadUpgradeApi(typeBase, upgradeDataConfiguration, fieldType, readResultType,
+									readUpgradeApis, classBuilder);
+						}
 
 						var contextInfo = createContextStaticClass(typeBase, upgradeDataConfiguration.from,
 								contextStaticFieldCodeBlocks,
@@ -205,14 +228,14 @@ public class GenUpgraderBaseX extends ClassGenerator {
 								genericUpgraderClass
 						);
 
-						cb.add("($T) $N.upgrade($L, ($T) ",
+						cb.add("($T) $N.upgrade($L, ($T) (",
 								newFieldType.getJTypeName(basePackageName),
 								upgraderName,
 								contextInfo.contextApply,
 								fieldType.getJTypeName(basePackageName)
 						);
 						cb.add(codeBlock);
-						cb.add(")");
+						cb.add("))");
 						codeBlock = cb.build();
 						fieldType = newFieldType;
 					} else {
@@ -224,7 +247,8 @@ public class GenUpgraderBaseX extends ClassGenerator {
 		}
 		AtomicInteger currentField = new AtomicInteger();
 		var resultFieldsList = resultFields.toList();
-		resultFieldsList.stream().flatMap(e -> {
+		record FinalField(String name, ComputedType type, CodeBlock code) {}
+		List<FinalField> finalFields = resultFieldsList.stream().map(e -> {
 					var currentFieldIndex = currentField.getAndIncrement();
 					var currentFieldName = e.name();
 					var expectedFieldIndex = expectedResultFields.indexOf(currentFieldName);
@@ -237,14 +261,442 @@ public class GenUpgraderBaseX extends ClassGenerator {
 										.map(ResultField::name)
 										.collect(Collectors.joining(", ")));
 					}
-					return Stream.of(CodeBlock.of(",\n"), upgradeFieldToType(e.name(), e.type(), e.code(), nextTypeBase));
-				})
-				.skip(1)
-				.forEach(method::addCode);
-		method.addCode("\n$<);\n");
+					ComputedType targetType = nextTypeBase.getData().get(e.name());
+					return new FinalField(e.name(), targetType,
+							upgradeFieldToType(e.name(), e.type(), e.code(), nextTypeBase));
+				}).toList();
+
+		var nullableLocals = new HashMap<String, String>();
+		for (FinalField field : finalFields) {
+			if (field.type() instanceof ComputedTypeNullable) {
+				String local = "nullable" + nullableLocals.size();
+				nullableLocals.put(field.name(), local);
+				method.addStatement("final $T $N = ($T) ($L)", field.type().getJTypeName(basePackageName), local,
+						field.type().getJTypeName(basePackageName), field.code());
+			}
+		}
+		method.addCode("return $T.unsafeOfOwned(\n$>", nextTypeBaseClassName);
+		int argument = 0;
+		for (FinalField field : finalFields) {
+			if (argument++ != 0) method.addCode(",\n");
+			if (field.type() instanceof ComputedTypeNullable nullable) {
+				String local = nullableLocals.get(field.name());
+				TypeName valueType = nullable.getBase().getJTypeName(basePackageName);
+				if (valueType.isPrimitive()) {
+					method.addCode("$N.getNullable() != null, $N.getNullable() != null ? $N.get() : $L",
+							local, local, local, primitiveDefault(valueType));
+				} else {
+					method.addCode("($T) $N.getNullable()", valueType, local);
+				}
+			} else {
+				method.addCode("$L", field.code());
+			}
+		}
+		method.addCode("$<\n);\n");
 
 		classBuilder.addMethod(method.build());
 	}
+
+	static String readInputInterfaceName(String fieldName) {
+		return "ReadInput" + SourcesGenerator.capitalize(fieldName);
+	}
+
+	static String readUpgraderInterfaceName(String fieldName) {
+		return "ReadUpgrader" + SourcesGenerator.capitalize(fieldName);
+	}
+
+	static String readInitializerInputInterfaceName(String fieldName) {
+		return "ReadInitializerInput" + SourcesGenerator.capitalize(fieldName);
+	}
+
+	static String readInitializerInterfaceName(String fieldName) {
+		return "ReadInitializer" + SourcesGenerator.capitalize(fieldName);
+	}
+
+	static String valueWireViewInterfaceName(String fieldName) {
+		return "WireValue" + SourcesGenerator.capitalize(fieldName);
+	}
+
+	static String contextWireViewInterfaceName(String fieldName, String contextField) {
+		return "WireContext" + SourcesGenerator.capitalize(fieldName)
+				+ SourcesGenerator.capitalize(contextField);
+	}
+
+	static String wireArrayCursorInterfaceName(String viewName) {
+		return viewName + "Cursor";
+	}
+
+	static String wireElementViewInterfaceName(String viewName) {
+		return viewName + "Element";
+	}
+
+	static String wireRecordFieldViewInterfaceName(String viewName, String fieldName) {
+		return viewName + "Field" + SourcesGenerator.capitalize(fieldName);
+	}
+
+	static String wireNullableValueViewInterfaceName(String viewName) {
+		return viewName + "PresentValue";
+	}
+
+	static String wireUnionSubtypeViewInterfaceName(String viewName, String subtypeName) {
+		return viewName + "Variant" + SourcesGenerator.capitalize(subtypeName);
+	}
+
+	private TypeName addWireViewInterface(ComputedTypeBase owner,
+			ComputedType type,
+			String viewName,
+			Builder classBuilder) {
+		return addWireViewInterface(owner, type, viewName, classBuilder, new java.util.IdentityHashMap<>());
+	}
+
+	private TypeName addWireViewInterface(ComputedTypeBase owner,
+			ComputedType type,
+			String viewName,
+			Builder classBuilder,
+			java.util.IdentityHashMap<ComputedType, String> ancestors) {
+		if (!(type instanceof ComputedTypeBase || type instanceof ComputedTypeArray
+				|| type instanceof ComputedTypeNullable || type instanceof ComputedTypeSuper)) {
+			return null;
+		}
+		String ancestorName = ancestors.get(type);
+		if (ancestorName != null) {
+			return owner.getJUpgraderName(basePackageName).nestedClass(ancestorName);
+		}
+		ancestors.put(type, viewName);
+		TypeSpec.Builder view = TypeSpec.interfaceBuilder(viewName)
+				.addModifiers(Modifier.PUBLIC)
+				.addJavadoc("Ephemeral zero-copy view of a bounded serialized {@code $L} value. "
+						+ "The view is valid only during its custom transform call and must not be retained.\n", type);
+		if (type instanceof ComputedTypeBase record) {
+			for (var field : record.getData().entrySet()) {
+				view.addMethod(MethodSpec.methodBuilder(field.getKey())
+						.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+						.returns(field.getValue().getJTypeName(basePackageName))
+						.addJavadoc("Reads {@code $N} lazily and caches reference values for this binding.\n",
+								field.getKey())
+						.build());
+				TypeName fieldViewType = addWireViewInterface(owner, field.getValue(),
+						wireRecordFieldViewInterfaceName(viewName, field.getKey()), classBuilder, ancestors);
+				if (fieldViewType != null) {
+					view.addMethod(MethodSpec.methodBuilder(field.getKey() + "View")
+							.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+							.returns(fieldViewType)
+							.addJavadoc("Rebinds and returns the reader-owned structural view of {@code $N}.\n",
+									field.getKey())
+							.build());
+				}
+			}
+		} else if (type instanceof ComputedTypeArray array) {
+			TypeName elementViewType = addWireViewInterface(owner, array.getBase(),
+					wireElementViewInterfaceName(viewName), classBuilder, ancestors);
+			String cursorName = wireArrayCursorInterfaceName(viewName);
+			TypeSpec.Builder cursor = TypeSpec.interfaceBuilder(cursorName)
+					.addModifiers(Modifier.PUBLIC)
+					.addJavadoc("Reusable sequential cursor for {@link $L}. Calling {@code cursor()} resets "
+							+ "the single cursor owned by the wire view. It must not be retained.\n", viewName)
+					.addMethod(MethodSpec.methodBuilder("hasNext")
+							.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+							.returns(TypeName.BOOLEAN)
+							.build())
+					.addMethod(MethodSpec.methodBuilder("next")
+							.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+							.returns(array.getBase().getJTypeName(basePackageName))
+							.build());
+			if (elementViewType != null) {
+				cursor.addMethod(MethodSpec.methodBuilder("nextView")
+						.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+						.returns(elementViewType)
+						.addJavadoc("Rebinds and returns one reader-owned element view. A later call invalidates "
+								+ "the previously returned binding.\n")
+						.build());
+			}
+			classBuilder.addType(cursor.build());
+			view.addMethod(MethodSpec.methodBuilder("size")
+					.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+					.returns(TypeName.INT)
+					.build());
+			view.addMethod(MethodSpec.methodBuilder("get")
+					.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+					.returns(array.getBase().getJTypeName(basePackageName))
+					.addParameter(TypeName.INT, "index")
+					.build());
+			view.addMethod(MethodSpec.methodBuilder("copy")
+					.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+					.returns(type.getJTypeName(basePackageName))
+					.build());
+			if (elementViewType != null) {
+				view.addMethod(MethodSpec.methodBuilder("elementView")
+						.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+						.returns(elementViewType)
+						.addParameter(TypeName.INT, "index")
+						.addJavadoc("Rebinds and returns one reader-owned element view. A later call invalidates "
+								+ "the previously returned binding.\n")
+						.build());
+			}
+			view.addMethod(MethodSpec.methodBuilder("cursor")
+					.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+					.returns(owner.getJUpgraderName(basePackageName).nestedClass(cursorName))
+					.addJavadoc("Resets and returns the reader-owned sequential cursor.\n")
+					.build());
+		} else if (type instanceof ComputedTypeNullable nullable) {
+			view.addMethod(MethodSpec.methodBuilder("isPresent")
+					.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+					.returns(TypeName.BOOLEAN)
+					.build());
+			view.addMethod(MethodSpec.methodBuilder("value")
+					.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+					.returns(nullable.getBase().getJTypeName(basePackageName))
+					.build());
+			TypeName valueViewType = addWireViewInterface(owner, nullable.getBase(),
+					wireNullableValueViewInterfaceName(viewName), classBuilder, ancestors);
+			if (valueViewType != null) {
+				view.addMethod(MethodSpec.methodBuilder("valueView")
+						.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+						.returns(valueViewType)
+						.addJavadoc("Returns the reader-owned structural view of the present value.\n")
+						.build());
+			}
+		} else if (type instanceof ComputedTypeSuper union) {
+			String kindName = viewName + "Kind";
+			TypeSpec.Builder kind = TypeSpec.enumBuilder(kindName).addModifiers(Modifier.PUBLIC);
+			for (ComputedType subtype : union.subTypes()) kind.addEnumConstant(subtype.getName());
+			classBuilder.addType(kind.build());
+			view.addMethod(MethodSpec.methodBuilder("kind")
+					.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+					.returns(owner.getJUpgraderName(basePackageName).nestedClass(kindName))
+					.build());
+			for (ComputedType subtype : union.subTypes()) {
+				view.addMethod(MethodSpec.methodBuilder("as" + SourcesGenerator.capitalize(subtype.getName()))
+						.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+						.returns(subtype.getJTypeName(basePackageName))
+						.build());
+				TypeName subtypeViewType = addWireViewInterface(owner, subtype,
+						wireUnionSubtypeViewInterfaceName(viewName, subtype.getName()), classBuilder, ancestors);
+				if (subtypeViewType != null) {
+					view.addMethod(MethodSpec.methodBuilder("as" + SourcesGenerator.capitalize(subtype.getName())
+								+ "View")
+							.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+							.returns(subtypeViewType)
+							.addJavadoc("Returns the reader-owned typed view of the active {@code $N} variant.\n",
+									subtype.getName())
+							.build());
+				}
+			}
+		}
+		ancestors.remove(type);
+		classBuilder.addType(view.build());
+		return owner.getJUpgraderName(basePackageName).nestedClass(viewName);
+	}
+
+	private ReadInitializerApi createReadInitializerApi(ComputedTypeBase owner,
+			NewDataConfiguration initializer,
+			ComputedType resultType,
+			Map<String, ReadInitializerApi> existingApis,
+			Builder classBuilder) {
+		String inputName = readInitializerInputInterfaceName(initializer.to);
+		String initializerName = readInitializerInterfaceName(initializer.to);
+		var signature = new ReadInitializerApi(inputName, initializerName, resultType,
+				List.copyOf(initializer.getContextParameters()));
+		ReadInitializerApi previous = existingApis.putIfAbsent(inputName, signature);
+		if (previous != null) {
+			if (!previous.equals(signature)) {
+				throw new IllegalArgumentException("Conflicting optimized read initializers for "
+						+ owner.getName() + "." + initializer.to);
+			}
+			return previous;
+		}
+
+		TypeSpec.Builder input = TypeSpec.interfaceBuilder(inputName)
+				.addModifiers(Modifier.PUBLIC)
+				.addJavadoc("Ephemeral, invocation-scoped input for the optimized {@code $N} initializer. "
+						+ "Implementations must not retain this input.\n", initializer.to);
+		for (String contextParameter : initializer.getContextParameters()) {
+			ComputedType contextType = owner.getData().get(contextParameter);
+			if (contextType == null) {
+				throw new IllegalArgumentException("Unknown optimized read-initializer context field "
+						+ owner.getName() + "." + contextParameter);
+			}
+			input.addMethod(MethodSpec.methodBuilder("context" + SourcesGenerator.capitalize(contextParameter))
+					.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+					.returns(contextType.getJTypeName(basePackageName))
+					.addJavadoc("Returns {@code $N} lazily at most once.\n", contextParameter)
+					.build());
+			ComputedType currentContextType = currentRepresentation(contextType);
+			if (currentContextType != null) {
+				input.addMethod(MethodSpec.methodBuilder("currentContext"
+						+ SourcesGenerator.capitalize(contextParameter))
+						.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+						.returns(currentContextType.getJTypeName(basePackageName))
+						.addJavadoc("Reads {@code $N} lazily in its current structural representation.\n",
+								contextParameter)
+						.build());
+			}
+			String viewName = contextWireViewInterfaceName(initializer.to, contextParameter);
+			TypeName viewType = addWireViewInterface(owner, contextType, viewName, classBuilder);
+			if (viewType != null) {
+				input.addMethod(MethodSpec.methodBuilder("hasContext"
+							+ SourcesGenerator.capitalize(contextParameter) + "View")
+						.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+						.returns(TypeName.BOOLEAN)
+						.build());
+				input.addMethod(MethodSpec.methodBuilder("context"
+							+ SourcesGenerator.capitalize(contextParameter) + "View")
+						.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+						.returns(viewType)
+						.build());
+			}
+		}
+		classBuilder.addType(input.build());
+
+		ClassName ownerClass = owner.getJUpgraderName(basePackageName);
+		classBuilder.addType(TypeSpec.interfaceBuilder(initializerName)
+				.addAnnotation(FunctionalInterface.class)
+				.addModifiers(Modifier.PUBLIC)
+				.addJavadoc("Allocation-minimal serialized-data initializer for {@code $N}.\n", initializer.to)
+				.addMethod(MethodSpec.methodBuilder("initialize")
+						.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+						.returns(resultType.getJTypeName(basePackageName))
+						.addParameter(ownerClass.nestedClass(inputName), "input")
+						.build())
+				.build());
+		return signature;
+	}
+
+	private ReadUpgradeApi createReadUpgradeApi(ComputedTypeBase owner,
+			UpgradeDataConfiguration upgrade,
+			ComputedType oldType,
+			ComputedType newType,
+			Map<String, ReadUpgradeApi> existingApis,
+			Builder classBuilder) {
+		String inputName = readInputInterfaceName(upgrade.from);
+		String upgraderName = readUpgraderInterfaceName(upgrade.from);
+		ComputedType currentValueType = currentRepresentation(oldType);
+		var signature = new ReadUpgradeApi(inputName, upgraderName, oldType, currentValueType, newType,
+				List.copyOf(upgrade.getContextParameters()));
+		ReadUpgradeApi previous = existingApis.putIfAbsent(inputName, signature);
+		if (previous != null) {
+			if (!previous.equals(signature)) {
+				throw new IllegalArgumentException("Conflicting optimized read upgrades for " + owner.getName()
+						+ "." + upgrade.from);
+			}
+			return previous;
+		}
+
+		TypeSpec.Builder input = TypeSpec.interfaceBuilder(inputName)
+				.addModifiers(Modifier.PUBLIC)
+				.addJavadoc("Ephemeral, invocation-scoped input for the optimized {@code $N} upgrade. "
+						+ "Implementations must not retain this input or its serialized cursor.\n", upgrade.from)
+				.addMethod(MethodSpec.methodBuilder("value")
+						.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+						.returns(oldType.getJTypeName(basePackageName))
+						.addJavadoc("Returns the logical pre-upgrade value, materializing it lazily at most once.\n")
+						.build());
+		String valueViewName = valueWireViewInterfaceName(upgrade.from);
+		TypeName valueViewType = addWireViewInterface(owner, oldType, valueViewName, classBuilder);
+		if (valueViewType != null) {
+			input.addMethod(MethodSpec.methodBuilder("hasValueView")
+					.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+					.returns(TypeName.BOOLEAN)
+					.build());
+			input.addMethod(MethodSpec.methodBuilder("valueView")
+					.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+					.returns(valueViewType)
+					.build());
+		}
+		if (currentValueType != null) {
+			input.addMethod(MethodSpec.methodBuilder("currentValue")
+					.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+					.returns(currentValueType.getJTypeName(basePackageName))
+					.addJavadoc("Reads the same logical value directly in its current structural representation, "
+							+ "without constructing historical containers. It is mutually exclusive with "
+							+ "{@link #value()} and {@link #serializedValue()}.\n")
+					.build());
+		}
+		input
+				.addMethod(MethodSpec.methodBuilder("hasSerializedValue")
+						.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+						.returns(TypeName.BOOLEAN)
+						.addJavadoc("Whether the original bounded field bytes are available.\n")
+						.build())
+				.addMethod(MethodSpec.methodBuilder("serializedVersion")
+						.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+						.returns(TypeName.INT)
+						.addJavadoc("Returns the version of the available serialized field bytes.\n")
+						.build())
+				.addMethod(MethodSpec.methodBuilder("serializedValue")
+						.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+						.returns(SafeDataInput.class)
+						.addJavadoc("Returns a bounded zero-copy cursor over the original field. It must be fully "
+								+ "consumed during the upgrade call.\n")
+						.build());
+		for (String contextParameter : upgrade.getContextParameters()) {
+			ComputedType contextType = owner.getData().get(contextParameter);
+			if (contextType == null) {
+				throw new IllegalArgumentException("Unknown optimized read-upgrade context field "
+						+ owner.getName() + "." + contextParameter);
+			}
+			input.addMethod(MethodSpec.methodBuilder("context" + SourcesGenerator.capitalize(contextParameter))
+					.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+					.returns(contextType.getJTypeName(basePackageName))
+					.addJavadoc("Returns {@code $N} lazily at most once.\n", contextParameter)
+					.build());
+			ComputedType currentContextType = currentRepresentation(contextType);
+			if (currentContextType != null) {
+				input.addMethod(MethodSpec.methodBuilder("currentContext"
+						+ SourcesGenerator.capitalize(contextParameter))
+						.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+						.returns(currentContextType.getJTypeName(basePackageName))
+						.addJavadoc("Reads {@code $N} lazily in its current structural representation, "
+								+ "without historical containers.\n", contextParameter)
+						.build());
+			}
+			String viewName = contextWireViewInterfaceName(upgrade.from, contextParameter);
+			TypeName viewType = addWireViewInterface(owner, contextType, viewName, classBuilder);
+			if (viewType != null) {
+				input.addMethod(MethodSpec.methodBuilder("hasContext"
+							+ SourcesGenerator.capitalize(contextParameter) + "View")
+						.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+						.returns(TypeName.BOOLEAN)
+						.build());
+				input.addMethod(MethodSpec.methodBuilder("context"
+							+ SourcesGenerator.capitalize(contextParameter) + "View")
+						.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+						.returns(viewType)
+						.build());
+			}
+		}
+		classBuilder.addType(input.build());
+
+		ClassName ownerClass = owner.getJUpgraderName(basePackageName);
+		TypeSpec readUpgrader = TypeSpec.interfaceBuilder(upgraderName)
+				.addAnnotation(FunctionalInterface.class)
+				.addModifiers(Modifier.PUBLIC)
+				.addJavadoc("Allocation-minimal serialized-data upgrade for {@code $N}.\n", upgrade.from)
+				.addMethod(MethodSpec.methodBuilder("upgrade")
+						.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+						.returns(newType.getJTypeName(basePackageName))
+						.addParameter(ownerClass.nestedClass(inputName), "input")
+						.build())
+				.build();
+		classBuilder.addType(readUpgrader);
+		return signature;
+	}
+
+	private ComputedType currentRepresentation(ComputedType oldType) {
+		return dataModel.getCurrentStructuralRepresentation(oldType);
+	}
+
+	private record ReadUpgradeApi(String inputName,
+			String upgraderName,
+			ComputedType oldType,
+			ComputedType currentValueType,
+			ComputedType newType,
+			List<String> contextParameters) {}
+
+	private record ReadInitializerApi(String inputName,
+			String initializerName,
+			ComputedType resultType,
+			List<String> contextParameters) {}
 
 	private String createInitializerStaticField(AtomicInteger nextInitializerStaticFieldId,
 												HashMap<TypeLocationKey, String> initializerStaticFieldNames,
@@ -309,7 +761,7 @@ public class GenUpgraderBaseX extends ClassGenerator {
 					} else {
 						codeBlockBuilder.add(", ");
 					}
-					codeBlockBuilder.add("data.$N()", contextParameter);
+					codeBlockBuilder.add("$L", fieldAccessor(fieldType, "data", contextParameter));
 				}
 				contextTypeClassBuilder.recordConstructor(contextTypeClassConstructorBuilder.build());
 				codeBlockBuilder.add(")");
@@ -361,5 +813,31 @@ public class GenUpgraderBaseX extends ClassGenerator {
 			fieldType = nextFieldType;
 		}
 		return codeBlock;
+	}
+
+	private CodeBlock fieldAccessor(ComputedType fieldType, String owner, String fieldName) {
+		if (fieldType instanceof ComputedTypeArray) {
+			return CodeBlock.of("$N.$NUnsafeArray()", owner, fieldName);
+		}
+		if (fieldType instanceof ComputedTypeNullable) {
+			return CodeBlock.of("$N.has$N() ? $T.of($N.$N()) : $T.empty()", owner,
+					SourcesGenerator.capitalize(fieldName), fieldType.getJTypeName(basePackageName), owner,
+					fieldName, fieldType.getJTypeName(basePackageName));
+		}
+		return CodeBlock.of("$N.$N()", owner, fieldName);
+	}
+
+	private static CodeBlock primitiveDefault(TypeName type) {
+		return switch (type.toString()) {
+			case "boolean" -> CodeBlock.of("false");
+			case "byte" -> CodeBlock.of("(byte) 0");
+			case "short" -> CodeBlock.of("(short) 0");
+			case "char" -> CodeBlock.of("(char) 0");
+			case "int" -> CodeBlock.of("0");
+			case "long" -> CodeBlock.of("0L");
+			case "float" -> CodeBlock.of("0.0f");
+			case "double" -> CodeBlock.of("0.0d");
+			default -> throw new IllegalArgumentException("Not primitive: " + type);
+		};
 	}
 }

@@ -1,6 +1,7 @@
 package it.cavallium.datagen.plugin;
 
 import com.palantir.javapoet.ClassName;
+import com.palantir.javapoet.ArrayTypeName;
 import com.palantir.javapoet.CodeBlock;
 import com.palantir.javapoet.ParameterizedTypeName;
 import com.palantir.javapoet.TypeName;
@@ -67,8 +68,7 @@ public final class ComputedTypeArrayFixed implements ComputedTypeArray {
 
 	@Override
 	public TypeName getJTypeName(String basePackageName) {
-		return ParameterizedTypeName.get(ClassName.get(List.class),
-				computedTypeSupplier.get(baseType).getJTypeName(basePackageName));
+		return ArrayTypeName.of(child().getJTypeName(basePackageName));
 	}
 
 	@Override
@@ -104,7 +104,9 @@ public final class ComputedTypeArrayFixed implements ComputedTypeArray {
 		builder.add("$T.upgradeArray(", UpgradeUtil.class);
 		builder.add(content);
 		var upgraderInstance = getBase().getJUpgraderInstance(basePackageName);
-		builder.add(", $T.$N)", upgraderInstance.className(), upgraderInstance.fieldName());
+		builder.add(", $T.class, $T.emptyArray(), $T.$N)", next.getJTypeName(basePackageName),
+				next.getJSerializerName(basePackageName),
+				upgraderInstance.className(), upgraderInstance.fieldName());
 		return builder.build();
 	}
 

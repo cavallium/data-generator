@@ -17,6 +17,7 @@ import it.cavallium.datagen.plugin.classgen.GenIType;
 import it.cavallium.datagen.plugin.classgen.GenIVersion;
 import it.cavallium.datagen.plugin.classgen.GenNullableX;
 import it.cavallium.datagen.plugin.classgen.GenProjection;
+import it.cavallium.datagen.plugin.classgen.GenReadPlan;
 import it.cavallium.datagen.plugin.classgen.GenSerializerArrayX;
 import it.cavallium.datagen.plugin.classgen.GenSerializerBaseX;
 import it.cavallium.datagen.plugin.classgen.GenSerializerNullableX;
@@ -27,16 +28,24 @@ import it.cavallium.datagen.plugin.classgen.GenUpgraderSuperX;
 import it.cavallium.datagen.plugin.classgen.GenVersion;
 import it.cavallium.datagen.plugin.classgen.GenVersions;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
+import java.nio.file.StandardCopyOption;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
-import java.util.stream.Collectors;
+import java.util.HexFormat;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,17 +54,24 @@ import org.yaml.snakeyaml.Yaml;
 public class SourcesGenerator {
 
     private static final Logger logger = LoggerFactory.getLogger(SourcesGenerator.class);
-    private static final String SERIAL_VERSION = "8";
-    private static final String GENERATED_FILES_SECTION = "generatedFiles:";
+    private static final String SERIAL_VERSION = "19";
+    private static final String MANIFEST_NAME = ".datagen-manifest-v1";
+    private static final String MANIFEST_HEADER = "data-generator-manifest-v1";
+    private static final String FINGERPRINT_PREFIX = "fingerprint=";
+    private static final String GENERATED_FILES_SECTION = "files:";
 
     private final SourcesGeneratorConfiguration configuration;
+    private final byte[] yamlBytes;
 
-    private SourcesGenerator(InputStream yamlDataStream) {
+    private SourcesGenerator(InputStream yamlDataStream) throws IOException {
+        this.yamlBytes = yamlDataStream.readAllBytes();
         Yaml yaml = new Yaml();
-        this.configuration = yaml.loadAs(yamlDataStream, SourcesGeneratorConfiguration.class);
+        this.configuration = Objects.requireNonNull(
+                yaml.loadAs(new ByteArrayInputStream(yamlBytes), SourcesGeneratorConfiguration.class),
+                "YAML document is empty");
     }
 
-    public static SourcesGenerator load(InputStream yamlData) {
+    public static SourcesGenerator load(InputStream yamlData) throws IOException {
         return new SourcesGenerator(yamlData);
     }
 
@@ -68,18 +84,25 @@ public class SourcesGenerator {
     /**
      * @param basePackageName                          org.example
      * @param outPath                                  path/to/output
-     * @param useRecordBuilders                        if true, the data will have @RecordBuilder annotation
      * @param force                                    force overwrite
-     * @param deepCheckBeforeCreatingNewEqualInstances if true, use equals, if false, use ==
+     * @param generateOldSerializers                   whether historical serializers may write values
      * @param binaryStrings                            use binary strings
      */
     public void generateSources(String basePackageName,
                                 Path outPath,
-                                boolean useRecordBuilders,
                                 boolean force,
-                                boolean deepCheckBeforeCreatingNewEqualInstances,
                                 boolean generateOldSerializers,
                                 boolean binaryStrings) throws IOException {
+        generateSources(basePackageName, outPath, force,
+                generateOldSerializers, binaryStrings, false);
+    }
+
+    public void generateSources(String basePackageName,
+                                Path outPath,
+                                boolean force,
+                                boolean generateOldSerializers,
+                                boolean binaryStrings,
+                                boolean vectorKernels) throws IOException {
         Path basePackageNamePath;
         {
             Path basePackageNamePathPartial = outPath;
@@ -88,33 +111,17 @@ public class SourcesGenerator {
             }
             basePackageNamePath = basePackageNamePathPartial;
         }
-        var hashPath = basePackageNamePath.resolve(".hash");
+        var manifestPath = basePackageNamePath.resolve(MANIFEST_NAME);
+        var legacyHashPath = basePackageNamePath.resolve(".hash");
         var dataModel = configuration.buildDataModel(binaryStrings);
-        var curHash = dataModel.computeHash();
-        List<String> hashLines = null;
-        if (Files.isRegularFile(hashPath) && Files.isReadable(hashPath)) {
-            hashLines = Files.readAllLines(hashPath, StandardCharsets.UTF_8);
-            if (hashLines.size() >= 7) {
-                var prevBasePackageName = hashLines.get(0);
-                var prevRecordBuilders = hashLines.get(1);
-                var prevHash = hashLines.get(2);
-                var prevDeepCheckBeforeCreatingNewEqualInstances = hashLines.get(3);
-                var prevGenerateOldSerializers = hashLines.get(4);
-                var prevSerialVersion = hashLines.get(5);
-                var prevBinaryStrings = hashLines.get(6);
-
-                if (!force
-                    && prevBasePackageName.equals(basePackageName)
-                    && (prevRecordBuilders.equalsIgnoreCase("true") == useRecordBuilders)
-                    && (prevDeepCheckBeforeCreatingNewEqualInstances.equalsIgnoreCase("true") == deepCheckBeforeCreatingNewEqualInstances)
-                    && (prevGenerateOldSerializers.equalsIgnoreCase("true") == generateOldSerializers)
-                    && (prevBinaryStrings.equalsIgnoreCase("true") == binaryStrings)
-                    && (prevSerialVersion.equals(SERIAL_VERSION))
-                    && prevHash.equals(Integer.toString(curHash))) {
-                    logger.info("Skipped sources generation because it didn't change");
-                    return;
-                }
-            }
+        String fingerprint = generationFingerprint(basePackageName, generateOldSerializers,
+                binaryStrings, vectorKernels, yamlBytes);
+        Manifest previousManifest = readManifest(manifestPath);
+        if (!force && previousManifest != null
+                && previousManifest.fingerprint().equals(fingerprint)
+                && manifestFilesMatch(outPath, previousManifest)) {
+            logger.info("Skipped sources generation because the fingerprint and every generated file digest match");
+            return;
         }
 
         // Create the base dir
@@ -125,11 +132,15 @@ public class SourcesGenerator {
             Files.createDirectories(basePackageNamePath);
         }
 
-        var generatedFilesToDelete = new HashSet<>(readGeneratedFiles(hashLines));
+        var generatedFilesToDelete = new HashSet<Path>();
+        if (previousManifest != null) {
+            generatedFilesToDelete.addAll(previousManifest.files().keySet());
+        }
         var generatedFiles = new HashSet<Path>();
 
         var genParams = new ClassGeneratorParams(generatedFilesToDelete, generatedFiles, dataModel, basePackageName, outPath,
-                deepCheckBeforeCreatingNewEqualInstances, useRecordBuilders, generateOldSerializers, binaryStrings);
+                generateOldSerializers, binaryStrings,
+                vectorKernels);
 
         // Create the Versions class
         new GenVersions(genParams).run();
@@ -145,6 +156,8 @@ public class SourcesGenerator {
 
         // Create the CurrentVersion class
         new GenCurrentVersion(genParams).run();
+
+		new GenReadPlan(genParams).run();
 
         new GenVersion(genParams).run();
 
@@ -178,7 +191,6 @@ public class SourcesGenerator {
 
 		new GenProjection(genParams).run();
 
-        generatedFilesToDelete.remove(outPath.relativize(hashPath));
         for (Path generatedFileToDelete : generatedFilesToDelete) {
             Path fileToDelete = outPath.resolve(generatedFileToDelete);
             if (Files.isRegularFile(fileToDelete)) {
@@ -187,67 +199,117 @@ public class SourcesGenerator {
             }
         }
 
-        // Update the hash at the end
-        var newHashRaw = newHashRaw(basePackageName, useRecordBuilders, curHash,
-                deepCheckBeforeCreatingNewEqualInstances, generateOldSerializers, binaryStrings, generatedFiles);
-        String oldHashRaw;
-        if (Files.exists(hashPath)) {
-            oldHashRaw = Files.readString(hashPath, StandardCharsets.UTF_8);
-        } else {
-            oldHashRaw = null;
+        var fileDigests = new LinkedHashMap<Path, String>();
+        for (Path relativePath : generatedFiles.stream().sorted(Comparator.comparing(Path::toString)).toList()) {
+            fileDigests.put(relativePath, sha256(Files.readAllBytes(outPath.resolve(relativePath))));
         }
-        if (!Objects.equals(newHashRaw, oldHashRaw)) {
-            Files.writeString(hashPath,
-                    newHashRaw,
-                    StandardCharsets.UTF_8,
-                    TRUNCATE_EXISTING,
-                    WRITE,
-                    CREATE
-            );
+        writeManifestAtomically(manifestPath, new Manifest(fingerprint, fileDigests));
+        Files.deleteIfExists(legacyHashPath);
+    }
+
+    private static String generationFingerprint(String basePackageName,
+                                                boolean generateOldSerializers,
+                                                boolean binaryStrings,
+                                                boolean vectorKernels,
+                                                byte[] yamlBytes) {
+        MessageDigest digest = newDigest();
+        updateLengthPrefixed(digest, SERIAL_VERSION.getBytes(StandardCharsets.UTF_8));
+        updateLengthPrefixed(digest, basePackageName.getBytes(StandardCharsets.UTF_8));
+        updateLengthPrefixed(digest, new byte[] {(byte) (generateOldSerializers ? 1 : 0)});
+        updateLengthPrefixed(digest, new byte[] {(byte) (binaryStrings ? 1 : 0)});
+        updateLengthPrefixed(digest, new byte[] {(byte) (vectorKernels ? 1 : 0)});
+        updateLengthPrefixed(digest, yamlBytes);
+        return HexFormat.of().formatHex(digest.digest());
+    }
+
+    private static void updateLengthPrefixed(MessageDigest digest, byte[] value) {
+        digest.update(ByteBuffer.allocate(Integer.BYTES).putInt(value.length).array());
+        digest.update(value);
+    }
+
+    private static String sha256(byte[] value) {
+        return HexFormat.of().formatHex(newDigest().digest(value));
+    }
+
+    private static MessageDigest newDigest() {
+        try {
+            return MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException exception) {
+            throw new AssertionError("Every Java implementation must provide SHA-256", exception);
         }
     }
 
-    private static List<Path> readGeneratedFiles(List<String> hashLines) {
-        if (hashLines == null) {
-            return List.of();
+    private static Manifest readManifest(Path manifestPath) throws IOException {
+        if (!Files.isRegularFile(manifestPath) || !Files.isReadable(manifestPath)) {
+            return null;
         }
-        int generatedFilesStart = hashLines.indexOf(GENERATED_FILES_SECTION);
-        if (generatedFilesStart < 0) {
-            return List.of();
+        List<String> lines = Files.readAllLines(manifestPath, StandardCharsets.UTF_8);
+        if (lines.size() < 3 || !MANIFEST_HEADER.equals(lines.get(0))
+                || !lines.get(1).startsWith(FINGERPRINT_PREFIX)
+                || !GENERATED_FILES_SECTION.equals(lines.get(2))) {
+            return null;
         }
-        var result = new ArrayList<Path>();
-        for (int i = generatedFilesStart + 1; i < hashLines.size(); i++) {
-            var line = hashLines.get(i);
-            if (!line.isBlank()) {
-                result.add(Path.of(line));
+        String fingerprint = lines.get(1).substring(FINGERPRINT_PREFIX.length());
+        if (!isSha256(fingerprint)) return null;
+        var files = new LinkedHashMap<Path, String>();
+        for (int index = 3; index < lines.size(); index++) {
+            String line = lines.get(index);
+            int separator = line.indexOf('\t');
+            if (separator != 64) return null;
+            String digest = line.substring(0, separator);
+            Path relativePath = Path.of(line.substring(separator + 1));
+            if (!isSha256(digest) || relativePath.isAbsolute() || relativePath.normalize().startsWith("..")
+                    || files.put(relativePath, digest) != null) {
+                return null;
             }
         }
-        return result;
+        return new Manifest(fingerprint, Map.copyOf(files));
     }
 
-    private static String newHashRaw(String basePackageName,
-                                     boolean useRecordBuilders,
-                                     int curHash,
-                                     boolean deepCheckBeforeCreatingNewEqualInstances,
-                                     boolean generateOldSerializers,
-                                     boolean binaryStrings,
-                                     HashSet<Path> generatedFiles) {
-        var generatedFileLines = generatedFiles
-                .stream()
-                .map(Path::toString)
-                .sorted()
-                .collect(Collectors.joining("\n"));
-        return basePackageName + '\n'
-                + useRecordBuilders + '\n'
-                + curHash + '\n'
-                + deepCheckBeforeCreatingNewEqualInstances + '\n'
-                + generateOldSerializers + '\n'
-                + SERIAL_VERSION + '\n'
-                + binaryStrings + '\n'
-                + GENERATED_FILES_SECTION + '\n'
-                + generatedFileLines
-                + (generatedFileLines.isEmpty() ? "" : "\n");
+    private static boolean manifestFilesMatch(Path outPath, Manifest manifest) throws IOException {
+        for (var file : manifest.files().entrySet()) {
+            Path generatedFile = outPath.resolve(file.getKey());
+            if (!Files.isRegularFile(generatedFile)
+                    || !sha256(Files.readAllBytes(generatedFile)).equals(file.getValue())) {
+                return false;
+            }
+        }
+        return true;
     }
+
+    private static void writeManifestAtomically(Path manifestPath, Manifest manifest) throws IOException {
+        StringBuilder contents = new StringBuilder()
+                .append(MANIFEST_HEADER).append('\n')
+                .append(FINGERPRINT_PREFIX).append(manifest.fingerprint()).append('\n')
+                .append(GENERATED_FILES_SECTION).append('\n');
+        manifest.files().entrySet().stream()
+                .sorted(Map.Entry.comparingByKey(Comparator.comparing(Path::toString)))
+                .forEach(entry -> contents.append(entry.getValue()).append('\t')
+                        .append(entry.getKey()).append('\n'));
+        Path temporary = Files.createTempFile(manifestPath.getParent(), ".datagen-manifest-", ".tmp");
+        try {
+            Files.writeString(temporary, contents, StandardCharsets.UTF_8, TRUNCATE_EXISTING, WRITE);
+            try {
+                Files.move(temporary, manifestPath, StandardCopyOption.ATOMIC_MOVE,
+                        StandardCopyOption.REPLACE_EXISTING);
+            } catch (AtomicMoveNotSupportedException exception) {
+                Files.move(temporary, manifestPath, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } finally {
+            Files.deleteIfExists(temporary);
+        }
+    }
+
+    private static boolean isSha256(String value) {
+        if (value.length() != 64) return false;
+        for (int index = 0; index < value.length(); index++) {
+            char character = value.charAt(index);
+            if ((character < '0' || character > '9') && (character < 'a' || character > 'f')) return false;
+        }
+        return true;
+    }
+
+    private record Manifest(String fingerprint, Map<Path, String> files) {}
 
     public static String capitalize(String field) {
         return Character.toUpperCase(field.charAt(0)) + field.substring(1);

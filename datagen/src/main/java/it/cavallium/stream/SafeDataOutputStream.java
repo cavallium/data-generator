@@ -25,6 +25,7 @@
 
 package it.cavallium.stream;
 
+import it.cavallium.datagen.ValueTooLargeException;
 import it.cavallium.buffer.IgnoreCoverage;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
@@ -361,8 +362,9 @@ public class SafeDataOutputStream extends SafeFilterOutputStream implements Safe
 	@Override
 	public void writeShortText(String s, Charset charset) {
 		var outString = s.getBytes(charset);
-		if (outString.length > Short.MAX_VALUE) {
-			throw new IndexOutOfBoundsException("String too long: " + outString.length + " bytes");
+		if (outString.length > 0xffff) {
+			throw new ValueTooLargeException("String too long for unsigned-short prefix: "
+					+ outString.length + " bytes");
 		}
 		var v = outString.length;
 		out.write((v >>> 8) & 0xFF);

@@ -13,6 +13,8 @@ public class NewDataConfiguration implements TransformationConfiguration {
 	public String type;
 	public String initializer;
 	public String initializerInstance;
+	/** Optional allocation-minimal transform used only by fused serialized-data readers. */
+	public ReadTransformConfiguration readTransform;
 	@Nullable
 	public Integer index;
 	@Nullable
@@ -32,6 +34,23 @@ public class NewDataConfiguration implements TransformationConfiguration {
 		return JInterfaceLocation.parse(initializer, initializerInstance);
 	}
 
+	public boolean hasReadTransform() {
+		return readTransform != null;
+	}
+
+	public ReadTransformConfiguration getReadTransform() {
+		if (readTransform == null) throw new IllegalStateException("No read transform was configured");
+		return readTransform;
+	}
+
+	public String getReadTransformType() {
+		return getReadTransform().getResultType(type);
+	}
+
+	public boolean hasReadTransformTypeOverride() {
+		return hasReadTransform() && readTransform.hasResultTypeOverride();
+	}
+
 	@NotNull
 	public List<String> getContextParameters() {
 		return Objects.requireNonNullElse(contextParameters, List.of());
@@ -49,6 +68,7 @@ public class NewDataConfiguration implements TransformationConfiguration {
 		return Objects.equals(transformClass, that.transformClass) && Objects.equals(to, that.to)
 				&& Objects.equals(type, that.type) && Objects.equals(initializer, that.initializer)
 				&& Objects.equals(initializerInstance, that.initializerInstance)
+				&& Objects.equals(readTransform, that.readTransform)
 				&& Objects.equals(index, that.index)
 				&& Objects.equals(contextParameters, that.contextParameters);
 	}
@@ -61,6 +81,7 @@ public class NewDataConfiguration implements TransformationConfiguration {
 		hash += ConfigUtils.hashCode(type);
 		hash += ConfigUtils.hashCode(initializer);
 		hash += ConfigUtils.hashCode(initializerInstance);
+		hash += ConfigUtils.hashCode(readTransform);
 		hash += ConfigUtils.hashCode(index);
 		hash += ConfigUtils.hashCode(contextParameters);
 		return hash;
@@ -71,6 +92,7 @@ public class NewDataConfiguration implements TransformationConfiguration {
 		if (this.transformClass != null) c.transformClass = this.transformClass;
 		if (this.initializer != null) c.initializer = this.initializer;
 		if (this.initializerInstance != null) c.initializerInstance = this.initializerInstance;
+		if (this.readTransform != null) c.readTransform = this.readTransform.copy();
 		if (this.to != null) c.to = this.to;
 		if (this.type != null) c.type = this.type;
 		if (this.index != null) c.index = this.index;

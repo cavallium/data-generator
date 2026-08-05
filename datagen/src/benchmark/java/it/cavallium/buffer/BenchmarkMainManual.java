@@ -1,5 +1,6 @@
 package it.cavallium.buffer;
 
+import it.cavallium.datagen.DecodeLimits;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -91,21 +92,21 @@ public class BenchmarkMainManual {
             longText = fullText;
             longTextBytes = longText.getBytes(StandardCharsets.UTF_8);
             out.writeMediumText(longText, StandardCharsets.UTF_8);
-            longTextInput = BufDataInput.create(out.toList());
+            longTextInput = BufDataInput.create(out.toList(), DecodeLimits.unlimited());
             longTextOutput = BufDataOutput.create(Integer.BYTES + longTextBytes.length);
 
             out.resetUnderlyingBuffer();
             mediumText = fullText.substring(0, 128);
             mediumTextBytes = mediumText.getBytes(StandardCharsets.UTF_8);
             out.writeMediumText(mediumText, StandardCharsets.UTF_8);
-            mediumTextInput = BufDataInput.create(out.toList());
+            mediumTextInput = BufDataInput.create(out.toList(), DecodeLimits.unlimited());
             mediumTextOutput = BufDataOutput.create(Integer.BYTES + mediumTextBytes.length);
 
             out.resetUnderlyingBuffer();
             shortText = fullText.substring(0, 15);
             shortTextBytes = shortText.getBytes(StandardCharsets.UTF_8);
             out.writeMediumText(shortText, StandardCharsets.UTF_8);
-            shortTextInput = BufDataInput.create(out.toList());
+            shortTextInput = BufDataInput.create(out.toList(), DecodeLimits.unlimited());
             shortTextOutput = BufDataOutput.create(Integer.BYTES + shortTextBytes.length);
         }
     }

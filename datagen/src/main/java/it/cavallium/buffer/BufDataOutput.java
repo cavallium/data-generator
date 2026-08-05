@@ -1,5 +1,6 @@
 package it.cavallium.buffer;
 
+import it.cavallium.datagen.ValueTooLargeException;
 import static java.util.Objects.checkFromToIndex;
 
 import it.cavallium.stream.SafeByteArrayOutputStream;
@@ -185,9 +186,9 @@ public class BufDataOutput implements SafeDataOutput {
 	}
 
 	// todo: check
-	public void writeBytes(Buf deserialized) {
-		checkOutOfBounds(deserialized.size());
-		deserialized.writeTo(dOut);
+	public void writeBytes(Buf source) {
+		checkOutOfBounds(source.size());
+		source.writeTo(dOut);
 	}
 
 	public void writeBytes(byte[] b, int off, int len) {
@@ -218,27 +219,14 @@ public class BufDataOutput implements SafeDataOutput {
 
 	@Override
 	public void writeShortText(String s, Charset charset) {
-		if (charset == StandardCharsets.UTF_8) {
-			var beforeWrite = (int) this.position();
-			this.advancePosition(Short.BYTES);
-			ZeroAllocationEncoder.INSTANCE.encodeTo(s, this);
-			var afterWrite = (int) this.position();
-			this.rewindPosition(afterWrite - beforeWrite);
-			var len = Math.toIntExact(afterWrite - beforeWrite - Short.BYTES);
-			if (len > Short.MAX_VALUE) {
-				throw new IndexOutOfBoundsException("String too long: " + len + " bytes");
-			}
-			dOut.writeShort(len);
-			dOut.advancePosition(len);
-		} else {
-			var out = s.getBytes(charset);
-			if (out.length > Short.MAX_VALUE) {
-				throw new IndexOutOfBoundsException("String too long: " + out.length + " bytes");
-			}
-			checkOutOfBounds(Short.BYTES + out.length);
-			dOut.writeShort(out.length);
-			dOut.write(out);
+		var out = s.getBytes(charset);
+		if (out.length > 0xffff) {
+			throw new ValueTooLargeException("String too long for unsigned-short prefix: "
+					+ out.length + " bytes");
 		}
+		checkOutOfBounds(Short.BYTES + out.length);
+		dOut.writeShort(out.length);
+		dOut.write(out);
 	}
 
 	@Override

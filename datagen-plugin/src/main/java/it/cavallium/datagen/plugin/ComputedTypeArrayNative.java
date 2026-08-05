@@ -1,18 +1,9 @@
 package it.cavallium.datagen.plugin;
 
 import com.palantir.javapoet.ClassName;
-import com.palantir.javapoet.ParameterizedTypeName;
+import com.palantir.javapoet.ArrayTypeName;
 import com.palantir.javapoet.TypeName;
 import it.cavallium.datagen.nativedata.*;
-import it.unimi.dsi.fastutil.booleans.BooleanList;
-import it.unimi.dsi.fastutil.bytes.ByteList;
-import it.unimi.dsi.fastutil.chars.CharList;
-import it.unimi.dsi.fastutil.doubles.DoubleList;
-import it.unimi.dsi.fastutil.floats.FloatList;
-import it.unimi.dsi.fastutil.ints.IntList;
-import it.unimi.dsi.fastutil.longs.LongList;
-import it.unimi.dsi.fastutil.shorts.ShortList;
-import java.util.List;
 import java.util.Objects;
 import java.util.stream.Stream;
 
@@ -74,18 +65,7 @@ public final class ComputedTypeArrayNative implements ComputedTypeArray {
 
 	@Override
 	public TypeName getJTypeName(String basePackageName) {
-		return switch (baseType) {
-			case "boolean" -> ClassName.get(BooleanList.class);
-			case "byte" -> ClassName.get(ByteList.class);
-			case "short" -> ClassName.get(ShortList.class);
-			case "char" -> ClassName.get(CharList.class);
-			case "int" -> ClassName.get(IntList.class);
-			case "long" -> ClassName.get(LongList.class);
-			case "float" -> ClassName.get(FloatList.class);
-			case "double" -> ClassName.get(DoubleList.class);
-			default -> ParameterizedTypeName.get(ClassName.get(List.class),
-					computedTypeSupplier.get(baseType).getJTypeName(basePackageName));
-		};
+		return ArrayTypeName.of(child().getJTypeName(basePackageName));
 	}
 
 	@Override

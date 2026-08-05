@@ -1,11 +1,12 @@
 package it.cavallium.datagen.nativedata;
 
-import it.cavallium.datagen.DataSerializer;
+import it.cavallium.datagen.DataCodec;
+import it.cavallium.datagen.ProjectionReadSupport;
 import it.cavallium.stream.SafeDataInput;
 import it.cavallium.stream.SafeDataOutput;
 import org.jetbrains.annotations.NotNull;
 
-public class Int52Serializer implements DataSerializer<Int52> {
+public class Int52Serializer implements DataCodec<Int52> {
 
 	public static final Int52Serializer INSTANCE = new Int52Serializer();
 
@@ -16,8 +17,13 @@ public class Int52Serializer implements DataSerializer<Int52> {
 
 	@NotNull
 	@Override
-	public Int52 deserialize(SafeDataInput dataInput) {
-		return deserializeValue(dataInput);
+	public Int52 read(SafeDataInput dataInput) {
+		return readValue(dataInput);
+	}
+
+	@Override
+	public void skip(SafeDataInput dataInput) {
+		ProjectionReadSupport.skipBytes(dataInput, 7);
 	}
 
 	public static void serializeValue(SafeDataOutput dataOutput, @NotNull Int52 data) {
@@ -28,8 +34,19 @@ public class Int52Serializer implements DataSerializer<Int52> {
 		}
 	}
 
-	public static Int52 deserializeValue(SafeDataInput dataInput) {
+	public static Int52 readValue(SafeDataInput dataInput) {
 		long value = dataInput.readInt52();
+		return Int52.fromLong(value);
+	}
+
+	public static Int52 readValue(int firstByte, SafeDataInput input) {
+		long value = ((long) firstByte & 0x0fL) << 48
+				| ((long) input.readUnsignedByte()) << 40
+				| ((long) input.readUnsignedByte()) << 32
+				| ((long) input.readUnsignedByte()) << 24
+				| ((long) input.readUnsignedByte()) << 16
+				| ((long) input.readUnsignedByte()) << 8
+				| input.readUnsignedByte();
 		return Int52.fromLong(value);
 	}
 

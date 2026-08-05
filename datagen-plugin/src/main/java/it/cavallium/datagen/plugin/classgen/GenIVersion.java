@@ -7,7 +7,7 @@ import com.palantir.javapoet.ParameterizedTypeName;
 import com.palantir.javapoet.TypeName;
 import com.palantir.javapoet.TypeSpec;
 import com.palantir.javapoet.TypeVariableName;
-import it.cavallium.datagen.DataSerializer;
+import it.cavallium.datagen.DataCodec;
 import it.cavallium.datagen.plugin.ClassGenerator;
 import java.util.stream.Stream;
 import javax.lang.model.element.Modifier;
@@ -24,20 +24,20 @@ public class GenIVersion extends ClassGenerator {
 		iVersionClass.addModifiers(Modifier.PUBLIC);
 		iVersionClass.addTypeVariable(TypeVariableName.get("B"));
 
-		// Add getSerializer method
+		// Add getCodec method
 		{
-			var getSerializerMethodBuilder = MethodSpec
-					.methodBuilder("getSerializer")
+			var getCodecMethodBuilder = MethodSpec
+					.methodBuilder("getCodec")
 					.addModifiers(Modifier.PUBLIC)
 					.addModifiers(Modifier.ABSTRACT)
 					.addTypeVariable(TypeVariableName.get("T",
 							TypeVariableName.get("B")
 					))
-					.returns(ParameterizedTypeName.get(ClassName.get(DataSerializer.class), TypeVariableName.get("T")))
+					.returns(ParameterizedTypeName.get(ClassName.get(DataCodec.class), TypeVariableName.get("T")))
 					.addParameter(ParameterSpec
 							.builder(ClassName.get(dataModel.getRootPackage(basePackageName), "BaseType"), "type")
 							.build());
-			iVersionClass.addMethod(getSerializerMethodBuilder.build());
+			iVersionClass.addMethod(getCodecMethodBuilder.build());
 		}
 
 		// Add getVersion method

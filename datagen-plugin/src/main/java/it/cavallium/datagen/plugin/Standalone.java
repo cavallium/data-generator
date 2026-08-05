@@ -8,8 +8,8 @@ import java.nio.file.Paths;
 public class Standalone {
 
 	public static void main(String[] args) throws IOException {
-		if (args.length == 0) {
-			System.err.println("[PATH] [BASE PACKAGE NAME] [OUT PATH] [USE RECORD BUILDERS] [FORCE] [STANDARD CHECKS] [GENERATE OLD SERIALIZERS]");
+		if (args.length != 7) {
+			System.err.println("[PATH] [BASE PACKAGE NAME] [OUT PATH] [FORCE] [GENERATE OLD SERIALIZERS] [BINARY STRINGS] [VECTOR KERNELS]");
 			System.exit(1);
 			return;
 		}
@@ -19,8 +19,7 @@ public class Standalone {
 				parseBoolean(args[3]),
 				parseBoolean(args[4]),
 				parseBoolean(args[5]),
-				parseBoolean(args[6]),
-				parseBoolean(args[7])
+				parseBoolean(args[6])
 		);
 	}
 }

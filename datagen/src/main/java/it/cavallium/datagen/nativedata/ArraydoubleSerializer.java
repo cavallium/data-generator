@@ -1,28 +1,44 @@
 package it.cavallium.datagen.nativedata;
 
-import it.cavallium.datagen.DataSerializer;
+import it.cavallium.datagen.DataCodec;
+import it.cavallium.datagen.ProjectionReadSupport;
 import it.cavallium.stream.SafeDataInput;
 import it.cavallium.stream.SafeDataOutput;
-import it.unimi.dsi.fastutil.doubles.DoubleList;
 import org.jetbrains.annotations.NotNull;
 
-public class ArraydoubleSerializer implements DataSerializer<DoubleList> {
+public class ArraydoubleSerializer implements DataCodec<double[]> {
+
+	private static final double[] EMPTY = new double[0];
+	public static double[] emptyArray() { return EMPTY; }
 
 	@Override
-	public void serialize(SafeDataOutput dataOutput, @NotNull DoubleList data) {
-		dataOutput.writeInt(data.size());
-		for (int i = 0; i < data.size(); i++) {
-			dataOutput.writeDouble(data.getDouble(i));
+	public void serialize(SafeDataOutput dataOutput, double @NotNull [] data) {
+		dataOutput.writeInt(data.length);
+		for (double value : data) {
+			dataOutput.writeDouble(value);
 		}
 	}
 
 	@NotNull
 	@Override
-	public DoubleList deserialize(SafeDataInput dataInput) {
-		var data = new double[dataInput.readInt()];
-		for (int i = 0; i < data.length; i++) {
-			data[i] = dataInput.readDouble();
+	public double[] read(SafeDataInput dataInput) {
+		dataInput.decodeBudget().enterStructure();
+		try {
+			int size = ProjectionReadSupport.readLength(dataInput);
+			if (size == 0) return EMPTY;
+			return ProjectionReadSupport.readDoubleArray(dataInput, size);
+		} finally {
+			dataInput.decodeBudget().exitStructure();
 		}
-		return DoubleList.of(data);
+	}
+
+	@Override
+	public void skip(SafeDataInput dataInput) {
+		dataInput.decodeBudget().enterStructure();
+		try {
+			ProjectionReadSupport.skipFixedArray(dataInput, 8);
+		} finally {
+			dataInput.decodeBudget().exitStructure();
+		}
 	}
 }

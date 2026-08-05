@@ -14,7 +14,16 @@ import com.palantir.javapoet.WildcardTypeName;
 import it.cavallium.datagen.plugin.ClassGenerator;
 import it.cavallium.datagen.plugin.ComputedType;
 import it.cavallium.datagen.plugin.ComputedVersion;
+import it.cavallium.buffer.Buf;
+import it.cavallium.buffer.BufDataCursor;
+import it.cavallium.buffer.FallbackBufDataCursor;
+import it.cavallium.buffer.HeapBufDataCursor;
+import it.cavallium.buffer.MemorySegmentBufDataCursor;
+import it.cavallium.datagen.DecodeBudget;
+import it.cavallium.datagen.DecodeLimits;
+import it.cavallium.datagen.MalformedDataException;
 import it.cavallium.stream.SafeDataInput;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
@@ -89,51 +98,56 @@ public class GenCurrentVersion extends ClassGenerator {
 					.addParameter(ParameterSpec.builder(ParameterizedTypeName.get(ClassName.get(Class.class),
 							WildcardTypeName.subtypeOf(ClassName.get(currentVersionPackage, "IType"))
 					), "superTypeClass").build());
-			getSuperTypeSubtypesClasses.beginControlFlow("return switch (superTypeClass.getCanonicalName())");
-			dataModel.getSuperTypesComputed(dataModel.getCurrentVersion()).forEach(superType -> {
-				getSuperTypeSubtypesClasses.addCode("case \"" + ClassName
-						.get(currentVersionDataPackage, superType.getName())
-						.canonicalName() + "\" -> $T.of(\n", Set.class);
-				getSuperTypeSubtypesClasses.addCode("$>");
-				AtomicBoolean isFirst = new AtomicBoolean(true);
-				for (ComputedType subType : superType.subTypes()) {
-					if (!isFirst.getAndSet(false)) {
-						getSuperTypeSubtypesClasses.addCode(",\n");
+			var currentSuperTypes = dataModel.getSuperTypesComputed(dataModel.getCurrentVersion()).toList();
+			if (currentSuperTypes.isEmpty()) {
+				getSuperTypeSubtypesClasses.addStatement("throw new $T()", IllegalArgumentException.class);
+			} else {
+				getSuperTypeSubtypesClasses.beginControlFlow("return switch (superTypeClass.getCanonicalName())");
+				currentSuperTypes.forEach(superType -> {
+					getSuperTypeSubtypesClasses.addCode("case \"" + ClassName
+							.get(currentVersionDataPackage, superType.getName())
+							.canonicalName() + "\" -> $T.of(\n", Set.class);
+					getSuperTypeSubtypesClasses.addCode("$>");
+					AtomicBoolean isFirst = new AtomicBoolean(true);
+					for (ComputedType subType : superType.subTypes()) {
+						if (!isFirst.getAndSet(false)) {
+							getSuperTypeSubtypesClasses.addCode(",\n");
+						}
+						getSuperTypeSubtypesClasses.addCode("$T.class",
+								ClassName.get(currentVersionDataPackage, subType.getName())
+						);
 					}
-					getSuperTypeSubtypesClasses.addCode("$T.class",
-							ClassName.get(currentVersionDataPackage, subType.getName())
-					);
-				}
-				getSuperTypeSubtypesClasses.addCode("$<");
-				getSuperTypeSubtypesClasses.addCode("\n);\n");
-			});
-			getSuperTypeSubtypesClasses.addStatement("default -> throw new $T()", IllegalArgumentException.class);
-			getSuperTypeSubtypesClasses.addCode(CodeBlock.of("$<};"));
+					getSuperTypeSubtypesClasses.addCode("$<");
+					getSuperTypeSubtypesClasses.addCode("\n);\n");
+				});
+				getSuperTypeSubtypesClasses.addStatement("default -> throw new $T()", IllegalArgumentException.class);
+				getSuperTypeSubtypesClasses.addCode(CodeBlock.of("$<};"));
+			}
 			currentVersionClass.addMethod(getSuperTypeSubtypesClasses.build());
 		}
-		// UpgradeDataToLatestVersion1 Method
+		// Read serialized data directly into the current public type.
 		{
-			var upgradeDataToLatestVersion1MethodBuilder = MethodSpec.methodBuilder("upgradeDataToLatestVersion")
+			var readMethodBuilder = MethodSpec.methodBuilder("read")
 					.addTypeVariable(TypeVariableName.get("U", ClassName.get(currentVersionPackage, "IBaseType")))
 					.addModifiers(Modifier.PUBLIC).addModifiers(Modifier.STATIC).addModifiers(Modifier.FINAL).returns(TypeVariableName.get("U"))
-					.addParameter(ParameterSpec.builder(TypeName.INT, "oldVersion").build()).addParameter(
+					.addParameter(ParameterSpec.builder(TypeName.INT, "version").build()).addParameter(
 							ParameterSpec.builder(ClassName.get(dataModel.getRootPackage(basePackageName), "BaseType"), "type").build())
-					.addParameter(ParameterSpec.builder(SafeDataInput.class, "oldDataInput").build())
-					.beginControlFlow("return upgradeDataToLatestVersion(oldVersion, switch (oldVersion)");
-			for (var versionConfiguration : dataModel.getVersionsSet()) {
-// Add a case in which the data version deserializes the serialized data and upgrades it
-				var versions = ClassName.get(dataModel.getRootPackage(basePackageName), "Versions");
-				upgradeDataToLatestVersion1MethodBuilder.addStatement("case $T.$N -> $T.INSTANCE.getSerializer(type).deserialize(oldDataInput)",
-						versions,
-						versionConfiguration.getVersionVarName(),
-						ClassName.get(versionConfiguration.getPackage(basePackageName), "Version")
-				);
-			}
-			var upgradeDataToLatestVersion1Method = upgradeDataToLatestVersion1MethodBuilder
-					.addStatement("default -> throw new $T(\"Unknown version: \" + oldVersion)", UnsupportedOperationException.class)
-					.addCode(CodeBlock.of("$<});"))
+					.addParameter(ParameterSpec.builder(SafeDataInput.class, "input").build())
+					.addStatement("$T.requireNonNull(type, $S)", Objects.class, "type")
+					.addStatement("$T.requireNonNull(input, $S)", Objects.class, "input")
+					.addStatement("input.decodeBudget().enterRoot()")
+					.beginControlFlow("try")
+					.beginControlFlow("return ($T) switch (type)", TypeVariableName.get("U"));
+			dataModel.getBaseTypesComputed(dataModel.getCurrentVersion()).forEach(baseType ->
+					readMethodBuilder.addStatement("case $N -> $T.read(version, input)", baseType.getName(),
+							GenReadPlan.className(basePackageName, currentVersionPackage, baseType.getName())));
+			var readMethod = readMethodBuilder
+					.addCode(CodeBlock.of("$<};\n"))
+					.nextControlFlow("finally")
+					.addStatement("input.decodeBudget().exitRoot()")
+					.endControlFlow()
 					.build();
-			currentVersionClass.addMethod(upgradeDataToLatestVersion1Method);
+			currentVersionClass.addMethod(readMethod);
 		}
 		// UpgradeDataToLatestVersion2 Method
 		{
@@ -147,7 +161,7 @@ public class GenCurrentVersion extends ClassGenerator {
 					.addStatement("$T data = oldData", Object.class);
 			upgradeDataToLatestVersion2MethodBuilder.beginControlFlow("switch (oldVersion)");
 			for (var versionConfiguration : dataModel.getVersionsSet()) {
-// Add a case in which the data version deserializes the serialized data and upgrades it
+				// Upgrade an already materialized value through each structural boundary.
 				upgradeDataToLatestVersion2MethodBuilder.addCode("case $T.$N: ",
 						versionsClassName,
 						versionConfiguration.getVersionVarName()
@@ -171,9 +185,339 @@ public class GenCurrentVersion extends ClassGenerator {
 			currentVersionClass.addMethod(upgradeDataToLatestVersion2MethodBuilder.build());
 		}
 
+		generateReader(currentVersionClass, currentVersionPackage);
+
 		generateGetClass(dataModel.getCurrentVersion(), currentVersionClass);
 
 		return Stream.of(new GeneratedClass(dataModel.getCurrentVersion().getPackage(basePackageName), currentVersionClass));
+	}
+
+	private void generateReader(Builder currentVersionClass, String currentVersionPackage) {
+		var iBaseType = ClassName.get(currentVersionPackage, "IBaseType");
+		var baseType = ClassName.get(dataModel.getRootPackage(basePackageName), "BaseType");
+		var readerType = ClassName.get(currentVersionPackage, "CurrentVersion").nestedClass("Reader");
+		var boundReaderType = ClassName.get(currentVersionPackage, "CurrentVersion").nestedClass("BoundReader");
+		var heapCursorType = ClassName.get(HeapBufDataCursor.class);
+		var segmentCursorType = ClassName.get(MemorySegmentBufDataCursor.class);
+		var fallbackCursorType = ClassName.get(FallbackBufDataCursor.class);
+
+		var reader = TypeSpec.interfaceBuilder("Reader")
+				.addModifiers(Modifier.PUBLIC)
+				.addTypeVariable(TypeVariableName.get("U", iBaseType))
+				.addJavadoc("Reusable thread-confined reader. Implementations retain no source after a read returns.\n")
+				.addMethod(MethodSpec.methodBuilder("read")
+						.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+						.returns(TypeVariableName.get("U"))
+						.addParameter(TypeName.INT, "version")
+						.addParameter(Buf.class, "source")
+						.build())
+				.addMethod(MethodSpec.methodBuilder("read")
+						.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+						.returns(TypeVariableName.get("U"))
+						.addParameter(TypeName.INT, "version")
+						.addParameter(Buf.class, "source")
+						.addParameter(TypeName.INT, "offset")
+						.addParameter(TypeName.INT, "length")
+						.build())
+				.build();
+		currentVersionClass.addType(reader);
+
+		var boundReader = TypeSpec.interfaceBuilder("BoundReader")
+				.addModifiers(Modifier.PUBLIC)
+				.addTypeVariable(TypeVariableName.get("U", iBaseType))
+				.addJavadoc("Reusable thread-confined reader with type and serialized version selected once.\n")
+				.addMethod(MethodSpec.methodBuilder("read")
+						.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+						.returns(TypeVariableName.get("U"))
+						.addParameter(Buf.class, "source")
+						.build())
+				.addMethod(MethodSpec.methodBuilder("read")
+						.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+						.returns(TypeVariableName.get("U"))
+						.addParameter(Buf.class, "source")
+						.addParameter(TypeName.INT, "offset")
+						.addParameter(TypeName.INT, "length")
+						.build())
+				.build();
+		currentVersionClass.addType(boundReader);
+
+		currentVersionClass.addMethod(MethodSpec.methodBuilder("trailingBytes")
+				.addModifiers(Modifier.PRIVATE, Modifier.STATIC)
+				.returns(MalformedDataException.class)
+				.addParameter(TypeName.INT, "trailing")
+				.addStatement("return new $T($S.concat($T.toString(trailing)))", MalformedDataException.class,
+						"Trailing bytes: ", Integer.class)
+				.build());
+
+		var readerBase = TypeSpec.classBuilder("ReaderBase")
+				.addModifiers(Modifier.PRIVATE, Modifier.ABSTRACT, Modifier.STATIC)
+				.addTypeVariable(TypeVariableName.get("U", iBaseType))
+				.addSuperinterface(ParameterizedTypeName.get(readerType, TypeVariableName.get("U")))
+				.addField(FieldSpec.builder(DecodeBudget.class, "budget", Modifier.PRIVATE, Modifier.FINAL).build())
+				.addField(FieldSpec.builder(heapCursorType, "heapCursor", Modifier.PRIVATE, Modifier.FINAL).build())
+				.addField(FieldSpec.builder(segmentCursorType, "segmentCursor", Modifier.PRIVATE, Modifier.FINAL).build())
+				.addField(FieldSpec.builder(fallbackCursorType, "fallbackCursor", Modifier.PRIVATE, Modifier.FINAL).build())
+				.addMethod(MethodSpec.constructorBuilder()
+						.addParameter(DecodeLimits.class, "limits")
+						.addStatement("this.budget = new $T($T.requireNonNull(limits, $S))", DecodeBudget.class,
+								Objects.class, "limits")
+						.addStatement("this.heapCursor = new $T(budget)", heapCursorType)
+						.addStatement("this.segmentCursor = new $T(budget)", segmentCursorType)
+						.addStatement("this.fallbackCursor = new $T(budget)", fallbackCursorType)
+						.build())
+				.addMethod(MethodSpec.methodBuilder("readHeapValue")
+						.addModifiers(Modifier.PROTECTED, Modifier.ABSTRACT)
+						.returns(TypeVariableName.get("U"))
+						.addParameter(TypeName.INT, "version")
+						.addParameter(heapCursorType, "input")
+						.build())
+				.addMethod(MethodSpec.methodBuilder("readMemorySegmentValue")
+						.addModifiers(Modifier.PROTECTED, Modifier.ABSTRACT)
+						.returns(TypeVariableName.get("U"))
+						.addParameter(TypeName.INT, "version")
+						.addParameter(segmentCursorType, "input")
+						.build())
+				.addMethod(MethodSpec.methodBuilder("readFallbackValue")
+						.addModifiers(Modifier.PROTECTED, Modifier.ABSTRACT)
+						.returns(TypeVariableName.get("U"))
+						.addParameter(TypeName.INT, "version")
+						.addParameter(fallbackCursorType, "input")
+						.build())
+				.addMethod(MethodSpec.methodBuilder("read")
+						.addAnnotation(Override.class)
+						.addModifiers(Modifier.PUBLIC)
+						.returns(TypeVariableName.get("U"))
+						.addParameter(TypeName.INT, "version")
+						.addParameter(Buf.class, "source")
+						.addStatement("$T.requireNonNull(source, $S)", Objects.class, "source")
+						.addStatement("return read(version, source, 0, source.size())")
+						.build())
+				.addMethod(MethodSpec.methodBuilder("read")
+						.addAnnotation(Override.class)
+						.addModifiers(Modifier.PUBLIC)
+						.returns(TypeVariableName.get("U"))
+						.addParameter(TypeName.INT, "version")
+						.addParameter(Buf.class, "source")
+						.addParameter(TypeName.INT, "offset")
+						.addParameter(TypeName.INT, "length")
+						.beginControlFlow("return switch ($T.bindSpecialized(source, offset, length, heapCursor, "
+								+ "segmentCursor, fallbackCursor))", BufDataCursor.class)
+						.addStatement("case HEAP -> readHeap(version)")
+						.addStatement("case MEMORY_SEGMENT -> readMemorySegment(version)")
+						.addStatement("case FALLBACK -> readFallback(version)")
+						.addCode("$<};\n")
+						.build())
+					.addMethod(storageReadMethod("readHeap", "readHeapValue", "heapCursor", true))
+					.addMethod(storageReadMethod("readMemorySegment", "readMemorySegmentValue",
+							"segmentCursor", true))
+					.addMethod(storageReadMethod("readFallback", "readFallbackValue",
+							"fallbackCursor", true))
+					.build();
+		currentVersionClass.addType(readerBase);
+
+		var boundReaderBase = TypeSpec.classBuilder("BoundReaderBase")
+				.addModifiers(Modifier.PRIVATE, Modifier.ABSTRACT, Modifier.STATIC)
+				.addTypeVariable(TypeVariableName.get("U", iBaseType))
+				.addSuperinterface(ParameterizedTypeName.get(boundReaderType, TypeVariableName.get("U")))
+				.addField(FieldSpec.builder(DecodeBudget.class, "budget", Modifier.PRIVATE, Modifier.FINAL).build())
+				.addField(FieldSpec.builder(heapCursorType, "heapCursor", Modifier.PRIVATE, Modifier.FINAL).build())
+				.addField(FieldSpec.builder(segmentCursorType, "segmentCursor", Modifier.PRIVATE, Modifier.FINAL).build())
+				.addField(FieldSpec.builder(fallbackCursorType, "fallbackCursor", Modifier.PRIVATE, Modifier.FINAL).build())
+				.addMethod(MethodSpec.constructorBuilder()
+						.addParameter(DecodeLimits.class, "limits")
+						.addStatement("this.budget = new $T($T.requireNonNull(limits, $S))", DecodeBudget.class,
+								Objects.class, "limits")
+						.addStatement("this.heapCursor = new $T(budget)", heapCursorType)
+						.addStatement("this.segmentCursor = new $T(budget)", segmentCursorType)
+						.addStatement("this.fallbackCursor = new $T(budget)", fallbackCursorType)
+						.build())
+				.addMethod(MethodSpec.methodBuilder("readHeapValue")
+						.addModifiers(Modifier.PROTECTED, Modifier.ABSTRACT)
+						.returns(TypeVariableName.get("U"))
+						.addParameter(heapCursorType, "input")
+						.build())
+				.addMethod(MethodSpec.methodBuilder("readMemorySegmentValue")
+						.addModifiers(Modifier.PROTECTED, Modifier.ABSTRACT)
+						.returns(TypeVariableName.get("U"))
+						.addParameter(segmentCursorType, "input")
+						.build())
+				.addMethod(MethodSpec.methodBuilder("readFallbackValue")
+						.addModifiers(Modifier.PROTECTED, Modifier.ABSTRACT)
+						.returns(TypeVariableName.get("U"))
+						.addParameter(fallbackCursorType, "input")
+						.build())
+				.addMethod(MethodSpec.methodBuilder("read")
+						.addAnnotation(Override.class)
+						.addModifiers(Modifier.PUBLIC, Modifier.FINAL)
+						.returns(TypeVariableName.get("U"))
+						.addParameter(Buf.class, "source")
+						.addStatement("$T.requireNonNull(source, $S)", Objects.class, "source")
+						.addStatement("return read(source, 0, source.size())")
+						.build())
+				.addMethod(MethodSpec.methodBuilder("read")
+						.addAnnotation(Override.class)
+						.addModifiers(Modifier.PUBLIC, Modifier.FINAL)
+						.returns(TypeVariableName.get("U"))
+						.addParameter(Buf.class, "source")
+						.addParameter(TypeName.INT, "offset")
+						.addParameter(TypeName.INT, "length")
+						.beginControlFlow("return switch ($T.bindSpecialized(source, offset, length, heapCursor, "
+								+ "segmentCursor, fallbackCursor))", BufDataCursor.class)
+						.addStatement("case HEAP -> readHeap()")
+						.addStatement("case MEMORY_SEGMENT -> readMemorySegment()")
+						.addStatement("case FALLBACK -> readFallback()")
+						.addCode("$<};\n")
+						.build())
+				.addMethod(storageReadMethod("readHeap", "readHeapValue", "heapCursor", false))
+				.addMethod(storageReadMethod("readMemorySegment", "readMemorySegmentValue",
+						"segmentCursor", false))
+				.addMethod(storageReadMethod("readFallback", "readFallbackValue",
+						"fallbackCursor", false))
+					.build();
+		currentVersionClass.addType(boundReaderBase);
+
+		dataModel.getBaseTypesComputed(dataModel.getCurrentVersion()).forEach(currentType -> {
+			String className = currentType.getName() + "Reader";
+			ClassName planType = GenReadPlan.className(basePackageName, currentVersionPackage, currentType.getName());
+			currentVersionClass.addType(TypeSpec.classBuilder(className)
+					.addModifiers(Modifier.PRIVATE, Modifier.STATIC, Modifier.FINAL)
+					.superclass(ParameterizedTypeName.get(
+							ClassName.get(currentVersionPackage, "CurrentVersion").nestedClass("ReaderBase"),
+							currentType.getJTypeName(basePackageName)))
+					.addMethod(MethodSpec.constructorBuilder()
+							.addParameter(DecodeLimits.class, "limits")
+							.addStatement("super(limits)")
+							.build())
+					.addField(FieldSpec.builder(planType.nestedClass("State"), "state", Modifier.PRIVATE, Modifier.FINAL)
+							.initializer("new $T()", planType.nestedClass("State"))
+							.build())
+					.addMethod(MethodSpec.methodBuilder("readHeapValue")
+							.addAnnotation(Override.class)
+							.addModifiers(Modifier.PROTECTED)
+							.returns(currentType.getJTypeName(basePackageName))
+							.addParameter(TypeName.INT, "version")
+							.addParameter(heapCursorType, "input")
+							.addStatement("return $T.read(version, input, state)", planType)
+							.build())
+					.addMethod(MethodSpec.methodBuilder("readMemorySegmentValue")
+							.addAnnotation(Override.class)
+							.addModifiers(Modifier.PROTECTED)
+							.returns(currentType.getJTypeName(basePackageName))
+							.addParameter(TypeName.INT, "version")
+							.addParameter(segmentCursorType, "input")
+							.addStatement("return $T.read(version, input, state)", planType)
+							.build())
+					.addMethod(MethodSpec.methodBuilder("readFallbackValue")
+							.addAnnotation(Override.class)
+							.addModifiers(Modifier.PROTECTED)
+							.returns(currentType.getJTypeName(basePackageName))
+							.addParameter(TypeName.INT, "version")
+							.addParameter(fallbackCursorType, "input")
+							.addStatement("return $T.read(version, input, state)", planType)
+							.build())
+					.build());
+
+			for (ComputedVersion version : dataModel.getVersionsSet()) {
+				String boundClassName = currentType.getName() + "V" + version.getVersion() + "Reader";
+				currentVersionClass.addType(TypeSpec.classBuilder(boundClassName)
+						.addModifiers(Modifier.PRIVATE, Modifier.STATIC, Modifier.FINAL)
+						.superclass(ParameterizedTypeName.get(
+								ClassName.get(currentVersionPackage, "CurrentVersion").nestedClass("BoundReaderBase"),
+								currentType.getJTypeName(basePackageName)))
+						.addMethod(MethodSpec.constructorBuilder()
+								.addParameter(DecodeLimits.class, "limits")
+								.addStatement("super(limits)")
+								.build())
+						.addField(FieldSpec.builder(planType.nestedClass("State"), "state",
+								Modifier.PRIVATE, Modifier.FINAL)
+								.initializer("new $T()", planType.nestedClass("State"))
+								.build())
+						.addMethod(MethodSpec.methodBuilder("readHeapValue")
+								.addAnnotation(Override.class)
+								.addModifiers(Modifier.PROTECTED, Modifier.FINAL)
+								.returns(currentType.getJTypeName(basePackageName))
+								.addParameter(heapCursorType, "input")
+								.addStatement("return $T.readV$L(input, state)", planType, version.getVersion())
+								.build())
+						.addMethod(MethodSpec.methodBuilder("readMemorySegmentValue")
+								.addAnnotation(Override.class)
+								.addModifiers(Modifier.PROTECTED, Modifier.FINAL)
+								.returns(currentType.getJTypeName(basePackageName))
+								.addParameter(segmentCursorType, "input")
+								.addStatement("return $T.readV$L(input, state)", planType, version.getVersion())
+								.build())
+						.addMethod(MethodSpec.methodBuilder("readFallbackValue")
+								.addAnnotation(Override.class)
+								.addModifiers(Modifier.PROTECTED, Modifier.FINAL)
+								.returns(currentType.getJTypeName(basePackageName))
+								.addParameter(fallbackCursorType, "input")
+								.addStatement("return $T.readV$L(input, state)", planType, version.getVersion())
+								.build())
+						.build());
+			}
+		});
+
+		var newReader = MethodSpec.methodBuilder("newReader")
+				.addModifiers(Modifier.PUBLIC, Modifier.STATIC)
+				.addTypeVariable(TypeVariableName.get("U", iBaseType))
+				.returns(ParameterizedTypeName.get(readerType, TypeVariableName.get("U")))
+				.addParameter(baseType, "type")
+				.addParameter(DecodeLimits.class, "limits")
+				.addStatement("$T.requireNonNull(type, $S)", Objects.class, "type")
+				.addStatement("$T.requireNonNull(limits, $S)", Objects.class, "limits")
+				.beginControlFlow("return ($T) switch (type)",
+						ParameterizedTypeName.get(readerType, TypeVariableName.get("U")));
+		dataModel.getBaseTypesComputed(dataModel.getCurrentVersion()).forEach(currentType ->
+				newReader.addStatement("case $N -> new $N(limits)", currentType.getName(), currentType.getName() + "Reader"));
+		newReader.addCode(CodeBlock.of("$<};"));
+		currentVersionClass.addMethod(newReader.build());
+
+		var newBoundReader = MethodSpec.methodBuilder("newReader")
+				.addModifiers(Modifier.PUBLIC, Modifier.STATIC)
+				.addTypeVariable(TypeVariableName.get("U", iBaseType))
+				.returns(ParameterizedTypeName.get(boundReaderType, TypeVariableName.get("U")))
+				.addParameter(TypeName.INT, "version")
+				.addParameter(baseType, "type")
+				.addParameter(DecodeLimits.class, "limits")
+				.addStatement("$T.requireNonNull(type, $S)", Objects.class, "type")
+				.addStatement("$T.requireNonNull(limits, $S)", Objects.class, "limits")
+				.beginControlFlow("return ($T) switch (type)",
+						ParameterizedTypeName.get(boundReaderType, TypeVariableName.get("U")));
+		dataModel.getBaseTypesComputed(dataModel.getCurrentVersion()).forEach(currentType -> {
+			newBoundReader.addCode("case $N -> switch (version) {\n$>", currentType.getName());
+			for (ComputedVersion version : dataModel.getVersionsSet()) {
+				newBoundReader.addStatement("case $L -> new $N(limits)", version.getVersion(),
+						currentType.getName() + "V" + version.getVersion() + "Reader");
+			}
+			newBoundReader.addStatement("default -> throw new $T($S + version)", IllegalArgumentException.class,
+					"Unsupported serialized version: ")
+					.addCode("$<};\n");
+		});
+		newBoundReader.addCode(CodeBlock.of("$<};"));
+		currentVersionClass.addMethod(newBoundReader.build());
+	}
+
+	private MethodSpec storageReadMethod(String methodName,
+			String valueMethod,
+			String cursorField,
+			boolean versioned) {
+		var method = MethodSpec.methodBuilder(methodName)
+				.addModifiers(Modifier.PRIVATE)
+				.returns(TypeVariableName.get("U"));
+		if (versioned) method.addParameter(TypeName.INT, "version");
+		method.addStatement("budget.enterRoot()")
+				.beginControlFlow("try")
+				.addStatement("U result = $N($L$N)", valueMethod, versioned ? "version, " : "", cursorField)
+				.addStatement("int trailing = $N.remainingIncludingClosed()", cursorField)
+				.beginControlFlow("if (trailing != 0)")
+				.addStatement("throw trailingBytes(trailing)")
+				.endControlFlow()
+				.addStatement("return result")
+				.nextControlFlow("finally")
+				.addStatement("$N.unbind()", cursorField)
+				.addStatement("budget.exitRoot()")
+				.endControlFlow();
+		return method.build();
 	}
 
 	private void generateGetClass(ComputedVersion version, Builder classBuilder) {

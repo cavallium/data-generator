@@ -1,0 +1,562 @@
+currentVersion: v32
+
+customTypesData:
+  FixedInt:
+    javaClass: java.lang.Integer
+    codec: it.cavallium.datagen.plugin.TestFixedIntCodec
+    fixedSize: 4
+  Fragile:
+    javaClass: java.lang.Integer
+    codec: it.cavallium.datagen.plugin.TortureExplodingIntCodec
+    fixedSize: 4
+  Opaque:
+    javaClass: java.lang.String
+    codec: it.cavallium.datagen.nativedata.StringSerializer
+
+superTypesData:
+  Choice: [ChoiceA, ChoiceB, ChoiceC, ChoiceD]
+
+baseTypesData:
+  Leaf:
+    data:
+      code: int
+      rank: int
+      label: String
+      fixed: FixedInt
+      retiredOpaque: Opaque
+      values: int[]
+      maybeCode: -int
+  ChoiceA:
+    data:
+      kindValue: int
+      leaf: Leaf
+      retired: String
+  ChoiceB:
+    data:
+      kindValue: int
+      maybeLeaf: -Leaf
+  ChoiceC:
+    data:
+      kindValue: int
+      leaves: Leaf[]
+  ChoiceD:
+    data:
+      kindValue: int
+      opaque: Opaque
+  Branch:
+    data:
+      branchCode: int
+      primary: Leaf
+      maybePrimary: -Leaf
+      leaves: Leaf[]
+      choice: Choice
+      numbers: int[]
+      maybeNumber: -int
+      retiredFixed: FixedInt
+      retiredText: String
+  Boundary:
+    data:
+      value: int
+      text: String
+      retired: int
+  TwinA:
+    data:
+      value: int
+      fixed: FixedInt
+      text: String
+  TwinB:
+    data:
+      value: int
+      fixed: FixedInt
+      text: String
+  Payload:
+    data:
+      payloadCode: int
+      branch: Branch
+      branches: Branch[]
+      boundary: Boundary
+      retiredOpaque: Opaque
+  MegaRoot:
+    data:
+      choice: Choice
+      anchor: long
+      fragile: Fragile
+      sequence: int
+      fixed0: FixedInt
+      fixed1: FixedInt
+      fixed2: FixedInt
+      deadBoolean: boolean
+      deadByte: byte
+      deadShort: short
+      deadChar: char
+      deadInt: int
+      deadLong: long
+      payload: Payload
+      maybePayload: -Payload
+      payloads: Payload[]
+      choices: Choice[]
+      numbers: int[]
+      maybeNumber: -int
+      twinA: TwinA
+      twinB: TwinB
+      opaque: Opaque
+
+projectionsData:
+  MegaSummary:
+    sourceType: MegaRoot
+    fields:
+      anchor: anchor
+      epoch: epoch
+      payloadScore: body.score
+      leafScore: body.mainBranch.head.score
+      boundary: body.guard
+      marker: marker
+      finalMarker: finalMarker
+
+versions:
+  v01:
+
+  v02:
+    previousVersion: v01
+    transformations:
+      - removeData: { transformClass: MegaRoot, from: fixed0 }
+      - removeData: { transformClass: MegaRoot, from: fixed1 }
+      - removeData: { transformClass: MegaRoot, from: fixed2 }
+      - removeData: { transformClass: MegaRoot, from: deadBoolean }
+      - removeData: { transformClass: MegaRoot, from: deadByte }
+      - removeData: { transformClass: MegaRoot, from: deadShort }
+      - removeData: { transformClass: MegaRoot, from: deadChar }
+      - removeData: { transformClass: MegaRoot, from: deadInt }
+      - removeData: { transformClass: MegaRoot, from: deadLong }
+      - removeData: { transformClass: MegaRoot, from: opaque }
+      - removeData: { transformClass: Leaf, from: retiredOpaque }
+      - removeData: { transformClass: ChoiceA, from: retired }
+      - removeData: { transformClass: Branch, from: retiredFixed }
+      - removeData: { transformClass: Branch, from: retiredText }
+      - removeData: { transformClass: Boundary, from: retired }
+      - removeData: { transformClass: Payload, from: retiredOpaque }
+
+  v03:
+    previousVersion: v02
+    transformations:
+      - moveData: { transformClass: Leaf, from: code, to: score }
+      - moveData: { transformClass: Leaf, from: rank, to: priority }
+      - moveData: { transformClass: ChoiceA, from: kindValue, to: metric }
+      - moveData: { transformClass: ChoiceB, from: kindValue, to: metric }
+      - moveData: { transformClass: ChoiceC, from: kindValue, to: metric }
+      - moveData: { transformClass: ChoiceD, from: kindValue, to: metric }
+      - moveData: { transformClass: Branch, from: branchCode, to: branchScore }
+      - moveData: { transformClass: Payload, from: payloadCode, to: payloadScore }
+      - moveData: { transformClass: TwinA, from: value, to: amount }
+      - moveData: { transformClass: TwinB, from: value, to: amount }
+      - moveData: { transformClass: MegaRoot, from: sequence, to: epoch }
+
+  v04:
+    previousVersion: v03
+    transformations:
+      - upgradeData:
+          transformClass: Leaf
+          from: score
+          type: long
+          upgrader: it.cavallium.datagen.plugin.TestSimpleIntToLongUpgrader
+          readTransform: &widen
+            invokeStatic:
+              method: it.cavallium.datagen.plugin.TortureTransforms.widen
+              arguments:
+                - identity: { source: value }
+      - upgradeData:
+          transformClass: ChoiceA
+          from: metric
+          type: long
+          upgrader: it.cavallium.datagen.plugin.TestSimpleIntToLongUpgrader
+          readTransform: *widen
+      - upgradeData:
+          transformClass: TwinA
+          from: amount
+          type: long
+          upgrader: it.cavallium.datagen.plugin.TestSimpleIntToLongUpgrader
+          readTransform: *widen
+
+  v05:
+    previousVersion: v04
+    transformations:
+      - upgradeData:
+          transformClass: ChoiceB
+          from: metric
+          type: long
+          upgrader: it.cavallium.datagen.plugin.TestSimpleIntToLongUpgrader
+          readTransform: *widen
+      - upgradeData:
+          transformClass: Branch
+          from: branchScore
+          type: long
+          upgrader: it.cavallium.datagen.plugin.TestSimpleIntToLongUpgrader
+          readTransform: *widen
+      - upgradeData:
+          transformClass: Payload
+          from: payloadScore
+          type: long
+          upgrader: it.cavallium.datagen.plugin.TestSimpleIntToLongUpgrader
+          readTransform: *widen
+      - upgradeData:
+          transformClass: TwinB
+          from: amount
+          type: long
+          upgrader: it.cavallium.datagen.plugin.TestSimpleIntToLongUpgrader
+          readTransform: *widen
+
+  v06:
+    previousVersion: v05
+    transformations:
+      - newData: &constantLong
+          transformClass: Leaf
+          to: generation
+          type: long
+          initializer: it.cavallium.datagen.plugin.TestSimpleLongInitializer
+          readTransform: { constant: { value: 123 } }
+      - newData:
+          <<: *constantLong
+          transformClass: ChoiceA
+          to: marker
+      - newData:
+          <<: *constantLong
+          transformClass: ChoiceB
+          to: marker
+      - newData:
+          <<: *constantLong
+          transformClass: ChoiceC
+          to: marker
+      - newData:
+          <<: *constantLong
+          transformClass: ChoiceD
+          to: marker
+      - newData:
+          <<: *constantLong
+          transformClass: Branch
+          to: marker
+      - newData:
+          <<: *constantLong
+          transformClass: Payload
+          to: marker
+      - newData:
+          <<: *constantLong
+          transformClass: TwinA
+          to: marker
+      - newData:
+          <<: *constantLong
+          transformClass: TwinB
+          to: marker
+      - newData:
+          transformClass: MegaRoot
+          to: contextual
+          type: long
+          initializer: it.cavallium.datagen.plugin.TortureContextLongInitializer
+          contextParameters: [anchor]
+          readTransform:
+            invokeStatic:
+              method: it.cavallium.datagen.plugin.TortureTransforms.initialize
+              arguments:
+                - identity: { source: currentContext.anchor }
+
+  v07:
+    previousVersion: v06
+    transformations:
+      - upgradeData:
+          transformClass: MegaRoot
+          from: epoch
+          type: long
+          upgrader: it.cavallium.datagen.plugin.TortureContextIntToLongUpgrader
+          contextParameters: [anchor]
+          readTransform:
+            invokeStatic:
+              method: it.cavallium.datagen.plugin.TortureTransforms.widenWithAnchor
+              arguments:
+                - identity: { source: value }
+                - identity: { source: currentContext.anchor }
+
+  v08:
+    previousVersion: v07
+    transformations:
+      - upgradeData: &mapIntArray
+          transformClass: MegaRoot
+          from: numbers
+          type: long[]
+          upgrader: it.cavallium.datagen.plugin.TortureIntArrayToLongArrayUpgrader
+          readTransform:
+            mapArray:
+              source: { identity: { source: value } }
+              transform:
+                invokeStatic:
+                  method: it.cavallium.datagen.plugin.TortureTransforms.widen
+                  arguments:
+                    - identity: { source: value }
+      - upgradeData:
+          <<: *mapIntArray
+          transformClass: Branch
+          from: numbers
+      - upgradeData:
+          <<: *mapIntArray
+          transformClass: Leaf
+          from: values
+
+  v09:
+    previousVersion: v08
+    transformations:
+      - upgradeData: &mapNullableInt
+          transformClass: MegaRoot
+          from: maybeNumber
+          type: -long
+          upgrader: it.cavallium.datagen.plugin.TortureNullableIntToLongUpgrader
+          readTransform:
+            mapNullable:
+              source: { identity: { source: value } }
+              transform:
+                invokeStatic:
+                  method: it.cavallium.datagen.plugin.TortureTransforms.widen
+                  arguments:
+                    - identity: { source: value }
+      - upgradeData:
+          <<: *mapNullableInt
+          transformClass: Branch
+          from: maybeNumber
+      - upgradeData:
+          <<: *mapNullableInt
+          transformClass: Leaf
+          from: maybeCode
+
+  v10:
+    previousVersion: v09
+
+  v11:
+    previousVersion: v10
+    transformations:
+      - moveData: { transformClass: Leaf, from: label, to: text }
+      - moveData: { transformClass: ChoiceA, from: leaf, to: selectedLeaf }
+      - moveData: { transformClass: ChoiceB, from: maybeLeaf, to: selectedMaybeLeaf }
+      - moveData: { transformClass: ChoiceC, from: leaves, to: selectedLeaves }
+      - moveData: { transformClass: Branch, from: primary, to: head }
+      - moveData: { transformClass: Branch, from: maybePrimary, to: maybeHead }
+      - moveData: { transformClass: Boundary, from: text, to: description }
+      - moveData: { transformClass: Payload, from: branch, to: mainBranch }
+      - moveData: { transformClass: Payload, from: branches, to: branchList }
+      - moveData: { transformClass: MegaRoot, from: payload, to: mainPayload }
+      - moveData: { transformClass: MegaRoot, from: maybePayload, to: optionalPayload }
+
+  v12:
+    previousVersion: v11
+    transformations:
+      - upgradeData:
+          transformClass: Payload
+          from: boundary
+          type: Boundary
+          upgrader: org.example.TortureBoundaryUpgrader
+
+  v13:
+    previousVersion: v12
+    transformations:
+      - upgradeData:
+          transformClass: Boundary
+          from: value
+          type: long
+          upgrader: it.cavallium.datagen.plugin.TestSimpleIntToLongUpgrader
+          readTransform: *widen
+      - upgradeData:
+          transformClass: ChoiceC
+          from: metric
+          type: long
+          upgrader: it.cavallium.datagen.plugin.TestSimpleIntToLongUpgrader
+          readTransform: *widen
+
+  v14:
+    previousVersion: v13
+    transformations:
+      - newData:
+          <<: *constantLong
+          transformClass: Boundary
+          to: marker
+      - newData:
+          <<: *constantLong
+          transformClass: Branch
+          to: late
+      - newData:
+          <<: *constantLong
+          transformClass: MegaRoot
+          to: marker
+
+  v15:
+    previousVersion: v14
+    transformations:
+      - moveData: { transformClass: Boundary, from: description, to: caption }
+      - moveData: { transformClass: Payload, from: boundary, to: guard }
+      - moveData: { transformClass: MegaRoot, from: contextual, to: derived }
+      - moveData: { transformClass: MegaRoot, from: mainPayload, to: body }
+
+  v16:
+    previousVersion: v15
+
+  v17:
+    previousVersion: v16
+    transformations:
+      - upgradeData:
+          transformClass: ChoiceD
+          from: metric
+          type: long
+          upgrader: it.cavallium.datagen.plugin.TestSimpleIntToLongUpgrader
+          readTransform: *widen
+      - upgradeData:
+          transformClass: ChoiceD
+          from: opaque
+          type: Opaque
+          upgrader: it.cavallium.datagen.plugin.TortureStringUpgrader
+
+  v18:
+    previousVersion: v17
+    transformations:
+      - moveData: { transformClass: ChoiceD, from: opaque, to: note }
+      - moveData: { transformClass: TwinA, from: text, to: label }
+      - moveData: { transformClass: TwinB, from: text, to: label }
+
+  v19:
+    previousVersion: v18
+    transformations:
+      - removeData: { transformClass: TwinA, from: fixed }
+      - removeData: { transformClass: TwinB, from: fixed }
+      - newData:
+          <<: *constantLong
+          transformClass: TwinA
+          to: stamp
+      - newData:
+          <<: *constantLong
+          transformClass: TwinB
+          to: stamp
+
+  v20:
+    previousVersion: v19
+    transformations:
+      - removeData: { transformClass: ChoiceD, from: note }
+      - removeData: { transformClass: MegaRoot, from: choices }
+      - removeData: { transformClass: MegaRoot, from: optionalPayload }
+
+  v21:
+    previousVersion: v20
+    transformations:
+      - newData:
+          <<: *constantLong
+          transformClass: Leaf
+          to: late
+      - newData:
+          <<: *constantLong
+          transformClass: Payload
+          to: late
+      - newData:
+          <<: *constantLong
+          transformClass: MegaRoot
+          to: late0
+      - newData:
+          <<: *constantLong
+          transformClass: MegaRoot
+          to: late1
+      - newData:
+          <<: *constantLong
+          transformClass: MegaRoot
+          to: late2
+
+  v22:
+    previousVersion: v21
+    transformations:
+      - moveData: { transformClass: Leaf, from: late, to: tail }
+      - moveData: { transformClass: Payload, from: late, to: tail }
+      - moveData: { transformClass: MegaRoot, from: late0, to: lateA }
+      - moveData: { transformClass: MegaRoot, from: late1, to: lateB }
+      - moveData: { transformClass: MegaRoot, from: late2, to: lateC }
+
+  v23:
+    previousVersion: v22
+
+  v24:
+    previousVersion: v23
+    transformations:
+      - removeData: { transformClass: MegaRoot, from: lateB }
+
+  v25:
+    previousVersion: v24
+    transformations:
+      - upgradeData:
+          transformClass: Leaf
+          from: priority
+          type: long
+          upgrader: it.cavallium.datagen.plugin.TestSimpleIntToLongUpgrader
+          readTransform: *widen
+      - newData:
+          <<: *constantLong
+          transformClass: MegaRoot
+          to: lateD
+
+  v26:
+    previousVersion: v25
+    transformations:
+      - moveData: { transformClass: Leaf, from: priority, to: order }
+      - moveData: { transformClass: MegaRoot, from: lateC, to: terminal }
+
+  v27:
+    previousVersion: v26
+    transformations:
+      - removeData: { transformClass: TwinA, from: label }
+      - removeData: { transformClass: TwinB, from: label }
+
+  v28:
+    previousVersion: v27
+    transformations:
+      - newData:
+          <<: *constantLong
+          transformClass: TwinA
+          to: finalMarker
+      - newData:
+          <<: *constantLong
+          transformClass: TwinB
+          to: finalMarker
+
+  v29:
+    previousVersion: v28
+
+  v30:
+    previousVersion: v29
+    transformations:
+      - moveData: { transformClass: Boundary, from: value, to: identifier }
+      - moveData: { transformClass: Branch, from: branchScore, to: score }
+      - moveData: { transformClass: Payload, from: payloadScore, to: score }
+
+  v31:
+    previousVersion: v30
+    transformations:
+      - newData:
+          <<: *constantLong
+          transformClass: Leaf
+          to: finalMarker
+      - newData:
+          <<: *constantLong
+          transformClass: ChoiceA
+          to: finalMarker
+      - newData:
+          <<: *constantLong
+          transformClass: ChoiceB
+          to: finalMarker
+      - newData:
+          <<: *constantLong
+          transformClass: ChoiceC
+          to: finalMarker
+      - newData:
+          <<: *constantLong
+          transformClass: ChoiceD
+          to: finalMarker
+      - newData:
+          <<: *constantLong
+          transformClass: Boundary
+          to: finalMarker
+      - newData:
+          <<: *constantLong
+          transformClass: MegaRoot
+          to: finalMarker
+
+  v32:
+    previousVersion: v31

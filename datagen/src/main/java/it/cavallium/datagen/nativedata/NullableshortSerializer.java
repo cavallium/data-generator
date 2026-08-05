@@ -1,11 +1,12 @@
 package it.cavallium.datagen.nativedata;
 
-import it.cavallium.datagen.DataSerializer;
+import it.cavallium.datagen.DataCodec;
+import it.cavallium.datagen.ProjectionReadSupport;
 import it.cavallium.stream.SafeDataInput;
 import it.cavallium.stream.SafeDataOutput;
 import org.jetbrains.annotations.NotNull;
 
-public class NullableshortSerializer implements DataSerializer<Nullableshort> {
+public class NullableshortSerializer implements DataCodec<Nullableshort> {
 
 	public static final NullableshortSerializer INSTANCE = new NullableshortSerializer();
 
@@ -22,12 +23,27 @@ public class NullableshortSerializer implements DataSerializer<Nullableshort> {
 
 	@NotNull
 	@Override
-	public Nullableshort deserialize(SafeDataInput dataInput) {
-		var isPresent = dataInput.readBoolean();
-		if (!isPresent) {
-			return Nullableshort.empty();
-		} else {
-			return Nullableshort.of(dataInput.readShort());
+	public Nullableshort read(SafeDataInput dataInput) {
+		dataInput.decodeBudget().enterStructure();
+		try {
+			var isPresent = dataInput.readBoolean();
+			if (!isPresent) {
+				return Nullableshort.empty();
+			} else {
+				return Nullableshort.of(dataInput.readShort());
+			}
+		} finally {
+			dataInput.decodeBudget().exitStructure();
+		}
+	}
+
+	@Override
+	public void skip(SafeDataInput dataInput) {
+		dataInput.decodeBudget().enterStructure();
+		try {
+			ProjectionReadSupport.skipNullableFixed(dataInput, 2);
+		} finally {
+			dataInput.decodeBudget().exitStructure();
 		}
 	}
 }

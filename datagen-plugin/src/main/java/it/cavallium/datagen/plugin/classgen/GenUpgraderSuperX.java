@@ -75,7 +75,8 @@ public class GenUpgraderSuperX extends ClassGenerator {
 			method.addStatement(upgradeSubTypeToType(subType, CodeBlock.of("($T) data", subType.getJTypeName(basePackageName)), nextTypeSuper));
 			i++;
 		}
-		method.addStatement("default -> throw new $T(data.getMetaId$$$N())", IndexOutOfBoundsException.class, typeSuper.getName());
+		method.addStatement("default -> throw new $T($S + data.getMetaId$$$N())", IllegalArgumentException.class,
+				"Invalid union discriminator: ", typeSuper.getName());
 		method.addCode("$<};\n");
 
 		classBuilder.addMethod(method.build());

@@ -8,6 +8,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import it.cavallium.buffer.Buf;
 import it.cavallium.buffer.BufDataInput;
+import it.cavallium.datagen.DecodeLimits;
+import it.cavallium.datagen.MalformedDataException;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
@@ -26,15 +28,15 @@ public class TestInput {
     public static Stream<SafeInputStream> provideStreams() {
         var dataLarge = new byte[] {-2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
         return Stream.of(
-                new SafeDataInputStream(new SafeByteArrayInputStream(DATA)),
+                new SafeDataInputStream(new SafeByteArrayInputStream(DATA), DecodeLimits.unlimited()),
                 new SafeByteArrayInputStream(DATA),
-                BufDataInput.create(Buf.wrap(DATA)),
-                BufDataInput.create(Buf.wrap(dataLarge).subList(2, 12)));
+                BufDataInput.create(Buf.wrap(DATA), DecodeLimits.unlimited()),
+                BufDataInput.create(Buf.wrap(dataLarge).subList(2, 12), DecodeLimits.unlimited()));
     }
 
     @Test
     public void testBufDataInputValidity() {
-        var bdi = BufDataInput.create(Buf.wrap((byte) 1, (byte) 2, (byte) 3, (byte) 4));
+        var bdi = BufDataInput.create(Buf.wrap((byte) 1, (byte) 2, (byte) 3, (byte) 4), DecodeLimits.unlimited());
         assertDoesNotThrow(() -> bdi.mark(1));
         assertDoesNotThrow(bdi::reset);
         //noinspection deprecation
@@ -56,14 +58,14 @@ public class TestInput {
         medDaos.write(sbytes);
         var shortBytes = shortBaos.toByteArray();
         var medBytes = medBaos.toByteArray();
-        var bdi = BufDataInput.create(Buf.wrap(shortBytes));
+        var bdi = BufDataInput.create(Buf.wrap(shortBytes), DecodeLimits.unlimited());
         //noinspection deprecation
         assertEquals(data, bdi.readUTF());
-        var bdi2 = BufDataInput.create(Buf.wrap(shortBytes).subList(Short.BYTES, shortBytes.length));
+        var bdi2 = BufDataInput.create(Buf.wrap(shortBytes).subList(Short.BYTES, shortBytes.length), DecodeLimits.unlimited());
         assertEquals(data, bdi2.readString(sbytes.length, StandardCharsets.UTF_8));
-        var bdi3 = BufDataInput.create(Buf.wrap(shortBytes));
+        var bdi3 = BufDataInput.create(Buf.wrap(shortBytes), DecodeLimits.unlimited());
         assertEquals(data, bdi3.readShortText(StandardCharsets.UTF_8));
-        var bdi4 = BufDataInput.create(Buf.wrap(medBytes));
+        var bdi4 = BufDataInput.create(Buf.wrap(medBytes), DecodeLimits.unlimited());
         assertEquals(data, bdi4.readMediumText(StandardCharsets.UTF_8));
     }
 
@@ -109,7 +111,7 @@ public class TestInput {
         daos.write(2);
         var initialArray = baos.toByteArray();
 
-        var bdi = BufDataInput.create(Buf.wrap(initialArray));
+        var bdi = BufDataInput.create(Buf.wrap(initialArray), DecodeLimits.unlimited());
         assertEquals(10, bdi.read());
         assertEquals(10, bdi.readByte());
         assertEquals(10, bdi.readShort());
@@ -143,24 +145,24 @@ public class TestInput {
             assertArrayEquals(new byte[] {2}, buf);
         }
         {
-            var bdi1 = BufDataInput.create(Buf.create());
+            var bdi1 = BufDataInput.create(Buf.create(), DecodeLimits.unlimited());
             assertEquals(0, bdi1.skip(1));
             assertEquals(0, bdi1.skipBytes(1));
-            assertThrows(IndexOutOfBoundsException.class, () -> bdi1.readString(10, StandardCharsets.UTF_8));
+            assertThrows(MalformedDataException.class, () -> bdi1.readString(10, StandardCharsets.UTF_8));
             var in = new byte[4];
-            assertThrows(IndexOutOfBoundsException.class, () -> bdi1.readFully(in));
+            assertThrows(MalformedDataException.class, () -> bdi1.readFully(in));
             assertThrows(IndexOutOfBoundsException.class, () -> bdi1.readFully(in, 0, -1));
-            assertThrows(IndexOutOfBoundsException.class, bdi1::readBoolean);
-            assertThrows(IndexOutOfBoundsException.class, bdi1::readByte);
-            assertThrows(IndexOutOfBoundsException.class, bdi1::readShort);
-            assertThrows(IndexOutOfBoundsException.class, bdi1::readInt);
-            assertThrows(IndexOutOfBoundsException.class, bdi1::readInt52);
-            assertThrows(IndexOutOfBoundsException.class, bdi1::readLong);
-            assertThrows(IndexOutOfBoundsException.class, bdi1::readFloat);
-            assertThrows(IndexOutOfBoundsException.class, bdi1::readChar);
-            assertThrows(IndexOutOfBoundsException.class, bdi1::readDouble);
-            assertThrows(IndexOutOfBoundsException.class, bdi1::readUnsignedShort);
-            assertThrows(IndexOutOfBoundsException.class, bdi1::readUnsignedByte);
+            assertThrows(MalformedDataException.class, bdi1::readBoolean);
+            assertThrows(MalformedDataException.class, bdi1::readByte);
+            assertThrows(MalformedDataException.class, bdi1::readShort);
+            assertThrows(MalformedDataException.class, bdi1::readInt);
+            assertThrows(MalformedDataException.class, bdi1::readInt52);
+            assertThrows(MalformedDataException.class, bdi1::readLong);
+            assertThrows(MalformedDataException.class, bdi1::readFloat);
+            assertThrows(MalformedDataException.class, bdi1::readChar);
+            assertThrows(MalformedDataException.class, bdi1::readDouble);
+            assertThrows(MalformedDataException.class, bdi1::readUnsignedShort);
+            assertThrows(MalformedDataException.class, bdi1::readUnsignedByte);
         }
     }
 

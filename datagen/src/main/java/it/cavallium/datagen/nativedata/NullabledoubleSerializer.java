@@ -1,11 +1,12 @@
 package it.cavallium.datagen.nativedata;
 
-import it.cavallium.datagen.DataSerializer;
+import it.cavallium.datagen.DataCodec;
+import it.cavallium.datagen.ProjectionReadSupport;
 import it.cavallium.stream.SafeDataInput;
 import it.cavallium.stream.SafeDataOutput;
 import org.jetbrains.annotations.NotNull;
 
-public class NullabledoubleSerializer implements DataSerializer<Nullabledouble> {
+public class NullabledoubleSerializer implements DataCodec<Nullabledouble> {
 
 	public static final NullabledoubleSerializer INSTANCE = new NullabledoubleSerializer();
 
@@ -22,12 +23,27 @@ public class NullabledoubleSerializer implements DataSerializer<Nullabledouble> 
 
 	@NotNull
 	@Override
-	public Nullabledouble deserialize(SafeDataInput dataInput) {
-		var isPresent = dataInput.readBoolean();
-		if (!isPresent) {
-			return Nullabledouble.empty();
-		} else {
-			return Nullabledouble.of(dataInput.readDouble());
+	public Nullabledouble read(SafeDataInput dataInput) {
+		dataInput.decodeBudget().enterStructure();
+		try {
+			var isPresent = dataInput.readBoolean();
+			if (!isPresent) {
+				return Nullabledouble.empty();
+			} else {
+				return Nullabledouble.of(dataInput.readDouble());
+			}
+		} finally {
+			dataInput.decodeBudget().exitStructure();
+		}
+	}
+
+	@Override
+	public void skip(SafeDataInput dataInput) {
+		dataInput.decodeBudget().enterStructure();
+		try {
+			ProjectionReadSupport.skipNullableFixed(dataInput, 8);
+		} finally {
+			dataInput.decodeBudget().exitStructure();
 		}
 	}
 }

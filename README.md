@@ -1,93 +1,58 @@
-Data Generator
-==============
+# Data Generator
 
-Data Generator is a Maven plugin and small runtime library that turns a single YAML schema into:
-- Versioned, strongly‑typed Java data classes and interfaces
-- Compact, allocation‑aware binary serializers/deserializers
-- Automatic upgraders that can read any historical version and upgrade it to the latest
+Data Generator compiles a versioned YAML schema into immutable Java values, exact wire codecs,
+object-to-object upgraders, projections, and allocation-minimal readers that decode any historical
+wire version directly into the current object graph.
 
-You define your types, interfaces, versions, and in‑schema transformations. The plugin generates
-lightweight code that knows how to serialize/deserialize and evolve your models across versions.
+The format has no field metadata. Field order, length prefixes, nullable markers, union
+discriminators, byte order, and every historical layout are therefore part of the permanent wire
+contract. The current read engine changes generated code and in-memory representation, not those
+bytes.
 
-Why this library
-----------------
-- Zero metadata on the wire: the binary format contains only the data — no field names, no tags
-- Version upgrades by construction: describe transformations in YAML, get upgraders for free
-- High performance: uses precomputed serializers and native‑like buffers in the runtime
-- Java‑first: outputs idiomatic Java, with optional record builders
-- Extensible: plug in custom types and custom serializers
+The project targets Java 25.
 
-Typical use cases
------------------
-- Persisted event/data logs that must remain readable and upgradeable over time
-- Network protocols between services where payloads should be small and schema‑driven
-- Snapshot files or caches that must be migrated to newer schema versions without replay
+## Modules
 
-Project modules
----------------
-- datagen-plugin: the Maven plugin that reads your YAML and generates sources
-- datagen: the tiny runtime with buffer utilities and primitive/array serializers
+- `datagen-plugin` compiles schemas and emits Java source.
+- `datagen` is the stable runtime: buffers, cursors, codecs, native values, and read support.
+- `datagen-benchmark` is an opt-in generated JMH matrix (`-Pbenchmark`).
+- `datagen-vector` is an opt-in incubator Vector API accelerator (`-Pvector`). Stable runtime code
+  has no dependency on `jdk.incubator.vector`.
 
-Quick start
------------
-1) Add the plugin to your project
+## Maven plugin
 
 ```xml
-<build>
-  <plugins>
-    <plugin>
-      <groupId>it.cavallium</groupId>
-      <artifactId>datagen-plugin</artifactId>
-      <version>${datagen.version}</version>
-      <executions>
-        <execution>
-          <goals>
-            <goal>run</goal>
-          </goals>
-          <phase>generate-sources</phase>
-          <configuration>
-            <!-- Path to your YAML schema -->
-            <configPath>${project.basedir}/src/main/resources/model.yaml</configPath>
-            <!-- Base Java package for generated code -->
-            <basePackageName>com.example.model</basePackageName>
-            <!-- Optional flags -->
-            <useRecordBuilder>false</useRecordBuilder>
-            <generateOldSerializers>false</generateOldSerializers>
-            <deepCheckBeforeCreatingNewEqualInstances>true</deepCheckBeforeCreatingNewEqualInstances>
-            <binaryStrings>false</binaryStrings>
-          </configuration>
-        </execution>
-      </executions>
-    </plugin>
-  </plugins>
-  <!-- Generated sources are added automatically by the plugin -->
-  <pluginManagement/>
-</build>
+<plugin>
+  <groupId>it.cavallium</groupId>
+  <artifactId>datagen-plugin</artifactId>
+  <version>${datagen.version}</version>
+  <executions>
+    <execution>
+      <goals><goal>run</goal></goals>
+      <configuration>
+        <configPath>${project.basedir}/src/main/datagen/model.yaml</configPath>
+        <basePackageName>com.example.model</basePackageName>
+        <generateOldSerializers>false</generateOldSerializers>
+        <binaryStrings>false</binaryStrings>
+        <vectorKernels>false</vectorKernels>
+      </configuration>
+    </execution>
+  </executions>
+</plugin>
 ```
 
-2) Author your YAML schema
---------------------------
-YAML structure at a glance (keys map 1:1 to plugin config classes):
-- `currentVersion`: the version key that is the current/target schema
-- `interfacesData`: reusable interface fragments (common getters/data)
-- `baseTypesData`: concrete types and their fields
-- `superTypesData`: map of type → list of interfaces it implements
-- `customTypesData`: map of logical type → custom Java class and its serializer
-- `projectionsData`: map of projection name → source record and ordered result field paths
-- `versions`: ordered map of versionKey → version definition
+`generateOldSerializers=false` removes unnecessary historical serialization entry points; fused
+historical reads are still generated. `vectorKernels=true` is only valid when the consuming module
+also depends on `datagen-vector` and compiles/runs with
+`--add-modules jdk.incubator.vector`.
 
-Primitive type notation and modifiers:
-- Plain type: `int`, `long`, `boolean`, `double`, `String`, other base/custom type names
-- Nullable: prefix with `-` (e.g., `-String`)
-- Arrays: suffix `[]` (e.g., `int[]`, `User[]`)
-  - Arrays cannot be nullable (i.e., `-X[]` is not allowed)
+Generation is content-hashed. All flags that affect output, including Vector lowering, participate
+in the cache key.
 
-Example: minimal schema with two versions
------------------------------------------
+## Schema basics
+
 ```yaml
-# src/main/resources/model.yaml
-
-currentVersion: v2
+currentVersion: v3
 
 interfacesData:
   Identified:
@@ -96,89 +61,245 @@ interfacesData:
 
 baseTypesData:
   User:
-    stringRepresenter: username         # field returned by generated toString() (optional)
     data:
       id: long
-      username: String
-      age: int
+      handle: String
+      reputation: -int
+      aliases: String[]
 
 superTypesData:
   User: [Identified]
 
 versions:
-  v1:
-    details:
-      description: "Initial version"
-    # First version has no previousVersion and typically no transformations
-
+  v1: {}
   v2:
     previousVersion: v1
-    details:
-      description: "Rename username→handle and add createdAt"
     transformations:
-      - moveData:            # Applies to a single class
+      - moveData:
           transformClass: User
           from: username
           to: handle
       - newData:
           transformClass: User
-          to: createdAt
-          type: long
-          initializer: com.example.model.CreatedAtInitializer
+          to: reputation
+          type: -int
+          initializer: com.example.model.ReputationInitializer
+  v3:
+    previousVersion: v2
 ```
 
-Supported transformations
--------------------------
-In `versions.<ver>.transformations` you can specify exactly one of these per entry:
-- `moveData`: rename/move a field, optionally reordering with `index`
-- `removeData`: drop a field
-- `newData`: introduce a new field with a default
-- `upgradeData`: change a field type with an upgrade expression
+Type notation:
 
-Example transformations entries (structure mirrors `VersionTransformation` and friends):
-```yaml
-transformations:
-  - moveData:
-      transformClass: User
-      from: name
-      to: fullName
-      index: 0          # optional placement index
-  - removeData:
-      transformClass: User
-      from: deprecatedField
-  - newData:
-      transformClass: User
-      to: tags
-      type: String[]
-      initializer: com.example.model.TagsInitializer
-  - upgradeData:
-      transformClass: User
-      from: age
-      type: long
-      upgrader: com.example.model.AgeToLongUpgrader
+- primitives: `boolean`, `byte`, `short`, `char`, `int`, `long`, `float`, `double`, `Int52`;
+- native references: `String`, `BinaryString`;
+- schema/custom types by name;
+- nullable values with `-`, for example `-int` and `-User`;
+- owned arrays with `[]`, for example `long[]` and `User[]`.
+
+Transformations are `moveData`, `removeData`, `newData`, and `upgradeData`. Their declared object
+initializer/upgrader remains the semantic path for already-materialized values and ordinary
+non-random-access input.
+
+## Codec contract
+
+Serialization, reading, and skipping are one indivisible wire contract:
+
+```java
+public interface DataCodec<T> {
+    void serialize(SafeDataOutput output, T data);
+    T read(SafeDataInput input);
+    void skip(SafeDataInput input);
+    default Reader<T> newReader();
+}
 ```
 
-Custom types
-------------
-You can map logical types to your own Java classes and provide a serializer:
+`DataCodec.Reader<T>` is reusable and thread-confined. Its `read(Buf)` and
+`read(Buf, offset, length)` methods require complete bounded-region consumption, reject trailing
+bytes, and clear the source in `finally`. Create one reader per worker lane; there is deliberately
+no one-shot `Buf` convenience method that hides cursor allocation.
+
+Custom types declare the codec once:
+
 ```yaml
 customTypesData:
   Money:
     javaClass: com.example.types.Money
-    serializer: com.example.types.MoneySerializer
-    # Required only when a projection must cross an unselected Money value.
-    skipper: com.example.types.MoneySkipper
-
-baseTypesData:
-  Invoice:
-    data:
-      total: Money
-      items: Money[]
+    codec: com.example.types.MoneyCodec
+    fixedSize: 16       # optional; only when every encoding is exactly 16 bytes
 ```
 
-Projection readers
-------------------
-For hot paths that need only a few fields from a large record, declare an ordered projection:
+The codec must not retain its input or source buffer. `skip` must consume exactly one value.
+`fixedSize` lets the compiler merge custom fields into adjacent one-check fixed blocks.
+
+There are no serializer/skipper aliases and no `deserialize` API.
+
+## Generated immutable values
+
+Current and historical schema records are generated as final immutable classes:
+
+- nullable references are stored as `null` and exposed through `hasX()`, `x()`, and `xOrNull()`;
+- nullable primitives use a boolean presence field plus an unboxed primitive and expose `hasX()`
+  and `x()`;
+- arrays are stored directly as owned primitive/reference arrays, not lists;
+- an array field `items` exposes `itemsSize()`, `items(index)`, `itemsCopy()`, and
+  `itemsUnsafeArray()`;
+- public `of(...)`, builders, and withers copy caller arrays;
+- generated readers call `unsafeOfOwned(...)` only for freshly decoded arrays whose ownership is
+  transferred to the value;
+- equality, hashing, and string rendering use deep array semantics;
+- zero-field values and all empty arrays are canonical singletons.
+
+`unsafeOfOwned(...)` and `xUnsafeArray()` are explicit expert APIs. Mutating a transferred or
+exposed backing array violates the value's immutability contract.
+
+## Reading historical rows directly into the current version
+
+Generated `CurrentVersion` exposes three paths:
+
+```java
+Current current = CurrentVersion.read(version, BaseType.Current, safeDataInput);
+
+CurrentVersion.Reader<Current> mixed = CurrentVersion.newReader(BaseType.Current);
+Current a = mixed.read(version, source);
+
+CurrentVersion.BoundReader<Current> bound =
+        CurrentVersion.newReader(version, BaseType.Current);
+Current b = bound.read(source);
+Current c = bound.read(container, offset, length);
+```
+
+Use a bound reader when a worker lane processes one type/version. It selects both once and exposes a
+stable hot method with no row-level version switch. A mixed reader selects storage and version once
+per row. Both select heap-array, native `MemorySegment`, or generic-`Buf` storage without creating a
+slice, stream, byte-buffer view, or whole-payload copy.
+
+`CurrentVersion.upgradeDataToLatestVersion(version, oldObject)` remains available for an already
+materialized historical value. For serialized data, use `CurrentVersion.read` or a reusable reader;
+materialize-then-upgrade is intentionally not the normal path.
+
+The generated read compiler performs dependency liveness, dead historical field elimination,
+recursive structural fusion, transform fusion, fixed-block scheduling, and structural
+canonicalization. Adjacent retained and skipped fixed fields share one bounds check. Historical
+records, nullable carriers, list wrappers, context records, and structural upgrade chains are not
+created unless an opaque user boundary explicitly requires a historical object.
+
+## Allocation-minimal `readTransform`
+
+`newData` and `upgradeData` may add a nested `readTransform`. It is used only by the fused
+serialized-data path; the declared `initializer` or `upgrader` remains required for object semantics.
+Exactly one operation is allowed at each transform node:
+
+- `constant`;
+- `identity`;
+- `invokeStatic`;
+- `construct`;
+- recursive `mapNullable`;
+- recursive `mapArray`;
+- `custom`.
+
+Declarative operations emit direct typed Java calls. They create no generic transform frame,
+lambda, boxed primitive argument, or interface dispatch. For example:
+
+```yaml
+- upgradeData:
+    transformClass: Metric
+    from: samples
+    type: long[]
+    upgrader: com.example.SamplesObjectUpgrader
+    readTransform:
+      mapArray:
+        source:
+          identity: { source: value }
+        transform:
+          invokeStatic:
+            method: com.example.Conversions.widen
+            arguments:
+              - identity: { source: value }
+
+- newData:
+    transformClass: Metric
+    to: sourceKind
+    type: int
+    initializer: com.example.SourceKindInitializer
+    readTransform:
+      constant: { value: 7 }
+```
+
+Built-in references are statically typed:
+
+- `value` and `value.<path>`;
+- `currentValue` and `currentValue.<path>`;
+- `context.<field>` and deeper paths;
+- `currentContext.<field>` and deeper paths;
+- literals through `constant`.
+
+An optional root `readTransform.type` says that the transform directly returns that later/final
+schema type. The compiler validates it and fuses the remaining structural evolution rather than
+building intermediate historical values.
+
+### Custom transforms and wire views
+
+```yaml
+- upgradeData:
+    transformClass: Event
+    from: payload
+    type: CurrentPayload
+    upgrader: com.example.PayloadObjectUpgrader
+    contextParameters: [header]
+    readTransform:
+      type: CurrentPayload
+      custom:
+        className: com.example.PayloadWireUpgrader
+```
+
+The generator emits an exact primitive-specialized custom interface and an ephemeral typed input.
+Structural values are exposed as generated wire views:
+
+- records lazily expose typed fields;
+- unions expose an exact `Kind` enum and typed variant views;
+- nullable views expose presence plus a typed value view;
+- arrays expose size, indexed materialization, a reusable element view, and sequential iteration;
+- historical and current structural accessors are available when required by the transform;
+- context parameters have historical, current, and wire-view accessors.
+
+The main record scan captures only required variable-field regions in reader-owned reusable state;
+view getters do not rescan their owner. Recursive view chains grow lazily to the observed depth.
+Views, cursors, and inputs are valid only during the custom call and must never be retained.
+
+Opaque codecs may expose a bounded raw cursor. The custom code must consume it completely.
+`value()`, `currentValue()`, and the raw serialized cursor are mutually exclusive for one binding.
+All bindings and cached graphs are cleared after success or failure.
+
+## Primitive-array storage kernels
+
+The stable runtime validates array length arithmetic and reserves the complete payload before
+allocating the result. Heap kernels use bulk copies and big-endian VarHandles; native kernels use
+finalized FFM layouts; fallback kernels use direct `Buf` access. Each nonempty primitive array is
+allocated once.
+
+The optional `datagen-vector` artifact adds preferred-species kernels for boolean unpacking,
+big-endian conversion, floating-point bit preservation, and packed seven-byte Int52 blocks, with
+scalar tails. Byte arrays retain the faster bulk-copy kernel. Crossover constants are public named
+constants in `VectorArraySupport` and are exercised by the generated size/storage JMH matrix.
+Kernel selection is range-based where the measurements are non-monotonic: heap `int` and `long`
+return to HotSpot's scalar VarHandle loop above their measured upper crossover. The `char` kernel
+stores `ShortVector` values directly into the owned `char[]` segment for its measured range and
+returns to scalar above it, avoiding both per-lane extraction and a large-array segment-view escape.
+
+To build Vector-generated code:
+
+```sh
+mvn -Pvector -pl datagen-vector -am verify
+mvn -Pbenchmark,vector -pl datagen-benchmark -am verify
+```
+
+Consumers must add `datagen-vector` and pass `--add-modules jdk.incubator.vector` at compile and run
+time. A normal scalar build neither resolves nor links any incubator class.
+
+## Projection readers
+
+Projections retain their early-stop semantics for callers that intentionally need only selected
+fields:
 
 ```yaml
 projectionsData:
@@ -190,168 +311,71 @@ projectionsData:
       chatEntityId: chatEntityId
 ```
 
-The map key becomes `ImportedMessageSenderProjection` in the generated `projections` package.
-Field keys are result component names and values are dot-separated source paths. Records and
-nullable records can be traversed. Arrays, super-type unions, and custom values are terminal and
-can still be selected as complete owned values.
+Generated projections expose `read(version, input)`, `readInto(version, input, sink)`, and a reusable
+bounded reader. Normal current-version readers, unlike projections, always consume the complete
+bounded object.
 
-Each projection exposes:
+## Verification and benchmarks
 
-```java
-Result read(int version, SafeDataInput input);
-void readInto(int version, SafeDataInput input, Sink sink);
-Reader newReader();
+Stable release gate:
+
+```sh
+mvn clean verify
 ```
 
-`Result` is an owned record. `readInto` passes nullable values as a presence boolean followed by
-the unwrapped value, avoiding nullable-wrapper allocation. A `Reader` owns one reusable
-`BufDataCursor`; create one per worker lane and do not share it between threads. Its `Buf` overloads
-unbind the source in `finally` before constructing a result or invoking user sink code, so the
-source can be recycled as soon as the call returns.
+Optional generated benchmark build:
 
-Projection generation follows field moves, initializers, upgrader context dependencies, and type
-upgrades for every serialized version. It skips intervening structural data without materializing
-it and stops after the final required field. A custom value is opaque, so crossing one requires a
-`skipper` class implementing `DataSkipper`; generation fails when that contract is missing.
-
-Interfaces and shared data
---------------------------
-Interfaces can define shared getters and data chunks. Types listed in `superTypesData` implement them.
-```yaml
-interfacesData:
-  Audited:
-    extendInterfaces: []
-    commonData:
-      createdAt: long
-      updatedAt: long
-    commonGetters:
-      createdAt: long
-      updatedAt: long
-
-superTypesData:
-  User: [Audited]
+```sh
+mvn -Pbenchmark -pl datagen-benchmark -am verify
 ```
 
-What is generated
------------------
-For each version, the plugin generates a package under your `basePackageName`, for example:
-- `com.example.model.v1` and `com.example.model.v2`
-- Base type interfaces and data classes (optionally records/builders)
-- Per‑type serializers/deserializers
-- Upgraders to move from `v(n)` to `v(n+1)`
-- A `CurrentVersion` utility with shortcuts to current types/serializers
+The generated matrix uses actual `CurrentVersion` code for bound/mixed historical and current
+readers, one-shot `BufDataInput`, the prior stream-backed shape, materialize-then-upgrade controls,
+declarative/custom transforms, primitive-dense records, all primitive arrays at sizes
+`0, 1, 2, 8, 32, 256, 4096`, strings, nullable-heavy graphs, large unions, and every storage kind.
+It also verifies classfiles for direct bound kernel calls, no bound version switch, no
+`invokedynamic`, and bounded method size.
 
-Example generated code (simplified)
------------------------------------
-```java
-// com.example.model.v2.User
-public final class User implements IBaseType {
-  private final long id;
-  private final String handle;
-  private final long createdAt;
-  // getters, equals/hashCode, toString (using stringRepresenter if present)
-}
+`GeneratedPrimitiveArrayThresholdBench` isolates every primitive-array type in a monomorphic
+generated bound reader over heap and native storage. It adds sizes `16`, `64`, and `128` around the
+candidate crossovers; sliced heap shares the heap kernel, while generic fallback never enters the
+Vector module and remains covered by the complete matrix.
 
-// com.example.model.v2.serializers.UserSerializer
-public final class UserSerializer {
-  public static void serialize(SafeDataOutput out, User data) {
-    Serializers.longSerializer().serialize(out, data.getId());
-    Serializers.stringSerializer().serialize(out, data.getHandle());
-    Serializers.longSerializer().serialize(out, data.getCreatedAt());
-  }
-  public static User deserialize(SafeByteArrayInputStream in) {
-    long id = Serializers.longSerializer().deserialize(in);
-    String handle = Serializers.stringSerializer().deserialize(in);
-    long createdAt = Serializers.longSerializer().deserialize(in);
-    return new User(id, handle, createdAt);
-  }
-}
+Run the complete scalar matrix with allocation profiling and JIT logs:
 
-// com.example.model.v1to2.UserUpgrader (conceptually)
-public final class UserUpgrader {
-  public static com.example.model.v2.User upgrade(com.example.model.v1.User old) {
-    return new com.example.model.v2.User(
-      old.getId(),
-      old.getUsername(),     // moved to handle
-      0L                     // default createdAt
-    );
-  }
-}
+```sh
+datagen-benchmark/run-generated-matrix.sh
 ```
 
-Reading and upgrading data
---------------------------
-Generated code can:
-- Serialize a current type to bytes
-- Deserialize older versions and upgrade to current automatically
+Run the same generated matrix with Vector lowering:
 
-Example usage (runtime helpers come from the `datagen` module):
-```java
-// Serialize
-var out = new ByteArrayOutputStream();
-var dataOut = new SafeDataOutput(out);
-com.example.model.v2.serializers.UserSerializer.serialize(dataOut, user);
-byte[] bytes = out.toByteArray();
-
-// Deserialize (current)
-var in = new SafeByteArrayInputStream(bytes);
-User user2 = com.example.model.v2.serializers.UserSerializer.deserialize(in);
-
-// If you store version tags externally, you can route to the right deserializer
-// and then call the generated upgrader to move to the current version.
+```sh
+DATAGEN_VECTOR=1 datagen-benchmark/run-generated-matrix.sh
 ```
 
-Binary format and performance
------------------------------
-- The binary format is field‑position based and schema‑driven; no names/tags are written
-- Primitive and array serializers are hand‑written; strings can be encoded as binary (flag `binaryStrings`)
-- Buffers and serializers try to minimize intermediate copies
+Run paired per-type threshold matrices without overwriting the complete reports:
 
-Plugin parameters reference
----------------------------
-- `configPath` (required): path to YAML file
-- `basePackageName` (required): base Java package for generated sources
-- `useRecordBuilder` (default false): generate record builder style classes
-- `generateOldSerializers` (default false): also generate serializers for old versions
-- `deepCheckBeforeCreatingNewEqualInstances` (default true): extra equality checks during generation
-- `generateTestResources` (default false): place generated sources under test‑sources
-- `binaryStrings` (default false): use a compact binary string encoding in runtime
+```sh
+DATAGEN_REPORT_NAME=scalar-thresholds \
+  datagen-benchmark/run-generated-matrix.sh \
+  it.cavallium.datagen.benchmark.GeneratedPrimitiveArrayThresholdBench
 
-YAML reference (high level)
----------------------------
-- `currentVersion`: string key of the current version (must exist in `versions`)
-- `versions.<ver>`:
-  - `previousVersion`: points to the previous version key (except for the first)
-  - `transformations`: list of `moveData` | `removeData` | `newData` | `upgradeData` entries
-- `baseTypesData.<Type>`:
-  - `stringRepresenter`: optional, designates which field is used in `toString`
-  - `data`: ordered map of `field: type`
-- `interfacesData.<Interface>`:
-  - `extendInterfaces`: list of interface names to extend
-  - `commonData`: shared `field: type` pairs
-  - `commonGetters`: shared getters `name: type`
-- `superTypesData`:
-  - map of `Type: [Interface, ...]` that the type implements
-- `customTypesData.<LogicalType>`:
-  - `javaClass`: fully‑qualified class name for the custom type
-  - `serializer`: fully‑qualified class name implementing its serializer
+DATAGEN_VECTOR=1 DATAGEN_REPORT_NAME=vector-thresholds \
+  datagen-benchmark/run-generated-matrix.sh \
+  it.cavallium.datagen.benchmark.GeneratedPrimitiveArrayThresholdBench
+```
 
-Limitations and notes
----------------------
-- Arrays cannot be nullable (`-X[]` is rejected)
-- When changing field order, prefer `moveData` with `index` to keep binary compatibility expectations explicit
-- `typeVersions`/`dependentTypes` are reserved names and are currently rejected if present
+Reports include build time/RSS, generated source and bytecode size, maximum method size, JMH JSON,
+GC allocation data, HotSpot compilation logs, and code-cache output under
+`datagen-benchmark/target/generated-reader-reports-<name>`. `DATAGEN_REPORT_NAME` selects `<name>`;
+it defaults to `scalar` or `vector`, and the launcher preserves other named report directories
+across its clean build.
 
-Building and running
---------------------
-- Java 25 toolchain (see module POMs)
-- Run `mvn clean package` to build
-- The plugin will generate code under `target/generated-sources/database-classes/java`
+## Compatibility model
 
-Examples directory
-------------------
-Minimal schemas are covered by plugin tests under `datagen-plugin/src/test/java`.
-
-License
--------
-See project licensing terms in the repository. If missing, assume All Rights Reserved by the author unless stated otherwise.
+- Wire compatibility is permanent and covered by frozen format-1 golden payloads.
+- Generated Java source/binary compatibility, record identity, Java serialization identity, and
+  obsolete wrapper APIs are not preserved.
+- Readers are thread-confined.
+- Decoded values own their arrays.
+- Custom codecs and transforms must not retain inputs, sources, cursors, or ephemeral views.

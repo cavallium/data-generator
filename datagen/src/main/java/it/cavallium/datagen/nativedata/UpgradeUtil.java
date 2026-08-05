@@ -5,26 +5,35 @@ import it.cavallium.datagen.DataContextNone;
 import it.cavallium.datagen.DataUpgrader;
 import it.cavallium.datagen.DataUpgraderSimple;
 
-import java.util.List;
+import java.lang.reflect.Array;
 
 public class UpgradeUtil {
-	public static <A, B> List<B> upgradeArray(List<A> from, DataUpgraderSimple<A, B> upgrader) {
-		return upgradeArray(DataContextNone.INSTANCE, from, upgrader);
+	public static <A, B> B[] upgradeArray(A[] from, Class<? extends B[]> targetArrayType,
+			DataUpgraderSimple<A, B> upgrader) {
+		return upgradeArray(DataContextNone.INSTANCE, from, targetArrayType, null, upgrader);
 	}
 
-	@SuppressWarnings("unchecked")
-	public static <C extends DataContext, A, B> List<B> upgradeArray(C context, List<A> from, DataUpgrader<C, A, B> upgrader) {
-		Object[] array;
-		if (from.getClass() == ImmutableWrappedArrayList.class
-				&& ((ImmutableWrappedArrayList<?>) from).a.getClass() == Object[].class) {
-			array = ((ImmutableWrappedArrayList<?>) from).a;
-		} else {
-			array = from.toArray();
+	public static <A, B> B[] upgradeArray(A[] from, Class<? extends B[]> targetArrayType,
+			B[] emptyTarget, DataUpgraderSimple<A, B> upgrader) {
+		return upgradeArray(DataContextNone.INSTANCE, from, targetArrayType, emptyTarget, upgrader);
+	}
+
+	public static <C extends DataContext, A, B> B[] upgradeArray(C context, A[] from,
+			Class<? extends B[]> targetArrayType, DataUpgrader<C, A, B> upgrader) {
+		return upgradeArray(context, from, targetArrayType, null, upgrader);
+	}
+
+	public static <C extends DataContext, A, B> B[] upgradeArray(C context, A[] from,
+			Class<? extends B[]> targetArrayType, B[] emptyTarget, DataUpgrader<C, A, B> upgrader) {
+		if (from.length == 0 && emptyTarget != null) {
+			return emptyTarget;
 		}
-		for (int i = 0; i < array.length; i++) {
-			array[i] = (B) upgrader.upgrade(context, (A) array[i]);
+		@SuppressWarnings("unchecked")
+		B[] result = (B[]) Array.newInstance(targetArrayType.getComponentType(), from.length);
+		for (int i = 0; i < from.length; i++) {
+			result[i] = upgrader.upgrade(context, from[i]);
 		}
-		return (ImmutableWrappedArrayList<B>) ImmutableWrappedArrayList.of(array);
+		return result;
 	}
 
 	public static <A, B> B upgradeNullable(A nullableValue, DataUpgraderSimple<A, B> upgrader) {

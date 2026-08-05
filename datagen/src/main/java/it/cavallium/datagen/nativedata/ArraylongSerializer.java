@@ -1,28 +1,44 @@
 package it.cavallium.datagen.nativedata;
 
-import it.cavallium.datagen.DataSerializer;
+import it.cavallium.datagen.DataCodec;
+import it.cavallium.datagen.ProjectionReadSupport;
 import it.cavallium.stream.SafeDataInput;
 import it.cavallium.stream.SafeDataOutput;
-import it.unimi.dsi.fastutil.longs.LongList;
 import org.jetbrains.annotations.NotNull;
 
-public class ArraylongSerializer implements DataSerializer<LongList> {
+public class ArraylongSerializer implements DataCodec<long[]> {
+
+	private static final long[] EMPTY = new long[0];
+	public static long[] emptyArray() { return EMPTY; }
 
 	@Override
-	public void serialize(SafeDataOutput dataOutput, @NotNull LongList data) {
-		dataOutput.writeInt(data.size());
-		for (int i = 0; i < data.size(); i++) {
-			dataOutput.writeLong(data.getLong(i));
+	public void serialize(SafeDataOutput dataOutput, long @NotNull [] data) {
+		dataOutput.writeInt(data.length);
+		for (long value : data) {
+			dataOutput.writeLong(value);
 		}
 	}
 
 	@NotNull
 	@Override
-	public LongList deserialize(SafeDataInput dataInput) {
-		var data = new long[dataInput.readInt()];
-		for (int i = 0; i < data.length; i++) {
-			data[i] = dataInput.readLong();
+	public long[] read(SafeDataInput dataInput) {
+		dataInput.decodeBudget().enterStructure();
+		try {
+			int size = ProjectionReadSupport.readLength(dataInput);
+			if (size == 0) return EMPTY;
+			return ProjectionReadSupport.readLongArray(dataInput, size);
+		} finally {
+			dataInput.decodeBudget().exitStructure();
 		}
-		return LongList.of(data);
+	}
+
+	@Override
+	public void skip(SafeDataInput dataInput) {
+		dataInput.decodeBudget().enterStructure();
+		try {
+			ProjectionReadSupport.skipFixedArray(dataInput, 8);
+		} finally {
+			dataInput.decodeBudget().exitStructure();
+		}
 	}
 }

@@ -2,13 +2,13 @@ package it.cavallium.datagen.plugin;
 
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
+import java.util.List;
 
 public class SourcesGeneratorConfiguration {
 	public String currentVersion;
 	public Map<String, InterfaceDataConfiguration> interfacesData;
 	public Map<String, ClassConfiguration> baseTypesData;
-	public Map<String, Set<String>> superTypesData;
+	public Map<String, List<String>> superTypesData;
 	public Map<String, CustomTypesConfiguration> customTypesData;
 	public Map<String, ProjectionConfiguration> projectionsData;
 	public Map<String, VersionConfiguration> versions;

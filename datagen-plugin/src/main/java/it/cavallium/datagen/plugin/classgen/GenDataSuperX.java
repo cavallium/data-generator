@@ -6,6 +6,8 @@ import com.palantir.javapoet.ParameterSpec;
 import com.palantir.javapoet.TypeSpec;
 import it.cavallium.datagen.plugin.ClassGenerator;
 import it.cavallium.datagen.plugin.ComputedType;
+import it.cavallium.datagen.plugin.ComputedTypeArray;
+import it.cavallium.datagen.plugin.ComputedTypeNullable;
 import it.cavallium.datagen.plugin.ComputedType.BuildableComputedType;
 import it.cavallium.datagen.plugin.ComputedTypeSuper;
 import it.cavallium.datagen.plugin.ComputedVersion;
@@ -14,6 +16,7 @@ import java.util.stream.Stream;
 import javax.lang.model.element.Modifier;
 import org.apache.commons.lang3.StringUtils;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 public class GenDataSuperX extends ClassGenerator {
 
@@ -84,6 +87,50 @@ public class GenDataSuperX extends ClassGenerator {
 		Stream
 				.concat(dataModel.getCommonInterfaceData(typeSuper), dataModel.getCommonInterfaceGetters(typeSuper))
 				.forEach(superType -> {
+					if (superType.getValue() instanceof ComputedTypeNullable nullable) {
+						var valueType = nullable.getBase().getJTypeName(basePackageName);
+						classBuilder.addMethod(MethodSpec.methodBuilder("has" + StringUtils.capitalize(superType.getKey()))
+								.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+								.returns(boolean.class)
+								.build());
+						var value = MethodSpec.methodBuilder(superType.getKey())
+								.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+								.returns(valueType);
+						if (!valueType.isPrimitive()) value.addAnnotation(NotNull.class);
+						classBuilder.addMethod(value.build());
+						if (!valueType.isPrimitive()) {
+							classBuilder.addMethod(MethodSpec.methodBuilder(superType.getKey() + "OrNull")
+									.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+									.addAnnotation(Nullable.class)
+									.returns(valueType)
+									.build());
+						}
+						return;
+					}
+					if (superType.getValue() instanceof ComputedTypeArray array) {
+						var component = array.getBase().getJTypeName(basePackageName);
+						classBuilder.addMethod(MethodSpec.methodBuilder(superType.getKey() + "Size")
+								.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+								.returns(int.class)
+								.build());
+						var indexed = MethodSpec.methodBuilder(superType.getKey())
+								.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+								.returns(component)
+								.addParameter(int.class, "index");
+						if (!component.isPrimitive()) indexed.addAnnotation(NotNull.class);
+						classBuilder.addMethod(indexed.build());
+						classBuilder.addMethod(MethodSpec.methodBuilder(superType.getKey() + "Copy")
+								.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+								.addAnnotation(NotNull.class)
+								.returns(array.getJTypeName(basePackageName))
+								.build());
+						classBuilder.addMethod(MethodSpec.methodBuilder(superType.getKey() + "UnsafeArray")
+								.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+								.addAnnotation(NotNull.class)
+								.returns(array.getJTypeName(basePackageName))
+								.build());
+						return;
+					}
 					var returnType = superType.getValue().getJTypeNameGeneric(basePackageName);
 					var getter = MethodSpec
 							.methodBuilder(superType.getKey())
@@ -96,7 +143,9 @@ public class GenDataSuperX extends ClassGenerator {
 				});
 
 		dataModel.getCommonInterfaceData(typeSuper).forEach(superType -> {
-			var returnType = superType.getValue().getJTypeNameGeneric(basePackageName);
+			var returnType = superType.getValue() instanceof ComputedTypeNullable nullable
+					? nullable.getBase().getJTypeName(basePackageName)
+					: superType.getValue().getJTypeNameGeneric(basePackageName);
 
 			var setter = MethodSpec
 					.methodBuilder("set" + StringUtils.capitalize(superType.getKey()))
@@ -105,6 +154,13 @@ public class GenDataSuperX extends ClassGenerator {
 					.addAnnotation(NotNull.class)
 					.returns(type);
 			classBuilder.addMethod(setter.build());
+			if (superType.getValue() instanceof ComputedTypeNullable) {
+				classBuilder.addMethod(MethodSpec.methodBuilder("clear" + StringUtils.capitalize(superType.getKey()))
+						.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+						.addAnnotation(NotNull.class)
+						.returns(type)
+						.build());
+			}
 		});
 
 		classBuilder.addMethod(MethodSpec

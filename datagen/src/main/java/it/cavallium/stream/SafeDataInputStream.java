@@ -26,11 +26,19 @@
 package it.cavallium.stream;
 
 import it.cavallium.buffer.IgnoreCoverage;
+import it.cavallium.datagen.DecodeBudget;
+import it.cavallium.datagen.DecodeLimits;
+import it.cavallium.datagen.MalformedDataException;
+import it.cavallium.datagen.ProjectionReadSupport;
 import org.jetbrains.annotations.NotNull;
 
 import java.nio.ByteBuffer;
+import java.nio.charset.Charset;
+import java.util.Objects;
 
 public class SafeDataInputStream extends SafeFilterInputStream implements SafeDataInput {
+	private final DecodeBudget decodeBudget;
+	private final byte[] transferBuffer = new byte[8192];
 
 	/**
 	 * Creates a DataInputStream that uses the specified
@@ -38,8 +46,30 @@ public class SafeDataInputStream extends SafeFilterInputStream implements SafeDa
 	 *
 	 * @param  in   the specified input stream
 	 */
-	public SafeDataInputStream(SafeInputStream in) {
+	public SafeDataInputStream(SafeInputStream in, DecodeLimits limits) {
 		super(in);
+		this.decodeBudget = new DecodeBudget(Objects.requireNonNull(limits, "limits"));
+	}
+
+	@Override
+	public final DecodeBudget decodeBudget() {
+		return decodeBudget;
+	}
+
+	@Override
+	public final long remainingBytesIfKnown() {
+		if (!(in instanceof SafeMeasurableStream measurable)) {
+			return -1;
+		}
+		try {
+			long remaining = Math.subtractExact(measurable.length(), measurable.position());
+			if (remaining < 0) {
+				throw new MalformedDataException("Input position exceeds its reported length");
+			}
+			return remaining;
+		} catch (UnsupportedOperationException exception) {
+			return -1;
+		}
 	}
 
 	@Override
@@ -83,14 +113,22 @@ public class SafeDataInputStream extends SafeFilterInputStream implements SafeDa
 	 */
 	@Override
 	public final void readFully(byte @NotNull [] b, int off, int len) {
-		if (len < 0)
-			throw new IndexOutOfBoundsException();
+		Objects.checkFromIndexSize(off, len, b.length);
 		int n = 0;
 		while (n < len) {
 			int count = in.read(b, off + n, len - n);
-			if (count < 0)
-				throw new IndexOutOfBoundsException();
-			n += count;
+			if (count < 0) {
+				throw truncated(len, n);
+			}
+			if (count == 0) {
+				int next = in.read();
+				if (next < 0) {
+					throw truncated(len, n);
+				}
+				b[off + n++] = (byte) next;
+			} else {
+				n += count;
+			}
 		}
 	}
 
@@ -101,9 +139,39 @@ public class SafeDataInputStream extends SafeFilterInputStream implements SafeDa
 
 	@Override
 	public final void readFully(ByteBuffer dst, int len) {
-		if (len < 0)
-			throw new IndexOutOfBoundsException();
-		in.readNBytes(len, dst);
+		Objects.requireNonNull(dst, "dst");
+		if (len < 0 || len > dst.remaining()) {
+			throw new IndexOutOfBoundsException("length " + len + " exceeds destination remaining "
+					+ dst.remaining());
+		}
+		int total = 0;
+		while (total < len) {
+			int requested = Math.min(len - total, transferBuffer.length);
+			int count = in.read(transferBuffer, 0, requested);
+			if (count < 0) {
+				throw truncated(len, total);
+			}
+			if (count == 0) {
+				int next = in.read();
+				if (next < 0) {
+					throw truncated(len, total);
+				}
+				dst.put((byte) next);
+				total++;
+			} else {
+				dst.put(transferBuffer, 0, count);
+				total += count;
+			}
+		}
+	}
+
+	@Override
+	public final @NotNull String readString(int length, Charset charset) {
+		Objects.requireNonNull(charset, "charset");
+		ProjectionReadSupport.preparePayload(this, length);
+		byte[] bytes = new byte[length];
+		readFully(bytes);
+		return new String(bytes, charset);
 	}
 
 	/**
@@ -142,7 +210,7 @@ public class SafeDataInputStream extends SafeFilterInputStream implements SafeDa
 	public final boolean readBoolean() {
 		int ch = in.read();
 		if (ch < 0)
-			throw new IndexOutOfBoundsException();
+			throw truncated(1, 0);
 		return (ch != 0);
 	}
 
@@ -162,7 +230,7 @@ public class SafeDataInputStream extends SafeFilterInputStream implements SafeDa
 	public final byte readByte() {
 		int ch = in.read();
 		if (ch < 0)
-			throw new IndexOutOfBoundsException();
+			throw truncated(1, 0);
 		return (byte)(ch);
 	}
 
@@ -182,7 +250,7 @@ public class SafeDataInputStream extends SafeFilterInputStream implements SafeDa
 	public final int readUnsignedByte() {
 		int ch = in.read();
 		if (ch < 0)
-			throw new IndexOutOfBoundsException();
+			throw truncated(1, 0);
 		return ch;
 	}
 
@@ -203,7 +271,7 @@ public class SafeDataInputStream extends SafeFilterInputStream implements SafeDa
 		int ch1 = in.read();
 		int ch2 = in.read();
 		if ((ch1 | ch2) < 0)
-			throw new IndexOutOfBoundsException();
+			throw truncated(2, ch1 < 0 ? 0 : 1);
 		return (short)((ch1 << 8) + (ch2));
 	}
 
@@ -224,7 +292,7 @@ public class SafeDataInputStream extends SafeFilterInputStream implements SafeDa
 		int ch1 = in.read();
 		int ch2 = in.read();
 		if ((ch1 | ch2) < 0)
-			throw new IndexOutOfBoundsException();
+			throw truncated(2, ch1 < 0 ? 0 : 1);
 		return (ch1 << 8) + (ch2);
 	}
 
@@ -245,7 +313,7 @@ public class SafeDataInputStream extends SafeFilterInputStream implements SafeDa
 		int ch1 = in.read();
 		int ch2 = in.read();
 		if ((ch1 | ch2) < 0)
-			throw new IndexOutOfBoundsException();
+			throw truncated(2, ch1 < 0 ? 0 : 1);
 		return (char)((ch1 << 8) + (ch2));
 	}
 
@@ -268,7 +336,7 @@ public class SafeDataInputStream extends SafeFilterInputStream implements SafeDa
 		int ch3 = in.read();
 		int ch4 = in.read();
 		if ((ch1 | ch2 | ch3 | ch4) < 0)
-			throw new IndexOutOfBoundsException();
+			throw truncated(4, ch1 < 0 ? 0 : ch2 < 0 ? 1 : ch3 < 0 ? 2 : 3);
 		return ((ch1 << 24) + (ch2 << 16) + (ch3 << 8) + (ch4));
 	}
 
@@ -352,5 +420,9 @@ public class SafeDataInputStream extends SafeFilterInputStream implements SafeDa
 	@Deprecated
 	public final String readLine() {
 		throw new UnsupportedOperationException();
+	}
+
+	private static MalformedDataException truncated(int expected, int actual) {
+		return new MalformedDataException("Truncated input: expected " + expected + " bytes, read " + actual);
 	}
 }

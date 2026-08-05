@@ -21,20 +21,17 @@ public class MavenPlugin extends AbstractMojo {
     @Parameter(required = true)
     private String basePackageName;
 
-    @Parameter(required = true, defaultValue = "true")
-    private String deepCheckBeforeCreatingNewEqualInstances;
-
     @Parameter(required = true, defaultValue = "false")
-    private String generateOldSerializers;
-
-    @Parameter(required = true, defaultValue = "false")
-    private String useRecordBuilder;
+    private boolean generateOldSerializers;
 
     @Parameter(defaultValue = "false")
-    private String generateTestResources;
+    private boolean generateTestResources;
 
     @Parameter(defaultValue = "false")
-    private String binaryStrings;
+    private boolean binaryStrings;
+
+    @Parameter(defaultValue = "false")
+    private boolean vectorKernels;
 
     /**
      * @parameter default-value="${project}"
@@ -48,7 +45,7 @@ public class MavenPlugin extends AbstractMojo {
     public void execute() throws MojoExecutionException, MojoFailureException {
         try {
             SourcesGenerator sourcesGenerator = SourcesGenerator.load(configPath.toPath());
-            boolean testResources = Boolean.parseBoolean(generateTestResources);
+            boolean testResources = generateTestResources;
             Path genRecordsPath = project.getBasedir().getAbsoluteFile().toPath().resolve("target").resolve(testResources ? "generated-test-sources" : "generated-sources").resolve("database-classes");
 
             Path outPath = genRecordsPath.resolve("java");
@@ -57,8 +54,8 @@ public class MavenPlugin extends AbstractMojo {
             } else {
                 this.project.addCompileSourceRoot(outPath.toString());
             }
-            sourcesGenerator.generateSources(basePackageName, outPath, Boolean.parseBoolean(useRecordBuilder), false, Boolean.parseBoolean(deepCheckBeforeCreatingNewEqualInstances),
-                    Boolean.parseBoolean(generateOldSerializers), Boolean.parseBoolean(binaryStrings));
+            sourcesGenerator.generateSources(basePackageName, outPath, false,
+                    generateOldSerializers, binaryStrings, vectorKernels);
         } catch (IOException e) {
             throw new MojoExecutionException("Exception while generating classes", e);
         }

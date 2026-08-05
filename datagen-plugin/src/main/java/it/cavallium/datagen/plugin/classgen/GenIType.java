@@ -1,10 +1,8 @@
 package it.cavallium.datagen.plugin.classgen;
 
-import com.palantir.javapoet.ClassName;
 import com.palantir.javapoet.TypeSpec;
 import it.cavallium.datagen.plugin.ClassGenerator;
 import it.cavallium.datagen.plugin.ComputedVersion;
-import java.io.Serializable;
 import java.util.stream.Stream;
 import javax.lang.model.element.Modifier;
 
@@ -23,8 +21,6 @@ public class GenIType extends ClassGenerator {
 		var interfaceBuilder = TypeSpec.interfaceBuilder("IType");
 
 		interfaceBuilder.addModifiers(Modifier.PUBLIC);
-
-		interfaceBuilder.addSuperinterface(ClassName.get(Serializable.class));
 
 		return new GeneratedClass(version.getPackage(basePackageName), interfaceBuilder);
 	}

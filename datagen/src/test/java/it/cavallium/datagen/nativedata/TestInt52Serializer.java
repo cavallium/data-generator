@@ -1,5 +1,6 @@
 package it.cavallium.datagen.nativedata;
 
+import it.cavallium.datagen.DecodeLimits;
 import it.cavallium.stream.SafeByteArrayInputStream;
 import it.cavallium.stream.SafeByteArrayOutputStream;
 import it.cavallium.stream.SafeDataInputStream;
@@ -31,8 +32,8 @@ public class TestInt52Serializer {
 		}
 
 		var bais = new SafeByteArrayInputStream(out);
-		var dis = new SafeDataInputStream(bais);
-		Assertions.assertEquals(n, serializer.deserialize(dis).longValue(), "Deserialized number differ");
+		var dis = new SafeDataInputStream(bais, DecodeLimits.unlimited());
+		Assertions.assertEquals(n, serializer.read(dis).longValue(), "Read number differs");
 	}
 
 	@Test
@@ -59,11 +60,11 @@ public class TestInt52Serializer {
 		}
 
 		var bais = new SafeByteArrayInputStream(out);
-		var dis = new SafeDataInputStream(bais);
+		var dis = new SafeDataInputStream(bais, DecodeLimits.unlimited());
 		if (n == null) {
-			Assertions.assertNull(serializer.deserialize(dis).getNullable(), "Deserialized number is not empty");
+			Assertions.assertNull(serializer.read(dis).getNullable(), "Read number is not empty");
 		} else {
-			Assertions.assertEquals(n, serializer.deserialize(dis).get().longValue(), "Deserialized number differ");
+			Assertions.assertEquals(n, serializer.read(dis).get().longValue(), "Read number differs");
 		}
 	}
 

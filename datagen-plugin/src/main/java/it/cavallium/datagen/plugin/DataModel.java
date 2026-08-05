@@ -52,7 +52,7 @@ public class DataModel {
     private final int hash;
     private final Map<String, ParsedInterface> interfacesData;
     private final Int2ObjectMap<ComputedVersion> versions;
-    private final Map<String, Set<String>> superTypes;
+    private final Map<String, List<String>> superTypes;
     private final Map<String, CustomTypesConfiguration> customTypes;
 	private final Map<String, ProjectionConfiguration> projections;
     private final Int2ObjectMap<Map<String, ComputedType>> computedTypes;
@@ -64,7 +64,7 @@ public class DataModel {
 			String currentVersionKey,
 			Map<String, InterfaceDataConfiguration> interfacesData,
 			Map<String, ClassConfiguration> baseTypesData,
-			Map<String, Set<String>> superTypesData,
+			Map<String, List<String>> superTypesData,
 			Map<String, CustomTypesConfiguration> customTypesData,
 			Map<String, VersionConfiguration> rawVersions,
 			boolean binaryStrings) {
@@ -76,7 +76,7 @@ public class DataModel {
                      String currentVersionKey,
                      Map<String, InterfaceDataConfiguration> interfacesData,
                      Map<String, ClassConfiguration> baseTypesData,
-                     Map<String, Set<String>> superTypesData,
+                     Map<String, List<String>> superTypesData,
                      Map<String, CustomTypesConfiguration> customTypesData,
 					 Map<String, ProjectionConfiguration> projectionsData,
                      Map<String, VersionConfiguration> rawVersions,
@@ -181,12 +181,52 @@ public class DataModel {
 
         // Collect all custom types
         List<String> customTypes = new ArrayList<>(customTypesData.keySet());
+        customTypesData.forEach((name, configuration) -> {
+            if (configuration == null) {
+                throw new IllegalArgumentException("Custom type " + name + " has no configuration");
+            }
+            if (configuration.getJavaClassString() == null || configuration.getJavaClassString().isBlank()) {
+                throw new IllegalArgumentException("customTypesData." + name + ".javaClass is required");
+            }
+            if (configuration.codec == null || configuration.codec.isBlank()) {
+                throw new IllegalArgumentException("customTypesData." + name + ".codec is required");
+            }
+            if (configuration.fixedSize != null && configuration.fixedSize < 0) {
+                throw new IllegalArgumentException("customTypesData." + name + ".fixedSize must be non-negative");
+            }
+        });
 
         // Compute all types, excluding nullables and arrays
         List<String> allTypes = Stream.concat(Stream.concat(Stream.concat(baseTypes.stream(), superTypes.stream()),
                         customTypes.stream()), NATIVE_TYPES.stream())
                 .distinct()
                 .toList();
+
+		superTypesData.forEach((unionName, alternatives) -> {
+			if (alternatives == null || alternatives.isEmpty()) {
+				throw new IllegalArgumentException("Union " + unionName + " must define at least one alternative");
+			}
+			if (alternatives.size() > 256) {
+				throw new IllegalArgumentException("Union " + unionName + " defines " + alternatives.size()
+						+ " alternatives; the unsigned-byte discriminator supports at most 256");
+			}
+			var seen = new java.util.HashSet<String>();
+			for (int index = 0; index < alternatives.size(); index++) {
+				String alternative = alternatives.get(index);
+				if (alternative == null || alternative.isBlank()) {
+					throw new IllegalArgumentException("Union " + unionName + " alternative " + index
+							+ " is null or blank");
+				}
+				if (!seen.add(alternative)) {
+					throw new IllegalArgumentException("Union " + unionName + " contains duplicate alternative "
+							+ alternative);
+				}
+				if (!allTypes.contains(alternative)) {
+					throw new IllegalArgumentException("Union " + unionName + " contains unknown alternative "
+							+ alternative);
+				}
+			}
+		});
 
         Stream.concat(Stream.concat(Stream.concat(baseTypes.stream(), superTypes.stream()),
                         customTypes.stream()), NATIVE_TYPES.stream())
@@ -270,6 +310,14 @@ public class DataModel {
                             if (!allTypes.contains(extractTypeName(t.type))) {
                                 throw new IllegalArgumentException(transformCoordinate + " refers to an unknown type: " + t.type);
                             }
+                            if (t.hasReadTransform()) {
+                                t.getReadTransform().validate(transformCoordinate + ".newData.readTransform");
+                                if (!allTypes.contains(extractTypeName(t.getReadTransformType()))) {
+                                    throw new IllegalArgumentException(transformCoordinate
+                                            + " readTransform.type refers to an unknown type: " + t.getReadTransformType());
+                                }
+                                validateReadTransformTypes(t.getReadTransform(), allTypes, transformCoordinate);
+                            }
                             var type = fixType(t.type);
                             var fieldInfo = new ParsedClass.InputFieldInfo(type, t.getContextParameters());
                             ParsedClass.FieldInfo prevDef = transformClass.insert(t.index, t.to, fieldInfo);
@@ -307,6 +355,15 @@ public class DataModel {
                             transformClass.addDifferentThanPrev(transformation);
                             if (!allTypes.contains(extractTypeName(t.type))) {
                                 throw new IllegalArgumentException(transformCoordinate + " refers to an unknown type: " + t.type);
+                            }
+                            if (t.hasReadTransform()) {
+                                t.getReadTransform().validate(transformCoordinate + ".upgradeData.readTransform");
+                                if (!allTypes.contains(extractTypeName(t.getReadTransformType()))) {
+                                    throw new IllegalArgumentException(transformCoordinate
+                                            + " readTransform.type refers to an unknown type: "
+                                            + t.getReadTransformType());
+                                }
+                                validateReadTransformTypes(t.getReadTransform(), allTypes, transformCoordinate);
                             }
                             var prevDefinition = transformClass.replace(t.from, new ParsedClass.InputFieldInfo(fixType(t.type), t.getContextParameters()));
                             if (prevDefinition == null) {
@@ -374,7 +431,8 @@ public class DataModel {
                             }).collect(Collectors.toList());
                     // Compute custom types
                     customTypesData.forEach((name, data) -> versionBaseTypes.add(new ComputedTypeCustom(name,
-                            data.getJavaClassString(), data.serializer, computedTypeSupplier, computedVersions.get(latestVersion))));
+                            data.getJavaClassString(), data.codec, data.fixedSize, computedTypeSupplier,
+                            computedVersions.get(latestVersion))));
                     // Compute super types
                     superTypesData.forEach((key, data) -> {
                         List<VersionedType> subTypes = data.stream().map(x -> new VersionedType(x, version)).toList();
@@ -620,6 +678,7 @@ public class DataModel {
         this.versionedTypePrevVersion = versionedTypePrevVersion;
         this.versionedTypeNextVersion = versionedTypeNextVersion;
         this.baseTypeDataChanges = baseTypeDataChanges;
+		GeneratedSurfaceValidator.validate(this);
     }
 
     @Nullable
@@ -767,7 +826,7 @@ public class DataModel {
     }
 
     @Deprecated
-    public Map<String, Set<String>> getSuperTypesRaw() {
+    public Map<String, List<String>> getSuperTypesRaw() {
         return this.superTypes;
     }
 
@@ -1002,5 +1061,33 @@ public class DataModel {
 			return List.of();
 		}
 		return Objects.requireNonNullElse(baseTypeDataChanges.get(logicalVersion).get(baseTypeName), List.of());
+	}
+
+	private static void validateReadTransformTypes(ReadTransformConfiguration transform,
+			List<String> allTypes,
+			String coordinate) {
+		transform.declaredSchemaTypes().distinct().forEach(type -> {
+			if (!allTypes.contains(extractTypeName(type))) {
+				throw new IllegalArgumentException(coordinate
+						+ " readTransform refers to an unknown schema type: " + type);
+			}
+		});
+	}
+
+	/** Returns the current structurally compatible shape of {@code type}, or {@code null} if unchanged/opaque. */
+	public @Nullable ComputedType getCurrentStructuralRepresentation(ComputedType type) {
+		ComputedType candidate = getComputedTypes(currentVersion).get(fixType(type.getName()));
+		return candidate != null && !candidate.equals(type) && canStructurallyFuse(type, candidate)
+				? candidate : null;
+	}
+
+	/** Whether two logical types can be fused without invoking opaque user code. */
+	public static boolean canStructurallyFuse(ComputedType inputType, ComputedType targetType) {
+		if (inputType.equals(targetType)) return true;
+		if (!inputType.getName().equals(targetType.getName())) return false;
+		return inputType instanceof ComputedTypeBase && targetType instanceof ComputedTypeBase
+				|| inputType instanceof ComputedTypeNullable && targetType instanceof ComputedTypeNullable
+				|| inputType instanceof ComputedTypeArray && targetType instanceof ComputedTypeArray
+				|| inputType instanceof ComputedTypeSuper && targetType instanceof ComputedTypeSuper;
 	}
 }

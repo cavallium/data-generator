@@ -13,6 +13,8 @@ public class UpgradeDataConfiguration implements TransformationConfiguration {
 	public String type;
 	public String upgrader;
 	public String upgraderInstance;
+	/** Optional allocation-minimal transform used only by fused serialized-data readers. */
+	public ReadTransformConfiguration readTransform;
 	@Nullable
 	public List<String> contextParameters;
 
@@ -28,6 +30,25 @@ public class UpgradeDataConfiguration implements TransformationConfiguration {
 
 	public JInterfaceLocation getUpgraderLocation() {
 		return JInterfaceLocation.parse(upgrader, upgraderInstance);
+	}
+
+	public boolean hasReadTransform() {
+		return readTransform != null;
+	}
+
+	public ReadTransformConfiguration getReadTransform() {
+		if (readTransform == null) {
+			throw new IllegalStateException("No read transform was configured");
+		}
+		return readTransform;
+	}
+
+	public String getReadTransformType() {
+		return getReadTransform().getResultType(type);
+	}
+
+	public boolean hasReadTransformTypeOverride() {
+		return hasReadTransform() && readTransform.hasResultTypeOverride();
 	}
 
 	@NotNull
@@ -47,6 +68,7 @@ public class UpgradeDataConfiguration implements TransformationConfiguration {
 		return Objects.equals(transformClass, that.transformClass) && Objects.equals(from, that.from)
 				&& Objects.equals(type, that.type) && Objects.equals(upgrader, that.upgrader)
 				&& Objects.equals(upgraderInstance, that.upgraderInstance)
+				&& Objects.equals(readTransform, that.readTransform)
 				&& Objects.equals(contextParameters, that.contextParameters);
 	}
 
@@ -58,6 +80,7 @@ public class UpgradeDataConfiguration implements TransformationConfiguration {
 		hash += ConfigUtils.hashCode(type);
 		hash += ConfigUtils.hashCode(upgrader);
 		hash += ConfigUtils.hashCode(upgraderInstance);
+		hash += ConfigUtils.hashCode(readTransform);
 		hash += ConfigUtils.hashCode(contextParameters);
 		return hash;
 	}
@@ -69,6 +92,7 @@ public class UpgradeDataConfiguration implements TransformationConfiguration {
 		if (this.type != null) c.type = this.type;
 		if (this.upgrader != null) c.upgrader = this.upgrader;
 		if (this.upgraderInstance != null) c.upgraderInstance = this.upgraderInstance;
+		if (this.readTransform != null) c.readTransform = this.readTransform.copy();
 		if (this.contextParameters != null) c.contextParameters = this.contextParameters;
 		return c;
 	}
