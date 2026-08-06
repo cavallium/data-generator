@@ -22,6 +22,7 @@ import it.cavallium.datagen.plugin.ClassGenerator;
 import it.cavallium.datagen.plugin.ComputedType;
 import it.cavallium.datagen.plugin.ComputedType.VersionedComputedType;
 import it.cavallium.datagen.plugin.ComputedTypeArray;
+import it.cavallium.datagen.plugin.ComputedTypeArrayNative;
 import it.cavallium.datagen.plugin.ComputedTypeBase;
 import it.cavallium.datagen.plugin.ComputedTypeCustom;
 import it.cavallium.datagen.plugin.ComputedTypeNative;
@@ -2445,7 +2446,9 @@ public final class GenReadPlan extends ClassGenerator {
 				var method = MethodSpec.methodBuilder(skipperMethods.get(pending.getKey()))
 						.addModifiers(Modifier.PRIVATE, Modifier.STATIC)
 						.addParameter(SafeDataInput.class, "input");
-				boolean structural = isStructural(type);
+				boolean nativeArrayOwnsStructure = type instanceof ComputedTypeArrayNative nativeArray
+						&& nativeArray.hasContainerSpecificElementWireFormat();
+				boolean structural = isStructural(type) && !nativeArrayOwnsStructure;
 				if (structural) {
 					method.addStatement("input.decodeBudget().enterStructure()")
 							.beginControlFlow("try");
@@ -2489,6 +2492,12 @@ public final class GenReadPlan extends ClassGenerator {
 				NullableWireEmitter.emitSkip(method, nullable, CodeBlock.of("input"),
 						"nullablePresent", "nullableFirst",
 						CodeBlock.of("$N(input)", ensureSkipper(nullable.getBase())));
+				return;
+			}
+			if (type instanceof ComputedTypeArrayNative nativeArray
+					&& nativeArray.hasContainerSpecificElementWireFormat()) {
+				FieldLocation serializer = nativeArray.getJSerializerInstance(basePackageName);
+				method.addStatement("$T.$N.skip(input)", serializer.className(), serializer.fieldName());
 				return;
 			}
 			if (type instanceof ComputedTypeArray array) {

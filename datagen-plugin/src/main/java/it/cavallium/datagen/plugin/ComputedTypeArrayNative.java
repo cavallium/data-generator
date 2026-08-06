@@ -39,6 +39,14 @@ public final class ComputedTypeArrayNative implements ComputedTypeArray {
 		return computedChild;
 	}
 
+	/**
+	 * Whether array elements use a different wire encoding from the corresponding scalar codec.
+	 * String arrays use unsigned-short payload lengths, while standalone strings use int lengths.
+	 */
+	public boolean hasContainerSpecificElementWireFormat() {
+		return baseType.equals("String");
+	}
+
 	@Override
 	public boolean equals(Object o) {
 		if (this == o) {

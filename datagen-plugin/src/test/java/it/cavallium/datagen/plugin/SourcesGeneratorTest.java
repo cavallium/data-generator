@@ -1818,6 +1818,52 @@ class SourcesGeneratorTest {
 		}
 	}
 
+	@Test
+	void projectionsUseNativeArrayCodecWireLayoutWhenSkippingStringArrays(@TempDir Path temp)
+			throws Exception {
+		String schema = """
+				currentVersion: v1
+				baseTypesData:
+				  Root:
+				    data:
+				      selected: int
+				      countryCodes: String[]
+				      trailing: long
+				projectionsData:
+				  RootHeader:
+				    sourceType: Root
+				    fields:
+				      selected: selected
+				versions:
+				  v1:
+				""";
+		BufDataOutput encoded = BufDataOutput.create();
+		encoded.writeInt(0x11223344);
+		encoded.writeInt(2);
+		encoded.writeShortText("RU", StandardCharsets.UTF_8);
+		encoded.writeShortText("", StandardCharsets.UTF_8);
+		encoded.writeLong(0x0102030405060708L);
+		Buf payload = encoded.asList();
+
+		for (boolean binaryStrings : List.of(false, true)) {
+			Path sources = temp.resolve("sources-b" + binaryStrings);
+			generate(schema, sources, false, binaryStrings);
+			String projectionSource = Files.readString(
+					sources.resolve("org/example/projections/RootHeaderProjection.java"));
+			String expectedCodec = binaryStrings
+					? "ArrayBinaryStringSerializerInstance.skip(input)"
+					: "ArrayStringSerializerInstance.skip(input)";
+			assertTrue(projectionSource.contains(expectedCodec), projectionSource);
+
+			try (var loader = compileGeneratedSources(sources, temp.resolve("classes-b" + binaryStrings))) {
+				Class<?> projection = loader.loadClass("org.example.projections.RootHeaderProjection");
+				Object result = projection.getMethod("read", int.class, SafeDataInput.class)
+						.invoke(null, 0, BufDataInput.create(payload, LIMITS));
+				assertEquals(0x11223344, result.getClass().getMethod("selected").invoke(result));
+			}
+		}
+	}
+
 	private static void assertNullableHistoricalRoot(Object root, boolean textPresent, boolean packedPresent)
 			throws ReflectiveOperationException {
 		for (var field : List.of(
