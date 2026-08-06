@@ -147,10 +147,17 @@ public class GenDataSuperX extends ClassGenerator {
 					? nullable.getBase().getJTypeName(basePackageName)
 					: superType.getValue().getJTypeNameGeneric(basePackageName);
 
+			var valueParameter = ParameterSpec.builder(returnType, "value");
+			if (superType.getValue() instanceof ComputedTypeNullable nullable
+					&& !nullable.getBase().getJTypeName(basePackageName).isPrimitive()) {
+				valueParameter.addAnnotation(Nullable.class);
+			} else if (!returnType.isPrimitive()) {
+				valueParameter.addAnnotation(NotNull.class);
+			}
 			var setter = MethodSpec
 					.methodBuilder("set" + StringUtils.capitalize(superType.getKey()))
 					.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
-					.addParameter(ParameterSpec.builder(returnType, "value").addAnnotation(NotNull.class).build())
+					.addParameter(valueParameter.build())
 					.addAnnotation(NotNull.class)
 					.returns(type);
 			classBuilder.addMethod(setter.build());

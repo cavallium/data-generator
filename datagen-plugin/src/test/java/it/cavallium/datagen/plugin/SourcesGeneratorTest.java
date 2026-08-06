@@ -195,6 +195,12 @@ class SourcesGeneratorTest {
 			assertEquals(true, valueType.getMethod("hasNullableChild").invoke(value));
 			assertSame(childA, valueType.getMethod("nullableChild").invoke(value));
 			assertSame(childA, valueType.getMethod("nullableChildOrNull").invoke(value));
+			Object clearedByNullableSetter = valueType.getMethod("setNullableChild", childType)
+					.invoke(value, new Object[] {null});
+			assertEquals(false, valueType.getMethod("hasNullableChild").invoke(clearedByNullableSetter));
+			assertEquals(null, valueType.getMethod("nullableChildOrNull").invoke(clearedByNullableSetter));
+			assertSame(clearedByNullableSetter, valueType.getMethod("setNullableChild", childType)
+					.invoke(clearedByNullableSetter, new Object[] {null}));
 
 			Object equalChildren = java.lang.reflect.Array.newInstance(childType, 2);
 			java.lang.reflect.Array.set(equalChildren, 0, childA);
@@ -245,6 +251,12 @@ class SourcesGeneratorTest {
 			Object built = builder.getClass().getMethod("build").invoke(builder);
 			assertEquals(31, valueType.getMethod("ints", int.class).invoke(built, 0));
 			assertSame(childB, valueType.getMethod("children", int.class).invoke(built, 0));
+			Object nullableBuilder = valueType.getMethod("builder").invoke(value);
+			nullableBuilder.getClass().getMethod("setNullableChild", childType)
+					.invoke(nullableBuilder, new Object[] {null});
+			Object nullableBuilt = nullableBuilder.getClass().getMethod("build").invoke(nullableBuilder);
+			assertEquals(false, valueType.getMethod("hasNullableChild").invoke(nullableBuilt));
+			assertEquals(null, valueType.getMethod("nullableChildOrNull").invoke(nullableBuilt));
 
 			Object nullChildren = java.lang.reflect.Array.newInstance(childType, 1);
 			InvocationTargetException nullElement = assertThrows(InvocationTargetException.class,

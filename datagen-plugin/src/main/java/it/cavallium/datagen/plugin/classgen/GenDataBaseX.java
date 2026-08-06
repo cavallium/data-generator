@@ -257,7 +257,7 @@ public class GenDataBaseX extends ClassGenerator {
 		}
 
 		ParameterSpec.Builder valueParameter = ParameterSpec.builder(valueType, valueParameterName);
-		if (!primitive) valueParameter.addAnnotation(NotNull.class);
+		if (!primitive) valueParameter.addAnnotation(Nullable.class);
 		MethodSpec.Builder setter = MethodSpec.methodBuilder("set" + StringUtils.capitalize(name))
 				.addModifiers(Modifier.PUBLIC)
 				.addAnnotation(NotNull.class)
@@ -273,8 +273,7 @@ public class GenDataBaseX extends ClassGenerator {
 							replacementArguments(owner, name, CodeBlock.of("true"),
 									CodeBlock.of("$N", valueParameterName)));
 		} else {
-			setter.addStatement("$T.requireNonNull($N, $S)", Objects.class, valueParameterName, name)
-					.beginControlFlow("if ($T.equals(this.$N, $N))", Objects.class, name, valueParameterName)
+			setter.beginControlFlow("if ($T.equals(this.$N, $N))", Objects.class, name, valueParameterName)
 					.addStatement("return this")
 					.endControlFlow()
 					.addStatement("return new $T($L)", ownerType,
@@ -488,7 +487,7 @@ public class GenDataBaseX extends ClassGenerator {
 			if (fieldType instanceof ComputedTypeNullable nullable) {
 				TypeName valueType = nullable.getBase().getJTypeName(basePackageName);
 				ParameterSpec.Builder valueParameter = ParameterSpec.builder(valueType, valueParameterName);
-				if (!valueType.isPrimitive()) valueParameter.addAnnotation(NotNull.class);
+				if (!valueType.isPrimitive()) valueParameter.addAnnotation(Nullable.class);
 				MethodSpec.Builder setter = MethodSpec.methodBuilder("set" + StringUtils.capitalize(name))
 						.addModifiers(Modifier.PUBLIC)
 						.addAnnotation(NotNull.class)
@@ -498,8 +497,7 @@ public class GenDataBaseX extends ClassGenerator {
 					setter.addStatement("this.$N = true", builderPresenceName(base, name))
 							.addStatement("this.$N = $N", storageName, valueParameterName);
 				} else {
-					setter.addStatement("this.$N = $T.requireNonNull($N, $S)", storageName,
-							Objects.class, valueParameterName, name);
+					setter.addStatement("this.$N = $N", storageName, valueParameterName);
 				}
 				setter.addStatement("return this");
 				builder.addMethod(setter.build());
