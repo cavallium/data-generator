@@ -42,6 +42,7 @@ import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
 import javax.tools.DiagnosticCollector;
 import javax.tools.JavaFileObject;
@@ -61,6 +62,8 @@ class AdversarialEvolutionTest {
 	private static final String BASE_PACKAGE = "org.example";
 	private static final int VERSION_COUNT = 32;
 	private static final int CURRENT_VERSION = VERSION_COUNT - 1;
+	private static final long DEEP_FUZZ_SEED = 0x58D2_0A7F_C419_63BEL;
+	private static final int VALUES_PER_VERSION = 128;
 
 	@Test
 	void generatedHistoricalReadersSurviveTheCompleteEvolutionHistory(@TempDir Path temp) throws Exception {
@@ -87,6 +90,90 @@ class AdversarialEvolutionTest {
 			assertOptimizedSourceShape(fusedSources);
 			assertReadPlanMethodSizes(fusedClasses);
 			verifyFusedOnlyCorpus(loader, corpus);
+		}
+	}
+
+	@Test
+	void generatedHistoricalReadersFuzzThousandsOfIndependentGraphsAcrossTheCompleteHistory(
+			@TempDir Path temp) throws Exception {
+		String schema = resource("/adversarial-evolution.yaml");
+		Path sources = temp.resolve("deep-fuzz-sources");
+		Path classes = temp.resolve("deep-fuzz-classes");
+		generate(schema, sources, true);
+		writeOpaqueBoundaryUpgrader(sources);
+
+		try (URLClassLoader loader = compileGeneratedSources(sources, classes)) {
+			Class<?> baseType = loader.loadClass("org.example.BaseType");
+			Object megaRootType = enumValue(baseType, "MegaRoot");
+			Class<?> currentVersion = loader.loadClass("org.example.current.CurrentVersion");
+			Object mixedReader = currentVersion.getMethod("newReader", baseType, DecodeLimits.class)
+					.invoke(null, megaRootType, LIMITS);
+			Class<?> projection = loader.loadClass("org.example.projections.MegaSummaryProjection");
+			Object projectionReader = projection.getMethod("newReader", DecodeLimits.class)
+					.invoke(null, LIMITS);
+			var random = new Random(DEEP_FUZZ_SEED);
+			var coverage = new EvolutionCoverage();
+
+			for (int version = 0; version < VERSION_COUNT; version++) {
+				final int rowVersion = version;
+				Class<?> versionClass = versionClass(loader, version);
+				Object versionInstance = versionClass.getField("INSTANCE").get(null);
+				Object codec = versionClass.getMethod("getCodec", baseType).invoke(versionInstance, megaRootType);
+				Method serialize = concreteSerializeMethod(codec);
+				Class<?> historicalType = serialize.getParameterTypes()[1];
+				Object boundReader = currentVersion.getMethod("newReader", int.class, baseType,
+						DecodeLimits.class).invoke(null, version, megaRootType, LIMITS);
+
+				for (int valueIndex = 0; valueIndex < VALUES_PER_VERSION; valueIndex++) {
+					int valueSeed = random.nextInt();
+					String diagnostic = "seed=" + DEEP_FUZZ_SEED + ", version=" + version
+							+ ", value=" + valueIndex + ", valueSeed=" + valueSeed;
+					Object historical = createValue(historicalType,
+							new BuildContext(loader, baseType, versionInstance, version, coverage),
+							valueSeed, 0, "MegaRoot");
+					BufDataOutput output = BufDataOutput.create();
+					serialize.invoke(codec, output, historical);
+					Buf payload = output.asList();
+					assertTrue(payload.size() > 32, diagnostic);
+
+					Object exact = codec.getClass().getMethod("read", SafeDataInput.class)
+							.invoke(codec, BufDataInput.create(payload, LIMITS));
+					assertEquals(historical, exact, diagnostic + ", exact");
+					BufDataOutput roundTrip = BufDataOutput.create(payload.size());
+					serialize.invoke(codec, roundTrip, exact);
+					assertArrayEquals(payload.asArray(), roundTrip.asList().asArray(),
+							diagnostic + ", historical wire round trip");
+
+					Object expected = currentVersion.getMethod("upgradeDataToLatestVersion", int.class,
+							Object.class).invoke(null, version, exact);
+					BufDataInput streamInput = BufDataInput.create(payload, LIMITS);
+					Object streamed = currentVersion.getMethod("read", int.class, baseType,
+							SafeDataInput.class).invoke(null, version, megaRootType, streamInput);
+					assertEquals(expected, streamed, diagnostic + ", fused stream");
+					assertEquals(0, streamInput.available(), diagnostic + ", fused stream trailing bytes");
+
+					ValueAssertion assertion = value -> assertEquals(expected, value,
+							diagnostic + ", storage-specialized v" + rowVersion);
+					verifyAllStorageKinds(version, payload.asArray(), mixedReader, boundReader, assertion);
+
+					Object projected = projection.getMethod("read", int.class, SafeDataInput.class)
+							.invoke(null, version, BufDataInput.create(payload, LIMITS));
+					assertProjectionMatches(expected, projected, version);
+					Object reusableProjection = invokeProjectionReader(projectionReader, version,
+							payload, 0, payload.size());
+					assertEquals(projected, reusableProjection, diagnostic + ", projection");
+					assertReaderCursorUnbound(projectionReader);
+
+					if ((valueIndex & 15) == 0) {
+						verifyFailureRecovery(version, payload.asArray(), expected, mixedReader, boundReader);
+						verifyUnionFailureSurfaces(version, payload.asArray(), codec, projection,
+								projectionReader, projected.toString());
+					}
+				}
+			}
+			coverage.assertComplete();
+			assertNormalReaderClean(mixedReader);
+			assertReaderCursorUnbound(projectionReader);
 		}
 	}
 

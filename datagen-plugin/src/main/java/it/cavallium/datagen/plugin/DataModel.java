@@ -668,8 +668,9 @@ public class DataModel {
         logger.debug("Result:");
         var unchanged = unchangedTot.sum();
         var changed = changedTot.sum();
-        logger.debug("\tAvoided type versions: {} ({}%)", unchanged, (unchanged * 100 / (changed + unchanged)));
-        logger.debug("\tType versions: {} ({}%)", changed, (changed * 100 / (changed + unchanged)));
+        long totalTypeVersions = Math.max(changed + unchanged, 1L);
+        logger.debug("\tAvoided type versions: {} ({}%)", unchanged, (unchanged * 100 / totalTypeVersions));
+        logger.debug("\tType versions: {} ({}%)", changed, (changed * 100 / totalTypeVersions));
         this.currentVersion = computedVersions.get(versionsCount - 1);
         this.superTypes = superTypesData;
         this.customTypes = customTypesData;

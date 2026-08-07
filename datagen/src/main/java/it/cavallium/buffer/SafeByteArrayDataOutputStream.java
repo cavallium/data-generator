@@ -17,6 +17,9 @@ public class SafeByteArrayDataOutputStream extends SafeDataOutputStream {
     }
 
     public void rewindPosition(int count) {
+        if (count < 0) {
+            throw new IndexOutOfBoundsException("Negative rewind count: " + count);
+        }
         var currentPosition = bOut.position();
         if (count > written) {
             throw new IndexOutOfBoundsException(count + " > " + written);
@@ -26,6 +29,9 @@ public class SafeByteArrayDataOutputStream extends SafeDataOutputStream {
     }
 
     public void advancePosition(int count) {
+        if (count < 0) {
+            throw new IndexOutOfBoundsException("Negative advance count: " + count);
+        }
         bOut.ensureWritable(count);
         bOut.position(bOut.position() + count);
         incCount(count);

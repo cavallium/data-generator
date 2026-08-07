@@ -308,15 +308,8 @@ public class MemorySegmentBuf extends AbstractByteList implements Buf {
 
 	@Override
 	public boolean equals(int aStartIndex, Buf b, int bStartIndex, int length) {
-		if (aStartIndex < 0 || bStartIndex < 0 || length < 0) {
-			return false;
-		}
-		if (aStartIndex + length > size) {
-			return false;
-		}
-		if (bStartIndex + length > b.size()) {
-			return false;
-		}
+		if (!isValidRange(aStartIndex, length, size)
+				|| !isValidRange(bStartIndex, length, b.size())) return false;
 		if (length == 0) {
 			return true;
 		}
@@ -339,15 +332,8 @@ public class MemorySegmentBuf extends AbstractByteList implements Buf {
 
 	@Override
 	public boolean equals(int aStartIndex, byte[] b, int bStartIndex, int length) {
-		if (aStartIndex < 0 || bStartIndex < 0 || length < 0) {
-			return false;
-		}
-		if (aStartIndex + length > size) {
-			return false;
-		}
-		if (bStartIndex + length > b.length) {
-			return false;
-		}
+		if (!isValidRange(aStartIndex, length, size)
+				|| !isValidRange(bStartIndex, length, b.length)) return false;
 		if (length == 0) {
 			return true;
 		}
@@ -357,6 +343,10 @@ public class MemorySegmentBuf extends AbstractByteList implements Buf {
 				.asSlice(aStartIndex, length)
 				.mismatch(MemorySegment.ofArray(b).asSlice(bStartIndex, length));
 		return mismatch == -1;
+	}
+
+	private static boolean isValidRange(int offset, int length, int size) {
+		return offset >= 0 && length >= 0 && (long) offset + length <= size;
 	}
 
 	@Override
@@ -384,24 +374,32 @@ public class MemorySegmentBuf extends AbstractByteList implements Buf {
 			return 0;
 		}
 
-		if (l instanceof MemorySegmentBuf other) {
-			long len = Math.min(this.size, other.size);
-			long mismatch = this.segment.mismatch(other.segment);
+		if (l instanceof Buf other) {
+			int sizeComparison = Integer.compare(this.size, other.size());
+			if (sizeComparison != 0) return sizeComparison;
+
+			if (!(other instanceof MemorySegmentBuf memorySegmentBuf)) {
+				for (int index = 0; index < size; index++) {
+					int comparison = Integer.compare(Byte.toUnsignedInt(getByte(index)),
+							Byte.toUnsignedInt(other.getByte(index)));
+					if (comparison != 0) return comparison;
+				}
+				return 0;
+			}
+
+			long len = size;
+			long mismatch = this.segment.mismatch(memorySegmentBuf.segment);
 
 			if (mismatch == -1) {
-				// Contents match, compare sizes
-				return Integer.compare(this.size, other.size);
+				return 0;
 			}
 
-			// Mismatch found within common length?
 			if (mismatch < len) {
 				int a = Byte.toUnsignedInt(this.getByte((int) mismatch));
-				int b = Byte.toUnsignedInt(other.getByte((int) mismatch));
+				int b = Byte.toUnsignedInt(memorySegmentBuf.getByte((int) mismatch));
 				return Integer.compare(a, b);
 			}
-
-			// One is a prefix of the other
-			return Integer.compare(this.size, other.size);
+			return 0;
 		}
 
 		return super.compareTo(l);

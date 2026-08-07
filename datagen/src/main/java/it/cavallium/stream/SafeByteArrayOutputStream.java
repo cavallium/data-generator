@@ -143,6 +143,7 @@ public class SafeByteArrayOutputStream extends SafeMeasurableOutputStream implem
         } else if (arrayPosition >= array.length) {
             array = ByteArrays.grow(array, arrayPosition + 1, length);
         }
+        if (!wrapped && arrayPosition > length) Arrays.fill(array, length, arrayPosition, (byte) 0);
         array[arrayPosition++] = (byte) b;
         if (!wrapped && length < arrayPosition) length = arrayPosition;
     }
@@ -154,6 +155,7 @@ public class SafeByteArrayOutputStream extends SafeMeasurableOutputStream implem
         }
         Objects.checkFromIndexSize(off, len, b.length);
         growBy(len);
+        if (!wrapped && arrayPosition > length) Arrays.fill(array, length, arrayPosition, (byte) 0);
         System.arraycopy(b, off, array, arrayPosition, len);
         arrayPosition += len;
         if (!wrapped && length < arrayPosition) length = arrayPosition;
@@ -163,7 +165,7 @@ public class SafeByteArrayOutputStream extends SafeMeasurableOutputStream implem
         if (wrapped) {
             ensureWrappedBounds(arrayPosition, arrayPosition + len);
         } else if (arrayPosition + len > array.length) {
-            array = ByteArrays.grow(array, arrayPosition + len, arrayPosition);
+            array = ByteArrays.grow(array, arrayPosition + len, length);
         }
     }
 
