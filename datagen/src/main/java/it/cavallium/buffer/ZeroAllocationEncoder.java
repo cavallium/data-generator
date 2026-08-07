@@ -30,10 +30,19 @@ public class ZeroAllocationEncoder {
     private final ThreadLocal<AtomicReference<ByteBuffer>> byteBufferRefThreadLocal;
 
     public ZeroAllocationEncoder(int outBufferSize) {
+        if (outBufferSize <= 0) {
+            throw new IllegalArgumentException("outBufferSize must be positive");
+        }
         var maxBytesPerChar = (int) Math.ceil(StandardCharsets.UTF_8.newEncoder().maxBytesPerChar());
-        bufferThreadLocal = ThreadLocal.withInitial(() -> ByteBuffer.allocate(outBufferSize * maxBytesPerChar));
+        final int byteBufferSize;
+        try {
+            byteBufferSize = Math.max(4, Math.multiplyExact(outBufferSize, maxBytesPerChar));
+        } catch (ArithmeticException exception) {
+            throw new IllegalArgumentException("outBufferSize is too large: " + outBufferSize, exception);
+        }
+        bufferThreadLocal = ThreadLocal.withInitial(() -> ByteBuffer.allocate(byteBufferSize));
         charBufferRefThreadLocal = ThreadLocal.withInitial(() -> new AtomicReference<>(CharBuffer.allocate(outBufferSize)));
-        byteBufferRefThreadLocal = ThreadLocal.withInitial(() -> new AtomicReference<>(ByteBuffer.allocate(outBufferSize * maxBytesPerChar)));
+        byteBufferRefThreadLocal = ThreadLocal.withInitial(() -> new AtomicReference<>(ByteBuffer.allocate(byteBufferSize)));
     }
 
     public void encodeTo(String s, SafeDataOutput bufDataOutput) {

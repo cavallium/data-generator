@@ -443,7 +443,7 @@ class SourcesGeneratorTest {
 		generator.generateSources(BASE_PACKAGE, out, false, false, false, false);
 		String initialManifest = Files.readString(manifest);
 		var initialSources = sourceSnapshot(out);
-		assertTrue(initialManifest.startsWith("data-generator-manifest-v1\nfingerprint="));
+		assertTrue(initialManifest.startsWith("data-generator-manifest-v2\ngeneration="));
 		assertFalse(Files.exists(out.resolve("org/example/.hash")));
 
 		FileTime sentinel = FileTime.fromMillis(1_234_000L);

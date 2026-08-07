@@ -223,6 +223,7 @@ class ByteListBuf extends ByteArrayList implements Buf {
 
     @Override
     public Buf copyOfRange(int from, int to) {
+        checkFromToIndex(from, to, this.size);
         if (from == 0 && to == size()) {
             return copy();
         } else {
@@ -255,27 +256,22 @@ class ByteListBuf extends ByteArrayList implements Buf {
 
     @Override
     public SafeByteArrayOutputStream binaryOutputStream(int from, int to) {
+        ensureMutable();
         checkFromToIndex(from, to, size);
         return new SafeByteArrayOutputStream(a, from, to);
     }
 
     @Override
     public boolean equals(int aStartIndex, Buf b, int bStartIndex, int length) {
-        if (aStartIndex + length > size()) {
-            return false;
-        }
+        if (!isValidRange(aStartIndex, length, size())
+                || !isValidRange(bStartIndex, length, b.size())) return false;
         return b.equals(bStartIndex, this.a, aStartIndex, length);
     }
 
     @Override
     public boolean equals(int aStartIndex, byte[] b, int bStartIndex, int length) {
-        if (aStartIndex < 0) return false;
-        if (aStartIndex + length > this.size) {
-            return false;
-        }
-        if (bStartIndex + length > b.length) {
-            return false;
-        }
+        if (!isValidRange(aStartIndex, length, this.size)
+                || !isValidRange(bStartIndex, length, b.length)) return false;
         return Arrays.equals(a, aStartIndex, aStartIndex + length, b, bStartIndex, bStartIndex + length);
     }
 
@@ -319,7 +315,7 @@ class ByteListBuf extends ByteArrayList implements Buf {
 
         @Override
         public Buf subListForced(int from, int to) {
-            checkFromToIndex(from, to, this.to);
+            checkFromToIndex(from, to, size());
             var fromAbs = this.from + from;
             var toAbs = this.from + to;
             // Sadly we have to rewrap this, because if there is a sublist of a sublist, and the
@@ -329,6 +325,7 @@ class ByteListBuf extends ByteArrayList implements Buf {
 
         @Override
         public Buf copyOfRange(int from, int to) {
+            checkFromToIndex(from, to, size());
             if (from == 0 && to == size()) {
                 return copy();
             } else {
@@ -361,26 +358,25 @@ class ByteListBuf extends ByteArrayList implements Buf {
 
         @Override
         public SafeByteArrayOutputStream binaryOutputStream(int from, int to) {
+            ensureMutable();
             checkFromToIndex(from, to, size());
             return new SafeByteArrayOutputStream(a, from + this.from, to + this.from);
         }
 
         @Override
         public boolean equals(int aStartIndex, Buf b, int bStartIndex, int length) {
-            if (aStartIndex + length > size()) {
-                return false;
-            }
+            if (!isValidRange(aStartIndex, length, size())
+                    || !isValidRange(bStartIndex, length, b.size())) return false;
             return b.equals(bStartIndex, a, aStartIndex + from, length);
         }
 
         @Override
         public boolean equals(int aStartIndex, byte[] b, int bStartIndex, int length) {
+            if (!isValidRange(aStartIndex, length, size())
+                    || !isValidRange(bStartIndex, length, b.length)) return false;
             var aFrom = from + aStartIndex;
             var aTo = from + aStartIndex + length;
             var bTo = bStartIndex + length;
-            if (aFrom < from) return false;
-            if (aTo > to) return false;
-            if (bTo > b.length) return false;
             return Arrays.equals(a, aFrom, aTo, b, bStartIndex, bTo);
         }
 
@@ -611,6 +607,16 @@ class ByteListBuf extends ByteArrayList implements Buf {
             if (l instanceof ByteListBuf.SubList other) {
                 return contentsCompareTo(other.getParentArray(), other.from, other.to);
             }
+            if (l instanceof Buf other) {
+                int sizeComparison = Integer.compare(size(), other.size());
+                if (sizeComparison != 0) return sizeComparison;
+                for (int index = 0; index < size(); index++) {
+                    int comparison = Integer.compare(Byte.toUnsignedInt(getByte(index)),
+                            Byte.toUnsignedInt(other.getByte(index)));
+                    if (comparison != 0) return comparison;
+                }
+                return 0;
+            }
             return super.compareTo(l);
         }
 
@@ -643,6 +649,10 @@ class ByteListBuf extends ByteArrayList implements Buf {
         for (int i = 0; i < length; i++) {
             target[targetOffset + i] = source.getByte(sourceOffset + i);
         }
+    }
+
+    private static boolean isValidRange(int offset, int length, int size) {
+        return offset >= 0 && length >= 0 && (long) offset + length <= size;
     }
 
     @IgnoreCoverage
@@ -685,6 +695,13 @@ class ByteListBuf extends ByteArrayList implements Buf {
     public void clear() {
         ensureMutable();
         super.clear();
+    }
+
+    @IgnoreCoverage
+    @Override
+    public void size(int size) {
+        ensureMutable();
+        super.size(size);
     }
 
     @IgnoreCoverage
@@ -983,6 +1000,16 @@ class ByteListBuf extends ByteArrayList implements Buf {
         if (l instanceof SubList) {
             // Must negate because we are inverting the order of the comparison.
             return -((SubList) l).compareTo(this);
+        }
+        if (l instanceof Buf other) {
+            int sizeComparison = Integer.compare(size(), other.size());
+            if (sizeComparison != 0) return sizeComparison;
+            for (int index = 0; index < size(); index++) {
+                int comparison = Integer.compare(Byte.toUnsignedInt(getByte(index)),
+                        Byte.toUnsignedInt(other.getByte(index)));
+                if (comparison != 0) return comparison;
+            }
+            return 0;
         }
         return super.compareTo(l);
     }

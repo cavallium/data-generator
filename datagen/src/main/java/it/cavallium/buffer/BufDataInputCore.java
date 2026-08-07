@@ -10,6 +10,7 @@ import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.ReadOnlyBufferException;
 import java.nio.charset.Charset;
 import java.util.Arrays;
 import java.util.Objects;
@@ -357,18 +358,20 @@ abstract class BufDataInputCore extends SafeInputStream implements RandomAccessD
 
 	@Override
 	public final boolean[] readBooleanArray(int length) {
-		int index = reserveAbsolute(length);
+		requireAvailable(length);
 		activeBudget.claimArrayElements(length);
 		boolean[] result = new boolean[length];
+		int index = reserveAbsolute(length);
 		copyBooleans(index, result, 0, length);
 		return result;
 	}
 
 	@Override
 	public final byte[] readByteArray(int length) {
-		int index = reserveAbsolute(length);
+		requireAvailable(length);
 		activeBudget.claimArrayElements(length);
 		byte[] result = new byte[length];
+		int index = reserveAbsolute(length);
 		copyToArray(index, result, 0, length);
 		return result;
 	}
@@ -376,9 +379,10 @@ abstract class BufDataInputCore extends SafeInputStream implements RandomAccessD
 	@Override
 	public final short[] readShortArray(int length) {
 		int byteLength = arrayByteLength(length, Short.BYTES);
-		int index = reserveAbsolute(byteLength);
+		requireAvailable(byteLength);
 		activeBudget.claimArrayElements(length);
 		short[] result = new short[length];
+		int index = reserveAbsolute(byteLength);
 		copyShorts(index, result, 0, length);
 		return result;
 	}
@@ -386,9 +390,10 @@ abstract class BufDataInputCore extends SafeInputStream implements RandomAccessD
 	@Override
 	public final char[] readCharArray(int length) {
 		int byteLength = arrayByteLength(length, Character.BYTES);
-		int index = reserveAbsolute(byteLength);
+		requireAvailable(byteLength);
 		activeBudget.claimArrayElements(length);
 		char[] result = new char[length];
+		int index = reserveAbsolute(byteLength);
 		copyChars(index, result, 0, length);
 		return result;
 	}
@@ -396,9 +401,10 @@ abstract class BufDataInputCore extends SafeInputStream implements RandomAccessD
 	@Override
 	public final int[] readIntArray(int length) {
 		int byteLength = arrayByteLength(length, Integer.BYTES);
-		int index = reserveAbsolute(byteLength);
+		requireAvailable(byteLength);
 		activeBudget.claimArrayElements(length);
 		int[] result = new int[length];
+		int index = reserveAbsolute(byteLength);
 		copyInts(index, result, 0, length);
 		return result;
 	}
@@ -406,9 +412,10 @@ abstract class BufDataInputCore extends SafeInputStream implements RandomAccessD
 	@Override
 	public final long[] readLongArray(int length) {
 		int byteLength = arrayByteLength(length, Long.BYTES);
-		int index = reserveAbsolute(byteLength);
+		requireAvailable(byteLength);
 		activeBudget.claimArrayElements(length);
 		long[] result = new long[length];
+		int index = reserveAbsolute(byteLength);
 		copyLongs(index, result, 0, length);
 		return result;
 	}
@@ -416,9 +423,10 @@ abstract class BufDataInputCore extends SafeInputStream implements RandomAccessD
 	@Override
 	public final float[] readFloatArray(int length) {
 		int byteLength = arrayByteLength(length, Float.BYTES);
-		int index = reserveAbsolute(byteLength);
+		requireAvailable(byteLength);
 		activeBudget.claimArrayElements(length);
 		float[] result = new float[length];
+		int index = reserveAbsolute(byteLength);
 		copyFloats(index, result, 0, length);
 		return result;
 	}
@@ -426,9 +434,10 @@ abstract class BufDataInputCore extends SafeInputStream implements RandomAccessD
 	@Override
 	public final double[] readDoubleArray(int length) {
 		int byteLength = arrayByteLength(length, Double.BYTES);
-		int index = reserveAbsolute(byteLength);
+		requireAvailable(byteLength);
 		activeBudget.claimArrayElements(length);
 		double[] result = new double[length];
+		int index = reserveAbsolute(byteLength);
 		copyDoubles(index, result, 0, length);
 		return result;
 	}
@@ -532,10 +541,12 @@ abstract class BufDataInputCore extends SafeInputStream implements RandomAccessD
 		if (length < 0 || length > destination.remaining()) {
 			throw new IndexOutOfBoundsException();
 		}
-		int index = take(length);
+		requireAvailable(length);
 		if (length == 0) {
 			return;
 		}
+		if (destination.isReadOnly()) throw new ReadOnlyBufferException();
+		int index = take(length);
 		storageAccess().copyToBuffer(index, destination, length);
 	}
 

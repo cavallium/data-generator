@@ -295,7 +295,7 @@ public interface Buf extends ByteList, RandomAccess {
 	 * @param i byte offset
 	 */
 	default String getShortText(int i, Charset charset) {
-		var len = getShort(i);
+		var len = Short.toUnsignedInt(getShort(i));
 		return getString(i + Short.BYTES, len, charset);
 	}
 
