@@ -745,6 +745,13 @@ class SourcesGeneratorTest {
 
 		assertNotEquals(first, second);
 		assertNotEquals(first.hashCode(), second.hashCode());
+
+		var prefix = new ProjectionConfiguration();
+		prefix.sourceType = first.sourceType;
+		prefix.fields = new LinkedHashMap<>(first.fields);
+		prefix.consumeToEnd = false;
+		assertNotEquals(first, prefix);
+		assertNotEquals(first.hashCode(), prefix.hashCode());
 	}
 
 	@Test
@@ -777,6 +784,12 @@ class SourcesGeneratorTest {
 				      chatEntityId: nested.chatId
 				      ownedText: nested.ignoredText
 				      senderId: senderId
+				  ImportedMessagePrefix:
+				    sourceType: ImportedMessage
+				    consumeToEnd: false
+				    fields:
+				      messageId: messageId
+				      senderId: senderId
 				versions:
 				  v1:
 				  v2:
@@ -799,6 +812,8 @@ class SourcesGeneratorTest {
 
 		try (var loader = compileGeneratedSources(sources, temp.resolve("classes"))) {
 			Class<?> projection = loader.loadClass("org.example.projections.ImportedMessageSenderProjection");
+			Class<?> prefixProjection = loader.loadClass("org.example.projections.ImportedMessagePrefixProjection");
+			Class<?> prefixResultType = loader.loadClass("org.example.projections.ImportedMessagePrefixProjection$Result");
 			Class<?> resultType = loader.loadClass("org.example.projections.ImportedMessageSenderProjection$Result");
 			Class<?> sinkType = loader.loadClass("org.example.projections.ImportedMessageSenderProjection$Sink");
 			Class<?> baseType = loader.loadClass("org.example.BaseType");
@@ -828,6 +843,27 @@ class SourcesGeneratorTest {
 			Buf fixture = serializedProjectionFixture(true);
 			int projectedPrefixLength = fixture.size() - Integer.BYTES
 					- "not reached".getBytes(StandardCharsets.UTF_8).length;
+			Object prefixReader = prefixProjection.getMethod("newReader", DecodeLimits.class).invoke(null, LIMITS);
+			Object prefixResult = prefixReader.getClass()
+					.getMethod("read", int.class, Buf.class, int.class, int.class)
+					.invoke(prefixReader, 1, fixture, 0, projectedPrefixLength);
+			assertEquals(42L, prefixResultType.getMethod("messageId").invoke(prefixResult));
+			assertEquals(99L, prefixResultType.getMethod("senderId").invoke(prefixResult));
+			assertReaderCursorUnbound(prefixReader);
+			Object prefixFromCompletePayload = prefixReader.getClass()
+					.getMethod("read", int.class, Buf.class, int.class, int.class)
+					.invoke(prefixReader, 1, fixture, 0, fixture.size());
+			assertEquals(42L, prefixResultType.getMethod("messageId").invoke(prefixFromCompletePayload));
+			assertEquals(99L, prefixResultType.getMethod("senderId").invoke(prefixFromCompletePayload));
+			assertReaderCursorUnbound(prefixReader);
+			try (var prefixInput = BufDataInput.create(fixture, LIMITS)) {
+				Object prefixFromStream = prefixProjection.getMethod("read", int.class, SafeDataInput.class)
+						.invoke(null, 1, prefixInput);
+				assertEquals(42L, prefixResultType.getMethod("messageId").invoke(prefixFromStream));
+				assertEquals(99L, prefixResultType.getMethod("senderId").invoke(prefixFromStream));
+				assertEquals(fixture.size() - projectedPrefixLength, prefixInput.available(),
+						"prefix projection must leave trailing input untouched");
+			}
 			InvocationTargetException incompleteRoot = assertThrows(InvocationTargetException.class,
 					() -> reader.getClass().getMethod("read", int.class, Buf.class, int.class, int.class)
 							.invoke(reader, 1, fixture, 0, projectedPrefixLength));

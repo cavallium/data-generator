@@ -33,6 +33,14 @@ public class MavenPlugin extends AbstractMojo {
     @Parameter(defaultValue = "false")
     private boolean vectorKernels;
 
+    /** Optional checked-in ledger that freezes every numbered wire version. */
+    @Parameter
+    private File wireSchemaLedgerPath;
+
+    /** Explicit opt-in for reviewing and updating {@link #wireSchemaLedgerPath}. */
+    @Parameter(property = "datagen.updateWireSchemaLedger", defaultValue = "false")
+    private boolean updateWireSchemaLedger;
+
     /**
      * @parameter default-value="${project}"
      * @required
@@ -45,6 +53,10 @@ public class MavenPlugin extends AbstractMojo {
     public void execute() throws MojoExecutionException, MojoFailureException {
         try {
             SourcesGenerator sourcesGenerator = SourcesGenerator.load(configPath.toPath());
+            if (wireSchemaLedgerPath != null) {
+                sourcesGenerator.verifyOrUpdateWireSchemaLedger(wireSchemaLedgerPath.toPath(),
+                        binaryStrings, updateWireSchemaLedger);
+            }
             boolean testResources = generateTestResources;
             Path genRecordsPath = project.getBasedir().getAbsoluteFile().toPath().resolve("target").resolve(testResources ? "generated-test-sources" : "generated-sources").resolve("database-classes");
 
@@ -56,6 +68,8 @@ public class MavenPlugin extends AbstractMojo {
             }
             sourcesGenerator.generateSources(basePackageName, outPath, false,
                     generateOldSerializers, binaryStrings, vectorKernels);
+        } catch (IllegalArgumentException e) {
+            throw new MojoFailureException(e.getMessage(), e);
         } catch (IOException e) {
             throw new MojoExecutionException("Exception while generating classes", e);
         }

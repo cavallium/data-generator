@@ -490,6 +490,7 @@ class PluginConfigurationModelDeepFuzzTest {
 	private static ProjectionConfiguration randomProjection(Random random) {
 		var result = new ProjectionConfiguration();
 		result.sourceType = "T" + random.nextInt(16);
+		result.consumeToEnd = random.nextInt(3) == 0 ? null : random.nextBoolean();
 		result.fields = new LinkedHashMap<>();
 		int fields = random.nextInt(9);
 		for (int index = 0; index < fields; index++) result.fields.put("p" + index,
@@ -500,6 +501,7 @@ class PluginConfigurationModelDeepFuzzTest {
 	private static ProjectionConfiguration copyProjection(ProjectionConfiguration source) {
 		var result = new ProjectionConfiguration();
 		result.sourceType = source.sourceType;
+		result.consumeToEnd = source.consumeToEnd;
 		result.fields = new LinkedHashMap<>(source.fields);
 		return result;
 	}

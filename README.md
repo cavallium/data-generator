@@ -35,6 +35,7 @@ The project targets Java 25.
         <generateOldSerializers>false</generateOldSerializers>
         <binaryStrings>false</binaryStrings>
         <vectorKernels>false</vectorKernels>
+        <wireSchemaLedgerPath>${project.basedir}/src/main/datagen/model.wire</wireSchemaLedgerPath>
       </configuration>
     </execution>
   </executions>
@@ -48,6 +49,10 @@ also depends on `datagen-vector` and compiles/runs with
 
 Generation is content-hashed. All flags that affect output, including Vector lowering, participate
 in the cache key.
+
+When `wireSchemaLedgerPath` is configured, generation fails if any numbered version's complete
+wire graph changes or if a new version is added without review. Create or intentionally update the
+checked-in ledger with `-Ddatagen.updateWireSchemaLedger=true`; normal builds never rewrite it.
 
 ## Schema basics
 
@@ -298,13 +303,14 @@ time. A normal scalar build neither resolves nor links any incubator class.
 
 ## Projection readers
 
-Projections retain their early-stop semantics for callers that intentionally need only selected
-fields:
+Projections consume and validate the complete root value by default. A projection whose selected
+fields form a deliberately stable prefix can opt into early-stop semantics:
 
 ```yaml
 projectionsData:
   ImportedMessageSender:
     sourceType: ImportedMessage
+    consumeToEnd: false
     fields:
       messageId: messageId
       senderId: sender.id
@@ -312,8 +318,9 @@ projectionsData:
 ```
 
 Generated projections expose `read(version, input)`, `readInto(version, input, sink)`, and a reusable
-bounded reader. Normal current-version readers, unlike projections, always consume the complete
-bounded object.
+bounded reader. `consumeToEnd: false` stops immediately after the last selected field and deliberately
+leaves trailing input unread; use it only when that prefix is frozen and independently validated.
+Normal current-version readers always consume the complete bounded object.
 
 ## Verification and benchmarks
 

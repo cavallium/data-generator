@@ -76,6 +76,7 @@ public final class GenProjection extends ClassGenerator {
 		private final ClassName sinkClassName;
 		private final ClassName readerClassName;
 		private final List<ProjectionField> fields;
+		private final boolean consumeToEnd;
 		private final ReadPlanCompiler readPlanCompiler;
 		private final Map<SkipperKey, String> skipperMethods = new LinkedHashMap<>();
 		private final Deque<Map.Entry<SkipperKey, ComputedType>> pendingSkippers = new ArrayDeque<>();
@@ -105,9 +106,12 @@ public final class GenProjection extends ClassGenerator {
 			this.readerClassName = projectionClassName.nestedClass("Reader");
 			this.classBuilder = TypeSpec.classBuilder(className)
 					.addModifiers(Modifier.PUBLIC, Modifier.FINAL)
-					.addJavadoc("Reads the configured fields of {@code $L} without materializing the complete payload.\n",
+					.addJavadoc(configuration.consumesToEnd()
+							? "Reads the configured fields of {@code $L} without materializing the complete payload.\n"
+							: "Reads the configured prefix fields of {@code $L} and deliberately leaves trailing data unread.\n",
 							sourceType);
 			this.readPlanCompiler = new ReadPlanCompiler(dataModel, this::configurationError);
+			this.consumeToEnd = configuration.consumesToEnd();
 
 			var resultFields = new ArrayList<ProjectionField>();
 			int index = 0;
@@ -325,13 +329,15 @@ public final class GenProjection extends ClassGenerator {
 					.addStatement("cursor.decodeBudget().enterRoot()")
 					.addStatement("boolean success = false")
 					.beginControlFlow("try")
-					.addStatement("readValues(version, cursor)")
-					.addStatement("int trailing = cursor.remainingIncludingClosed()")
-					.beginControlFlow("if (trailing != 0)")
-					.addStatement("throw new $T($S + trailing)", MalformedDataException.class,
-							"Trailing bytes: ")
-					.endControlFlow()
-					.addStatement("success = true")
+					.addStatement("readValues(version, cursor)");
+			if (consumeToEnd) {
+				method.addStatement("int trailing = cursor.remainingIncludingClosed()")
+						.beginControlFlow("if (trailing != 0)")
+						.addStatement("throw new $T($S + trailing)", MalformedDataException.class,
+								"Trailing bytes: ")
+						.endControlFlow();
+			}
+			method.addStatement("success = true")
 					.nextControlFlow("finally")
 					.addStatement("cursor.decodeBudget().exitRoot()")
 					.addStatement("cursor.unbind()")
@@ -778,10 +784,9 @@ public final class GenProjection extends ClassGenerator {
 				}
 
 				private void emitReads(MethodSpec.Builder method) {
-					// A projection materializes only selected fields, but it still consumes and validates the
-					// complete root value. This keeps stream inputs positioned at the next value and lets the
-					// reusable bounded reader distinguish a truncated record from true trailing bytes.
-					emitRecord(method, requireBaseType(inputVersion, configuration.sourceType), root, true);
+					// Exact projections consume and validate the complete root. Explicit prefix projections
+					// stop after their final selected field and deliberately leave the remainder unread.
+					emitRecord(method, requireBaseType(inputVersion, configuration.sourceType), root, consumeToEnd);
 					if (!leaves.isEmpty()) method.addCode("\n");
 				}
 

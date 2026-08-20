@@ -1,6 +1,5 @@
 package it.cavallium.datagen.plugin;
 
-import static java.nio.file.StandardOpenOption.CREATE;
 import static java.nio.file.StandardOpenOption.TRUNCATE_EXISTING;
 import static java.nio.file.StandardOpenOption.WRITE;
 
@@ -81,6 +80,33 @@ public class SourcesGenerator {
     public static SourcesGenerator load(Path yamlPath) throws IOException {
         try (InputStream in = Files.newInputStream(yamlPath)) {
             return new SourcesGenerator(in);
+        }
+    }
+
+    public String wireSchemaLedger(boolean binaryStrings) {
+        return WireSchemaLedger.render(configuration.buildDataModel(binaryStrings), binaryStrings);
+    }
+
+    public void verifyOrUpdateWireSchemaLedger(Path ledgerPath,
+            boolean binaryStrings,
+            boolean update) throws IOException {
+        Path normalizedLedger = Objects.requireNonNull(ledgerPath, "ledgerPath")
+                .toAbsolutePath().normalize();
+        String actual = wireSchemaLedger(binaryStrings);
+        if (update) {
+            Files.createDirectories(normalizedLedger.getParent());
+            writeTextAtomically(normalizedLedger, actual, ".datagen-wire-ledger-");
+            return;
+        }
+        if (Files.notExists(normalizedLedger)) {
+            throw new IllegalArgumentException("Wire-schema ledger is missing: " + normalizedLedger
+                    + "; regenerate it explicitly with -Ddatagen.updateWireSchemaLedger=true");
+        }
+        String expected = Files.readString(normalizedLedger, StandardCharsets.UTF_8);
+        if (!expected.equals(actual)) {
+            throw new IllegalArgumentException("Wire-schema ledger mismatch: " + normalizedLedger
+                    + "; an existing numbered version changed or a new version was added. "
+                    + "Review the schema and regenerate explicitly with -Ddatagen.updateWireSchemaLedger=true");
         }
     }
 
@@ -325,14 +351,18 @@ public class SourcesGenerator {
                 .sorted(Map.Entry.comparingByKey(Comparator.comparing(Path::toString)))
                 .forEach(entry -> contents.append(entry.getValue()).append('\t')
                         .append(entry.getKey()).append('\n'));
-        Path temporary = Files.createTempFile(manifestPath.getParent(), ".datagen-manifest-", ".tmp");
+        writeTextAtomically(manifestPath, contents.toString(), ".datagen-manifest-");
+    }
+
+    private static void writeTextAtomically(Path target, String contents, String temporaryPrefix) throws IOException {
+        Path temporary = Files.createTempFile(target.getParent(), temporaryPrefix, ".tmp");
         try {
             Files.writeString(temporary, contents, StandardCharsets.UTF_8, TRUNCATE_EXISTING, WRITE);
             try {
-                Files.move(temporary, manifestPath, StandardCopyOption.ATOMIC_MOVE,
+                Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE,
                         StandardCopyOption.REPLACE_EXISTING);
             } catch (AtomicMoveNotSupportedException exception) {
-                Files.move(temporary, manifestPath, StandardCopyOption.REPLACE_EXISTING);
+                Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
             }
         } finally {
             Files.deleteIfExists(temporary);
