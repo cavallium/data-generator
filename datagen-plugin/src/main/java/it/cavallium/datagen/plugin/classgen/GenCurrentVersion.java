@@ -418,6 +418,7 @@ public class GenCurrentVersion extends ClassGenerator {
 					.build());
 
 			for (ComputedVersion version : dataModel.getVersionsSet()) {
+				if (!dataModel.getComputedTypes(version).containsKey(currentType.getName())) continue;
 				String boundClassName = currentType.getName() + "V" + version.getVersion() + "Reader";
 				currentVersionClass.addType(TypeSpec.classBuilder(boundClassName)
 						.addModifiers(Modifier.PRIVATE, Modifier.STATIC, Modifier.FINAL)
@@ -494,6 +495,7 @@ public class GenCurrentVersion extends ClassGenerator {
 					.addParameter(DecodeLimits.class, "limits")
 					.beginControlFlow("return switch (version)");
 			for (ComputedVersion version : dataModel.getVersionsSet()) {
+				if (!dataModel.getComputedTypes(version).containsKey(currentType.getName())) continue;
 				newTypeBoundReader.addStatement("case $L -> new $N(limits)", version.getVersion(),
 						currentType.getName() + "V" + version.getVersion() + "Reader");
 			}

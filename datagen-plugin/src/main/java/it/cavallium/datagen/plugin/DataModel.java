@@ -69,7 +69,7 @@ public class DataModel {
 			Map<String, VersionConfiguration> rawVersions,
 			boolean binaryStrings) {
 		this(hash, currentVersionKey, interfacesData, baseTypesData, superTypesData, customTypesData,
-				Map.of(), rawVersions, binaryStrings);
+				Map.of(), rawVersions, binaryStrings, null);
 	}
 
     public DataModel(int hash,
@@ -81,6 +81,20 @@ public class DataModel {
 					 Map<String, ProjectionConfiguration> projectionsData,
                      Map<String, VersionConfiguration> rawVersions,
                      boolean binaryStrings) {
+		this(hash, currentVersionKey, interfacesData, baseTypesData, superTypesData, customTypesData,
+				projectionsData, rawVersions, binaryStrings, null);
+	}
+
+    public DataModel(int hash,
+                     String currentVersionKey,
+                     Map<String, InterfaceDataConfiguration> interfacesData,
+                     Map<String, ClassConfiguration> baseTypesData,
+                     Map<String, List<String>> superTypesData,
+                     Map<String, CustomTypesConfiguration> customTypesData,
+					 Map<String, ProjectionConfiguration> projectionsData,
+                     Map<String, VersionConfiguration> rawVersions,
+                     boolean binaryStrings,
+					 @Nullable Integer dependencyBaselineVersion) {
 
         this.hash = hash;
 
@@ -164,15 +178,49 @@ public class DataModel {
         }
 
         int latestVersion = versionsCount - 1;
+		int dependencyBaseline = Objects.requireNonNullElse(dependencyBaselineVersion, latestVersion);
+		if (dependencyBaseline < 0 || dependencyBaseline > latestVersion) {
+			throw new IllegalArgumentException("Invalid dependency baseline version: " + dependencyBaseline);
+		}
 
-        // Collect all existing base types
-        List<String> baseTypes = new ArrayList<>(baseTypesData.keySet());
+        // Collect the version-zero base types and every record introduced later.
+        List<String> initialBaseTypes = new ArrayList<>(baseTypesData.keySet());
+        var introducedBaseTypes = new LinkedHashMap<String, NewTypeConfiguration>();
+        for (int versionIndex = 1; versionIndex <= latestVersion; versionIndex++) {
+            VersionConfiguration version = rawVersions.get(versionToName.get(versionIndex));
+            List<VersionTransformation> transformations = version.transformations == null
+                    ? List.of()
+                    : version.transformations;
+            for (VersionTransformation rawTransformation : transformations) {
+                rawTransformation.checkConsistency();
+                if (rawTransformation.newType == null) continue;
+                NewTypeConfiguration introduced = rawTransformation.newType;
+                if (introduced.name == null || introduced.name.isBlank()) {
+                    throw new IllegalArgumentException("newType in version " + versionToName.get(versionIndex)
+                            + " must define a non-blank name");
+                }
+                NewTypeConfiguration previous = introducedBaseTypes.putIfAbsent(introduced.name, introduced);
+                if (previous != null || baseTypesData.containsKey(introduced.name)) {
+                    throw new IllegalArgumentException("Type " + introduced.name + " is introduced more than once");
+                }
+            }
+        }
+        List<String> baseTypes = Stream.concat(initialBaseTypes.stream(), introducedBaseTypes.keySet().stream()).toList();
         baseTypesData.forEach((typeName, typeConfig) -> {
             if (typeConfig.stringRepresenter != null && !typeConfig.stringRepresenter.isBlank()
                     && !typeConfig.stringRepresenter.contains(".")
                     && (typeConfig.data == null || !typeConfig.data.containsKey(typeConfig.stringRepresenter))) {
                 throw new IllegalArgumentException("Type " + typeName + " stringRepresenter \""
                         + typeConfig.stringRepresenter + "\" is not a field of that type");
+            }
+        });
+        introducedBaseTypes.forEach((typeName, typeConfig) -> {
+            ClassConfiguration definition = typeConfig.asClassConfiguration();
+            if (definition.stringRepresenter != null && !definition.stringRepresenter.isBlank()
+                    && !definition.stringRepresenter.contains(".")
+                    && !definition.data.containsKey(definition.stringRepresenter)) {
+                throw new IllegalArgumentException("Type " + typeName + " stringRepresenter \""
+                        + definition.stringRepresenter + "\" is not a field of that type");
             }
         });
 
@@ -196,13 +244,11 @@ public class DataModel {
             }
         });
 
-        // Compute all types, excluding nullables and arrays
-        List<String> allTypes = Stream.concat(Stream.concat(Stream.concat(baseTypes.stream(), superTypes.stream()),
+        List<String> initialTypes = Stream.concat(Stream.concat(Stream.concat(initialBaseTypes.stream(), superTypes.stream()),
                         customTypes.stream()), NATIVE_TYPES.stream())
                 .distinct()
                 .toList();
-
-		superTypesData.forEach((unionName, alternatives) -> {
+        superTypesData.forEach((unionName, alternatives) -> {
 			if (alternatives == null || alternatives.isEmpty()) {
 				throw new IllegalArgumentException("Union " + unionName + " must define at least one alternative");
 			}
@@ -221,9 +267,9 @@ public class DataModel {
 					throw new IllegalArgumentException("Union " + unionName + " contains duplicate alternative "
 							+ alternative);
 				}
-				if (!allTypes.contains(alternative)) {
-					throw new IllegalArgumentException("Union " + unionName + " contains unknown alternative "
-							+ alternative);
+                if (!initialTypes.contains(alternative)) {
+                    throw new IllegalArgumentException("Union " + unionName + " contains unknown alternative "
+                            + alternative + " in the first version");
 				}
 			}
 		});
@@ -244,12 +290,16 @@ public class DataModel {
         rawVersions.forEach((k, v) -> parsedVersions.put(nameToVersion.getInt(k), new ParsedVersion(v)));
 
         Int2ObjectMap<Map<String, ParsedClass>> computedClassConfig = new Int2ObjectLinkedOpenHashMap<>();
+        Int2ObjectMap<Map<String, List<String>>> computedSuperTypesConfig = new Int2ObjectLinkedOpenHashMap<>();
         for (int versionIndex = 0; versionIndex < versionsCount; versionIndex++) {
             if (versionIndex == 0) {
                 computedClassConfig.put(0, baseTypesData.entrySet().stream()
                         .map(e -> Map.entry(e.getKey(), new ParsedClass(e.getValue())))
                         .collect(Collectors.toMap(Entry::getKey, Entry::getValue))
                 );
+                computedSuperTypesConfig.put(0, copySuperTypes(superTypesData));
+                validateActiveTypeReferences(versionToName.get(0), computedClassConfig.get(0),
+                        computedSuperTypesConfig.get(0), customTypesData);
             } else {
                 var version = parsedVersions.get(versionIndex);
                 Map<String, ParsedClass> prevVersionConfiguration
@@ -262,6 +312,8 @@ public class DataModel {
                             return Map.entry(entry.getKey(), parsedClass);
                         })
                         .collect(Collectors.toMap(Entry::getKey, Entry::getValue));
+                Map<String, List<String>> newSuperTypesConfiguration =
+                        copySuperTypes(requireNonNull(computedSuperTypesConfig.get(versionIndex - 1)));
 
                 for (VersionTransformation rawTransformation : version.transformations) {
                     TransformationConfiguration transformation;
@@ -275,6 +327,48 @@ public class DataModel {
                     }
                     final String transformName = transformation.getTransformName();
                     switch (transformName) {
+                        case "new-type" -> {
+                            var t = (NewTypeConfiguration) transformation;
+                            if (t.name == null || t.name.isBlank()) {
+                                throw new IllegalArgumentException(transformCoordinate + " must define a non-blank type name");
+                            }
+                            if (!introducedBaseTypes.containsKey(t.name)) {
+                                throw new IllegalArgumentException(transformCoordinate + " has an unregistered new type: " + t.name);
+                            }
+                            ParsedClass previous = newVersionConfiguration.putIfAbsent(t.name,
+                                    new ParsedClass(t.asClassConfiguration()));
+                            if (previous != null) {
+                                throw new IllegalArgumentException(transformCoordinate + " tries to reintroduce type " + t.name);
+                            }
+                        }
+                        case "new-subtype" -> {
+                            var t = (NewSubtypeConfiguration) transformation;
+                            if (t.superType == null || t.superType.isBlank()
+                                    || t.subtype == null || t.subtype.isBlank()) {
+                                throw new IllegalArgumentException(transformCoordinate
+                                        + " must define non-blank superType and subtype values");
+                            }
+                            List<String> alternatives = newSuperTypesConfiguration.get(t.superType);
+                            if (alternatives == null) {
+                                throw new IllegalArgumentException(transformCoordinate
+                                        + " refers to an unknown union: " + t.superType);
+                            }
+                            if (!isActivePlainType(t.subtype, newVersionConfiguration,
+                                    newSuperTypesConfiguration, customTypesData)) {
+                                throw new IllegalArgumentException(transformCoordinate
+                                        + " refers to a type that does not exist yet: " + t.subtype);
+                            }
+                            if (alternatives.contains(t.subtype)) {
+                                throw new IllegalArgumentException(transformCoordinate
+                                        + " tries to append the existing alternative " + t.subtype
+                                        + " to union " + t.superType);
+                            }
+                            if (alternatives.size() >= 256) {
+                                throw new IllegalArgumentException(transformCoordinate
+                                        + " would exceed the unsigned-byte discriminator limit for union " + t.superType);
+                            }
+                            alternatives.add(t.subtype);
+                        }
                         case "move-data" -> {
                             var t = (MoveDataConfiguration) transformation;
                             var transformClass = newVersionConfiguration.get(t.transformClass);
@@ -307,16 +401,21 @@ public class DataModel {
                                         + t.transformClass);
                             }
                             transformClass.addDifferentThanPrev(transformation);
-                            if (!allTypes.contains(extractTypeName(t.type))) {
-                                throw new IllegalArgumentException(transformCoordinate + " refers to an unknown type: " + t.type);
+                            if (!isActivePlainType(extractTypeName(t.type), newVersionConfiguration,
+                                    newSuperTypesConfiguration, customTypesData)) {
+                                throw new IllegalArgumentException(transformCoordinate
+                                        + " refers to a type that does not exist yet: " + t.type);
                             }
                             if (t.hasReadTransform()) {
                                 t.getReadTransform().validate(transformCoordinate + ".newData.readTransform");
-                                if (!allTypes.contains(extractTypeName(t.getReadTransformType()))) {
+                                if (!isActivePlainType(extractTypeName(t.getReadTransformType()), newVersionConfiguration,
+                                        newSuperTypesConfiguration, customTypesData)) {
                                     throw new IllegalArgumentException(transformCoordinate
-                                            + " readTransform.type refers to an unknown type: " + t.getReadTransformType());
+                                            + " readTransform.type refers to a type that does not exist yet: "
+                                            + t.getReadTransformType());
                                 }
-                                validateReadTransformTypes(t.getReadTransform(), allTypes, transformCoordinate);
+                                validateReadTransformTypes(t.getReadTransform(), activePlainTypes(newVersionConfiguration,
+                                        newSuperTypesConfiguration, customTypesData), transformCoordinate);
                             }
                             var type = fixType(t.type);
                             var fieldInfo = new ParsedClass.InputFieldInfo(type, t.getContextParameters());
@@ -353,17 +452,21 @@ public class DataModel {
                                         + t.transformClass);
                             }
                             transformClass.addDifferentThanPrev(transformation);
-                            if (!allTypes.contains(extractTypeName(t.type))) {
-                                throw new IllegalArgumentException(transformCoordinate + " refers to an unknown type: " + t.type);
+                            if (!isActivePlainType(extractTypeName(t.type), newVersionConfiguration,
+                                    newSuperTypesConfiguration, customTypesData)) {
+                                throw new IllegalArgumentException(transformCoordinate
+                                        + " refers to a type that does not exist yet: " + t.type);
                             }
                             if (t.hasReadTransform()) {
                                 t.getReadTransform().validate(transformCoordinate + ".upgradeData.readTransform");
-                                if (!allTypes.contains(extractTypeName(t.getReadTransformType()))) {
+                                if (!isActivePlainType(extractTypeName(t.getReadTransformType()), newVersionConfiguration,
+                                        newSuperTypesConfiguration, customTypesData)) {
                                     throw new IllegalArgumentException(transformCoordinate
-                                            + " readTransform.type refers to an unknown type: "
+                                            + " readTransform.type refers to a type that does not exist yet: "
                                             + t.getReadTransformType());
                                 }
-                                validateReadTransformTypes(t.getReadTransform(), allTypes, transformCoordinate);
+                                validateReadTransformTypes(t.getReadTransform(), activePlainTypes(newVersionConfiguration,
+                                        newSuperTypesConfiguration, customTypesData), transformCoordinate);
                             }
                             var prevDefinition = transformClass.replace(t.from, new ParsedClass.InputFieldInfo(fixType(t.type), t.getContextParameters()));
                             if (prevDefinition == null) {
@@ -375,7 +478,10 @@ public class DataModel {
                 }
 
                 validateStringRepresenters(versionToName.get(versionIndex), newVersionConfiguration);
+                validateActiveTypeReferences(versionToName.get(versionIndex), newVersionConfiguration,
+                        newSuperTypesConfiguration, customTypesData);
                 computedClassConfig.put(versionIndex, newVersionConfiguration);
+                computedSuperTypesConfig.put(versionIndex, newSuperTypesConfiguration);
             }
         }
 
@@ -413,7 +519,10 @@ public class DataModel {
                 var version = computedClassConfig.get(versionNumber);
                 computedClassConfig.get(versionNumber + 1).forEach((type, typeConfig) -> {
                     if (typeConfig.differentThanPrev != null) {
-                        version.get(type).differentThanNext = true;
+                        ParsedClass previousType = version.get(type);
+                        if (previousType != null) {
+                            previousType.differentThanNext = true;
+                        }
                     }
                 });
             }
@@ -434,7 +543,7 @@ public class DataModel {
                             data.getJavaClassString(), data.codec, data.fixedSize, computedTypeSupplier,
                             computedVersions.get(latestVersion))));
                     // Compute super types
-                    superTypesData.forEach((key, data) -> {
+                    computedSuperTypesConfig.get(versionIndexF).forEach((key, data) -> {
                         List<VersionedType> subTypes = data.stream().map(x -> new VersionedType(x, version)).toList();
                         versionBaseTypes.add(new ComputedTypeSuper(new VersionedType(key, version), subTypes, computedTypeSupplier));
                     });
@@ -503,16 +612,30 @@ public class DataModel {
                 } else {
                     Set<String> changedTypes = randomComputedTypes.get(versionIndexF + 1).values().stream()
                             .filter(prevType -> prevType instanceof ComputedTypeBase prevBaseType
+                                    && computedClassConfig.get(versionIndexF).containsKey(prevBaseType.getName())
                                     && computedClassConfig.get(versionIndexF).get(prevBaseType.getName()).differentThanNext)
                             .map(ComputedType::getName)
                             .collect(Collectors.toSet());
 
+                    computedSuperTypesConfig.get(versionIndexF + 1).forEach((name, nextAlternatives) -> {
+                        List<String> previousAlternatives = computedSuperTypesConfig.get(versionIndexF).get(name);
+                        if (!Objects.equals(previousAlternatives, nextAlternatives)) {
+                            changedTypes.add(name);
+                        }
+                    });
+
                     {
                         boolean addedMoreTypes;
                         do {
-                            var newChangedTypes = changedTypes
+							Set<String> changedSnapshot = Set.copyOf(changedTypes);
+							Map<String, ComputedType> dependencyTypes = randomComputedTypes.get(
+									versionIndexF < dependencyBaseline ? dependencyBaseline : versionIndexF + 1);
+                            var newChangedTypes = dependencyTypes.values()
                                     .parallelStream()
-                                    .flatMap(changedType -> randomComputedTypes.get(versionIndexF + 1).get(changedType).getDependents())
+									.filter(candidate -> randomComputedTypes.get(versionIndexF + 1)
+											.containsKey(candidate.getName()))
+                                    .filter(candidate -> candidate.getDependencies()
+                                            .anyMatch(dependency -> changedSnapshot.contains(dependency.getName())))
                                     .map(ComputedType::getName)
                                     .distinct()
                                     .toList();
@@ -527,10 +650,25 @@ public class DataModel {
                     Map<String, ComputedType> currentVersionComputedTypes = new HashMap<>();
                     var versionChangeChecker = new VersionChangeChecker(changedTypes, versionIndexF, latestVersion);
                     randomComputedTypes.get(versionIndexF + 1).forEach((computedTypeName, computedType) -> {
+                        if (!isComputedTypeAvailable(computedTypeName, computedClassConfig.get(versionIndexF),
+                                computedSuperTypesConfig.get(versionIndexF), customTypesData)) {
+                            return;
+                        }
                         if (!changedTypes.contains(computedTypeName)) {
                             currentVersionComputedTypes.put(computedTypeName, computedType);
                         } else {
                             if (computedType instanceof VersionedComputedType versionedComputedType) {
+                                if (computedType instanceof ComputedTypeSuper) {
+                                    List<VersionedType> subTypes = computedSuperTypesConfig.get(versionIndexF)
+                                            .get(computedTypeName).stream()
+                                            .map(subtype -> new VersionedType(subtype,
+                                                    computedVersions.get(currentOrNewerTypeVersion.getInt(subtype))))
+                                            .toList();
+                                    currentVersionComputedTypes.put(computedTypeName,
+                                            new ComputedTypeSuper(new VersionedType(computedTypeName, version),
+                                                    subTypes, computedTypeSupplier));
+                                    return;
+                                }
                                 ParsedClass parsedClass = computedClassConfig.get(versionIndexF).get(computedTypeName);
                                 LinkedHashMap<String, VersionedType> parsedFields;
                                 if (parsedClass != null) {
@@ -672,7 +810,7 @@ public class DataModel {
         logger.debug("\tAvoided type versions: {} ({}%)", unchanged, (unchanged * 100 / totalTypeVersions));
         logger.debug("\tType versions: {} ({}%)", changed, (changed * 100 / totalTypeVersions));
         this.currentVersion = computedVersions.get(versionsCount - 1);
-        this.superTypes = superTypesData;
+        this.superTypes = Map.copyOf(computedSuperTypesConfig.get(latestVersion));
         this.customTypes = customTypesData;
 		this.projections = projectionsData;
         this.computedTypes = computedTypes;
@@ -694,6 +832,70 @@ public class DataModel {
 
     private static RuntimeException throwMultiRootVersions(List<String> rootVersions) {
         return new IllegalArgumentException("Found many root versions: " + String.join(", ", rootVersions));
+    }
+
+    private static Map<String, List<String>> copySuperTypes(Map<String, ? extends List<String>> source) {
+        var copy = new LinkedHashMap<String, List<String>>();
+        source.forEach((name, alternatives) -> copy.put(name, new ArrayList<>(alternatives)));
+        return copy;
+    }
+
+    private static List<String> activePlainTypes(Map<String, ParsedClass> classes,
+            Map<String, List<String>> superTypes,
+            Map<String, CustomTypesConfiguration> customTypes) {
+        return Stream.concat(Stream.concat(Stream.concat(classes.keySet().stream(), superTypes.keySet().stream()),
+                        customTypes.keySet().stream()), NATIVE_TYPES.stream())
+                .distinct()
+                .toList();
+    }
+
+    private static boolean isActivePlainType(String name,
+            Map<String, ParsedClass> classes,
+            Map<String, List<String>> superTypes,
+            Map<String, CustomTypesConfiguration> customTypes) {
+        return classes.containsKey(name) || superTypes.containsKey(name) || customTypes.containsKey(name)
+                || NATIVE_TYPES.contains(name);
+    }
+
+    private static boolean isComputedTypeAvailable(String computedName,
+            Map<String, ParsedClass> classes,
+            Map<String, List<String>> superTypes,
+            Map<String, CustomTypesConfiguration> customTypes) {
+        String plainName = computedName.startsWith("-") || computedName.startsWith("§")
+                ? computedName.substring(1)
+                : computedName;
+        return isActivePlainType(plainName, classes, superTypes, customTypes);
+    }
+
+    private static void validateActiveTypeReferences(String versionName,
+            Map<String, ParsedClass> classes,
+            Map<String, List<String>> superTypes,
+            Map<String, CustomTypesConfiguration> customTypes) {
+        classes.forEach((className, definition) -> definition.getData().forEach((fieldName, field) -> {
+            String plainName = field.typeName().startsWith("-") || field.typeName().startsWith("§")
+                    ? field.typeName().substring(1)
+                    : field.typeName();
+            if (!isActivePlainType(plainName, classes, superTypes, customTypes)) {
+                throw new IllegalArgumentException("Type " + className + "." + fieldName + " in version "
+                        + versionName + " refers to type " + plainName + " before it is introduced");
+            }
+        }));
+        superTypes.forEach((unionName, alternatives) -> {
+            if (alternatives.isEmpty()) {
+                throw new IllegalArgumentException("Union " + unionName + " has no alternatives in version " + versionName);
+            }
+            var seen = new java.util.HashSet<String>();
+            for (String alternative : alternatives) {
+                if (!seen.add(alternative)) {
+                    throw new IllegalArgumentException("Union " + unionName + " contains duplicate alternative "
+                            + alternative + " in version " + versionName);
+                }
+                if (!isActivePlainType(alternative, classes, superTypes, customTypes)) {
+                    throw new IllegalArgumentException("Union " + unionName + " in version " + versionName
+                            + " refers to type " + alternative + " before it is introduced");
+                }
+            }
+        });
     }
 
     private static void validateStringRepresenters(String versionName, Map<String, ParsedClass> classConfig) {
@@ -933,9 +1135,16 @@ public class DataModel {
         var prevVersion = getPrevVersion(type);
         if (prevVersion != null) {
             return versions.get(prevVersion.getVersion().getVersion() + 1);
-        } else {
-            return versions.get(0);
         }
+        for (int logicalVersion = 0; logicalVersion <= type.getVersion().getVersion(); logicalVersion++) {
+            ComputedType candidate = computedTypes.get(logicalVersion).get(type.getName());
+            if (candidate instanceof VersionedComputedType candidateVersioned
+                    && candidateVersioned.getVersion().equals(type.getVersion())) {
+                return versions.get(logicalVersion);
+            }
+        }
+        throw new IllegalStateException("Type " + type.getName() + "@" + type.getVersion().getVersion()
+                + " is not present in its declared version range");
     }
 
     public Stream<ComputedVersion> getTypeSameVersions(VersionedComputedType type) {

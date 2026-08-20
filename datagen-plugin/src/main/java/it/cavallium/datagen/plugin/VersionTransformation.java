@@ -8,6 +8,8 @@ public final class VersionTransformation {
 	public RemoveDataConfiguration removeData = null;
 	public UpgradeDataConfiguration upgradeData = null;
 	public NewDataConfiguration newData = null;
+	public NewTypeConfiguration newType = null;
+	public NewSubtypeConfiguration newSubtype = null;
 
 	void checkConsistency() {
 		int nonNullValues = 0;
@@ -21,6 +23,12 @@ public final class VersionTransformation {
 			nonNullValues++;
 		}
 		if (newData != null) {
+			nonNullValues++;
+		}
+		if (newType != null) {
+			nonNullValues++;
+		}
+		if (newSubtype != null) {
 			nonNullValues++;
 		}
 		if (nonNullValues != 1) {
@@ -42,6 +50,12 @@ public final class VersionTransformation {
 		if (newData != null) {
 			return newData.transformClass.equals(type);
 		}
+		if (newType != null) {
+			return newType.name.equals(type);
+		}
+		if (newSubtype != null) {
+			return newSubtype.superType.equals(type);
+		}
 		throw new IllegalStateException();
 	}
 
@@ -59,6 +73,12 @@ public final class VersionTransformation {
 		if (newData != null) {
 			return newData;
 		}
+		if (newType != null) {
+			return newType;
+		}
+		if (newSubtype != null) {
+			return newSubtype;
+		}
 		throw new IllegalStateException();
 	}
 
@@ -71,10 +91,9 @@ public final class VersionTransformation {
 			return false;
 		}
 		VersionTransformation that = (VersionTransformation) o;
-		return Objects.equals(moveData, that.moveData) && Objects.equals(removeData, that.removeData) && Objects.equals(
-				upgradeData,
-				that.upgradeData
-		) && Objects.equals(newData, that.newData);
+		return Objects.equals(moveData, that.moveData) && Objects.equals(removeData, that.removeData)
+				&& Objects.equals(upgradeData, that.upgradeData) && Objects.equals(newData, that.newData)
+				&& Objects.equals(newType, that.newType) && Objects.equals(newSubtype, that.newSubtype);
 	}
 
 	@Override
@@ -84,6 +103,8 @@ public final class VersionTransformation {
 		hash += ConfigUtils.hashCode(removeData);
 		hash += ConfigUtils.hashCode(upgradeData);
 		hash += ConfigUtils.hashCode(newData);
+		hash += ConfigUtils.hashCode(newType);
+		hash += ConfigUtils.hashCode(newSubtype);
 		return hash;
 	}
 
@@ -93,6 +114,8 @@ public final class VersionTransformation {
 		if (this.removeData != null) t.removeData = this.removeData.copy();
 		if (this.upgradeData != null) t.upgradeData = this.upgradeData.copy();
 		if (this.newData != null) t.newData = this.newData.copy();
+		if (this.newType != null) t.newType = this.newType.copy();
+		if (this.newSubtype != null) t.newSubtype = this.newSubtype.copy();
 		return t;
 	}
 }

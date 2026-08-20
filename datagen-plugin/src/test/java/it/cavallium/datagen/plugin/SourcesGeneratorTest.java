@@ -108,6 +108,62 @@ class SourcesGeneratorTest {
 	}
 
 	@Test
+	void introducedTypeReadersCompileOnlyForSupportedVersions(@TempDir Path temp) throws Exception {
+		Path ledger = temp.resolve("schema.wire");
+		SourcesGenerator baseline = SourcesGenerator.load(new ByteArrayInputStream("""
+				currentVersion: v1
+				baseTypesData:
+				  A: {data: {value: int}}
+				superTypesData:
+				  Choice: [A]
+				versions:
+				  v1:
+				""".getBytes(StandardCharsets.UTF_8)));
+		baseline.verifyOrUpdateWireSchemaLedger(ledger, false, true);
+
+		SourcesGenerator evolved = SourcesGenerator.load(new ByteArrayInputStream("""
+				currentVersion: v2
+				baseTypesData:
+				  A: {data: {value: int}}
+				superTypesData:
+				  Choice: [A]
+				versions:
+				  v1:
+				  v2:
+				    previousVersion: v1
+				    transformations:
+				      - newType:
+				          name: C
+				          data: {value: String}
+				      - newSubtype:
+				          superType: Choice
+				          subtype: C
+				""".getBytes(StandardCharsets.UTF_8)));
+		evolved.verifyOrUpdateWireSchemaLedger(ledger, false, true);
+		Path sources = temp.resolve("introduced-sources");
+		evolved.generateSources(BASE_PACKAGE, sources, false, true, false);
+
+		String currentVersion = Files.readString(sources.resolve("org/example/current/CurrentVersion.java"));
+		assertFalse(currentVersion.contains("CV0Reader"), currentVersion);
+		assertTrue(currentVersion.contains("CV1Reader"), currentVersion);
+		try (var loader = compileGeneratedSources(sources, temp.resolve("introduced-classes"))) {
+			Class<?> baseType = loader.loadClass("org.example.BaseType");
+			Object c = enumValue(baseType, "C");
+			Class<?> current = loader.loadClass("org.example.current.CurrentVersion");
+			InvocationTargetException unsupportedReader = assertThrows(InvocationTargetException.class,
+					() -> current.getMethod("newReader", int.class, baseType, DecodeLimits.class)
+							.invoke(null, 0, c, LIMITS));
+			assertTrue(unsupportedReader.getCause() instanceof IllegalArgumentException);
+
+			Class<?> version0 = loader.loadClass("org.example.v0.Version");
+			Object version0Instance = version0.getField("INSTANCE").get(null);
+			InvocationTargetException unsupportedCodec = assertThrows(InvocationTargetException.class,
+					() -> version0.getMethod("getCodec", baseType).invoke(version0Instance, c));
+			assertTrue(unsupportedCodec.getCause() instanceof IllegalArgumentException);
+		}
+	}
+
+	@Test
 	@SuppressWarnings("unchecked")
 	void generatesFlattenedOwnedValueModelForCurrentAndHistoricalVersions(@TempDir Path temp) throws Exception {
 		Path sources = temp.resolve("sources");

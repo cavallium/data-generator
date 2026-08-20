@@ -191,6 +191,9 @@ public final class GenReadPlan extends ClassGenerator {
 		private GeneratedClass generate() {
 			var dispatches = new ArrayList<VersionDispatch>();
 			for (var version : dataModel.getVersionsSet()) {
+				if (!dataModel.getComputedTypes(version).containsKey(currentType.getName())) {
+					continue;
+				}
 				ComputedType input = typeNamed(version.getVersion(), currentType.getName());
 				if (!(input instanceof ComputedTypeBase inputBase)) {
 					throw generationError("input type is not a record in version " + version.getVersion());

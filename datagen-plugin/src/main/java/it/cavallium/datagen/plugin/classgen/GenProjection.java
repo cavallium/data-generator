@@ -136,6 +136,7 @@ public final class GenProjection extends ClassGenerator {
 			generateSink();
 
 			var plans = dataModel.getVersionsSet().stream()
+					.filter(version -> dataModel.getComputedTypes(version).containsKey(configuration.sourceType))
 					.map(version -> new VersionPlan(version.getVersion()))
 					.toList();
 			plans.forEach(VersionPlan::compile);

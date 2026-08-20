@@ -54,6 +54,13 @@ When `wireSchemaLedgerPath` is configured, generation fails if any numbered vers
 wire graph changes or if a new version is added without review. Create or intentionally update the
 checked-in ledger with `-Ddatagen.updateWireSchemaLedger=true`; normal builds never rewrite it.
 
+Ledger v2 separates the original frozen `sha256` identity from `schema-sha256`, the digest actually
+used to compare wire grammar. The schema digest excludes generated Java package/version reuse and
+unreachable codec helpers, so appending a version cannot perturb earlier entries. Migrating a v1
+ledger preserves every existing `sha256`, records its last version as `baseline-version`, and adds
+stable semantic hashes. That baseline also keeps historical generated type coalescing independent
+of fields introduced in later versions.
+
 ## Schema basics
 
 ```yaml
@@ -101,9 +108,31 @@ Type notation:
 - nullable values with `-`, for example `-int` and `-User`;
 - owned arrays with `[]`, for example `long[]` and `User[]`.
 
-Transformations are `moveData`, `removeData`, `newData`, and `upgradeData`. Their declared object
-initializer/upgrader remains the semantic path for already-materialized values and ordinary
-non-random-access input.
+Field transformations are `moveData`, `removeData`, `newData`, and `upgradeData`; type evolution
+uses `newType` and `newSubtype`. Declared field initializers/upgraders remain the semantic path for
+already-materialized values and ordinary non-random-access input.
+
+The top-level `baseTypesData` and `superTypesData` describe the first version. A record or union
+alternative that appears later must be introduced in that version's transformation list:
+
+```yaml
+versions:
+  v2:
+    previousVersion: v1
+    transformations:
+      - newType:
+          name: SuspendedUser
+          data:
+            id: long
+            reason: String
+      - newSubtype:
+          superType: User
+          subtype: SuspendedUser
+```
+
+The containing version is the authoritative `since` version. `newSubtype` always appends; it has no
+index and rejects duplicates, unknown/future types, and the 257th alternative. Never insert or
+reorder entries in a frozen top-level union: its unsigned-byte discriminator is its list index.
 
 ## Codec contract
 

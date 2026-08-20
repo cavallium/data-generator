@@ -254,6 +254,8 @@ public class GenVersion extends ClassGenerator {
 			var field = baseType.getJSerializerInstance(basePackageName);
 			methodBuilder.addStatement("case $N -> $T.$N", baseType.getName(), field.className(), field.fieldName());
 		});
+		methodBuilder.addStatement("default -> throw new $T($S + type + $S + VERSION)",
+				IllegalArgumentException.class, "Type ", " is not available in version ");
 		methodBuilder.addCode(CodeBlock.of("$<};"));
 		classBuilder.addMethod(methodBuilder.build());
 	}

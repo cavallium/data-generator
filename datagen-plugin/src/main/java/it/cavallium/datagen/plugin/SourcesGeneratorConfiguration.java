@@ -42,6 +42,10 @@ public class SourcesGeneratorConfiguration {
 	}
 
 	public DataModel buildDataModel(boolean binaryStrings) {
+		return buildDataModel(binaryStrings, null);
+	}
+
+	public DataModel buildDataModel(boolean binaryStrings, Integer dependencyBaselineVersion) {
 		return new DataModel(hashCode(),
 				currentVersion,
 				Objects.requireNonNullElse(interfacesData, Map.of()),
@@ -50,7 +54,8 @@ public class SourcesGeneratorConfiguration {
 				Objects.requireNonNullElse(customTypesData, Map.of()),
 				Objects.requireNonNullElse(projectionsData, Map.of()),
 				Objects.requireNonNullElse(versions, Map.of()),
-				binaryStrings
+				binaryStrings,
+				dependencyBaselineVersion
 		);
 	}
 }

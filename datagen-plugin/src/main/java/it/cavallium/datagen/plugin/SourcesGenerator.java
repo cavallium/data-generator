@@ -55,7 +55,7 @@ import org.yaml.snakeyaml.Yaml;
 public class SourcesGenerator {
 
     private static final Logger logger = LoggerFactory.getLogger(SourcesGenerator.class);
-    private static final String SERIAL_VERSION = "20";
+    private static final String SERIAL_VERSION = "21";
     private static final String MANIFEST_NAME = ".datagen-manifest-v1";
     private static final String MANIFEST_HEADER = "data-generator-manifest-v2";
     private static final String GENERATION_PREFIX = "generation=";
@@ -64,6 +64,7 @@ public class SourcesGenerator {
 
     private final SourcesGeneratorConfiguration configuration;
     private final byte[] yamlBytes;
+    private Integer wireSchemaBaselineVersion;
 
     private SourcesGenerator(InputStream yamlDataStream) throws IOException {
         this.yamlBytes = yamlDataStream.readAllBytes();
@@ -92,17 +93,24 @@ public class SourcesGenerator {
             boolean update) throws IOException {
         Path normalizedLedger = Objects.requireNonNull(ledgerPath, "ledgerPath")
                 .toAbsolutePath().normalize();
-        String actual = wireSchemaLedger(binaryStrings);
-        if (update) {
-            Files.createDirectories(normalizedLedger.getParent());
-            writeTextAtomically(normalizedLedger, actual, ".datagen-wire-ledger-");
-            return;
-        }
         if (Files.notExists(normalizedLedger)) {
+            if (update) {
+                Files.createDirectories(normalizedLedger.getParent());
+                wireSchemaBaselineVersion = configuration.buildDataModel(binaryStrings).getCurrentVersionNumber();
+                writeTextAtomically(normalizedLedger, wireSchemaLedger(binaryStrings), ".datagen-wire-ledger-");
+                return;
+            }
             throw new IllegalArgumentException("Wire-schema ledger is missing: " + normalizedLedger
                     + "; regenerate it explicitly with -Ddatagen.updateWireSchemaLedger=true");
         }
         String expected = Files.readString(normalizedLedger, StandardCharsets.UTF_8);
+        wireSchemaBaselineVersion = WireSchemaLedger.baselineVersion(expected);
+        String actual = WireSchemaLedger.render(configuration.buildDataModel(binaryStrings, wireSchemaBaselineVersion),
+                binaryStrings, expected);
+        if (update) {
+            writeTextAtomically(normalizedLedger, actual, ".datagen-wire-ledger-");
+            return;
+        }
         if (!expected.equals(actual)) {
             throw new IllegalArgumentException("Wire-schema ledger mismatch: " + normalizedLedger
                     + "; an existing numbered version changed or a new version was added. "
@@ -142,7 +150,7 @@ public class SourcesGenerator {
         }
         var manifestPath = basePackageNamePath.resolve(MANIFEST_NAME);
         var legacyHashPath = basePackageNamePath.resolve(".hash");
-        var dataModel = configuration.buildDataModel(binaryStrings);
+        var dataModel = configuration.buildDataModel(binaryStrings, wireSchemaBaselineVersion);
         String generationFingerprint = generationFingerprint(basePackageName, generateOldSerializers,
                 binaryStrings, vectorKernels, yamlBytes);
         Manifest previousManifest = readManifest(manifestPath);
