@@ -736,8 +736,12 @@ class AdversarialEvolutionTest {
 
 	private static void assertBoundReaderKernelBytecode(Path classes, String typeName, int version)
 			throws Exception {
-		Path classFile = classes.resolve("org/example/current/CurrentVersion$" + typeName + "V" + version
-				+ "Reader.class");
+		Path classFile;
+		try (var files = Files.list(classes.resolve("org/example/current"))) {
+			classFile = files.filter(path -> path.getFileName().toString().startsWith("CurrentVersion$BoundReaderFactory"))
+					.filter(path -> path.getFileName().toString().endsWith("$" + typeName + "V" + version + "Reader.class"))
+					.findFirst().orElseThrow();
+		}
 		var model = ClassFile.of().parse(classFile);
 		var allInstructions = model.methods().stream()
 				.flatMap(method -> method.code().stream())

@@ -23,6 +23,7 @@ import it.cavallium.datagen.DecodeBudget;
 import it.cavallium.datagen.DecodeLimits;
 import it.cavallium.datagen.MalformedDataException;
 import it.cavallium.stream.SafeDataInput;
+import java.util.ArrayList;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -30,6 +31,7 @@ import java.util.stream.Stream;
 import javax.lang.model.element.Modifier;
 
 public class GenCurrentVersion extends ClassGenerator {
+	private static final int BOUND_READER_FACTORY_TYPES = 32;
 
 	public GenCurrentVersion(ClassGeneratorParams params) {
 		super(params);
@@ -376,7 +378,16 @@ public class GenCurrentVersion extends ClassGenerator {
 					.build();
 		currentVersionClass.addType(boundReaderBase);
 
-		dataModel.getBaseTypesComputed(dataModel.getCurrentVersion()).forEach(currentType -> {
+		var currentTypes = dataModel.getBaseTypesComputed(dataModel.getCurrentVersion()).toList();
+		var boundReaderFactories = new ArrayList<TypeSpec.Builder>();
+		for (int typeIndex = 0; typeIndex < currentTypes.size(); typeIndex++) {
+			var currentType = currentTypes.get(typeIndex);
+			if (typeIndex % BOUND_READER_FACTORY_TYPES == 0) {
+				boundReaderFactories.add(TypeSpec.classBuilder("BoundReaderFactory"
+						+ typeIndex / BOUND_READER_FACTORY_TYPES)
+						.addModifiers(Modifier.PRIVATE, Modifier.STATIC, Modifier.FINAL));
+			}
+			var boundReaderFactory = boundReaderFactories.get(typeIndex / BOUND_READER_FACTORY_TYPES);
 			String className = currentType.getName() + "Reader";
 			ClassName planType = GenReadPlan.className(basePackageName, currentVersionPackage, currentType.getName());
 			currentVersionClass.addType(TypeSpec.classBuilder(className)
@@ -420,7 +431,7 @@ public class GenCurrentVersion extends ClassGenerator {
 			for (ComputedVersion version : dataModel.getVersionsSet()) {
 				if (!dataModel.getComputedTypes(version).containsKey(currentType.getName())) continue;
 				String boundClassName = currentType.getName() + "V" + version.getVersion() + "Reader";
-				currentVersionClass.addType(TypeSpec.classBuilder(boundClassName)
+				boundReaderFactory.addType(TypeSpec.classBuilder(boundClassName)
 						.addModifiers(Modifier.PRIVATE, Modifier.STATIC, Modifier.FINAL)
 						.superclass(ParameterizedTypeName.get(
 								ClassName.get(currentVersionPackage, "CurrentVersion").nestedClass("BoundReaderBase"),
@@ -456,7 +467,7 @@ public class GenCurrentVersion extends ClassGenerator {
 								.build())
 						.build());
 			}
-		});
+		}
 
 		var newReader = MethodSpec.methodBuilder("newReader")
 				.addModifiers(Modifier.PUBLIC, Modifier.STATIC)
@@ -484,9 +495,14 @@ public class GenCurrentVersion extends ClassGenerator {
 				.addStatement("$T.requireNonNull(limits, $S)", Objects.class, "limits")
 				.beginControlFlow("return ($T) switch (type)",
 						ParameterizedTypeName.get(boundReaderType, TypeVariableName.get("U")));
-		dataModel.getBaseTypesComputed(dataModel.getCurrentVersion()).forEach(currentType -> {
+		for (int typeIndex = 0; typeIndex < currentTypes.size(); typeIndex++) {
+			var currentType = currentTypes.get(typeIndex);
+			var boundReaderFactory = boundReaderFactories.get(typeIndex / BOUND_READER_FACTORY_TYPES);
+			ClassName factoryClass = ClassName.get(currentVersionPackage, "CurrentVersion")
+					.nestedClass("BoundReaderFactory" + typeIndex / BOUND_READER_FACTORY_TYPES);
 			String helperName = "new" + currentType.getName() + "BoundReader";
-			newBoundReader.addStatement("case $N -> $N(version, limits)", currentType.getName(), helperName);
+			newBoundReader.addStatement("case $N -> $T.$N(version, limits)", currentType.getName(),
+					factoryClass, helperName);
 			var newTypeBoundReader = MethodSpec.methodBuilder(helperName)
 					.addModifiers(Modifier.PRIVATE, Modifier.STATIC)
 					.returns(ParameterizedTypeName.get(boundReaderType,
@@ -502,8 +518,9 @@ public class GenCurrentVersion extends ClassGenerator {
 			newTypeBoundReader.addStatement("default -> throw new $T($S + version)", IllegalArgumentException.class,
 					"Unsupported serialized version: ")
 					.addCode(CodeBlock.of("$<};"));
-			currentVersionClass.addMethod(newTypeBoundReader.build());
-		});
+			boundReaderFactory.addMethod(newTypeBoundReader.build());
+		}
+		boundReaderFactories.forEach(factory -> currentVersionClass.addType(factory.build()));
 		newBoundReader.addCode(CodeBlock.of("$<};"));
 		currentVersionClass.addMethod(newBoundReader.build());
 	}

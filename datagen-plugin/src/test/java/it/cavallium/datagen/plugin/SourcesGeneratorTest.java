@@ -83,12 +83,17 @@ class SourcesGeneratorTest {
 	@Test
 	void shardsVersionedBoundReaderFactoryByBaseType(@TempDir Path temp) throws Exception {
 		Path sources = temp.resolve("sources");
-		generate(boundReaderFactorySchema(3, 4), sources);
+		generate(boundReaderFactorySchema(65, 4), sources);
 
 		String currentVersionSource = Files.readString(
 				sources.resolve("org/example/current/CurrentVersion.java"));
-		assertTrue(currentVersionSource.contains(
-				"case T0 -> newT0BoundReader(version, limits);"), currentVersionSource);
+		assertTrue(currentVersionSource.matches(
+				"(?s).*case T0 -> BoundReaderFactory[0-2]\\.newT0BoundReader\\(version, limits\\);.*"),
+				currentVersionSource);
+		for (int chunk = 0; chunk < 3; chunk++) {
+			assertTrue(currentVersionSource.contains("private static final class BoundReaderFactory" + chunk),
+					currentVersionSource);
+		}
 		assertTrue(currentVersionSource.contains(
 				"private static BoundReader<T0> newT0BoundReader(int version, DecodeLimits limits)"),
 				currentVersionSource);
@@ -96,13 +101,27 @@ class SourcesGeneratorTest {
 		assertTrue(currentVersionSource.contains("case 3 -> new T0V3Reader(limits);"), currentVersionSource);
 
 		try (var loader = compileGeneratedSources(sources, temp.resolve("classes"))) {
+			for (int chunk = 0; chunk < 3; chunk++) {
+				Class<?> factory = loader.loadClass("org.example.current.CurrentVersion$BoundReaderFactory" + chunk);
+				assertTrue(factory.getDeclaredMethods().length <= 32);
+				assertTrue(factory.getDeclaredClasses().length <= 32 * 4);
+				Path classFile = temp.resolve("classes/org/example/current/CurrentVersion$BoundReaderFactory"
+						+ chunk + ".class");
+				assertTrue(ClassFile.of().parse(classFile).constantPool().size() < 10_000);
+			}
 			Class<?> baseType = loader.loadClass("org.example.BaseType");
 			Class<?> currentVersion = loader.loadClass("org.example.current.CurrentVersion");
-			Object t0 = enumValue(baseType, "T0");
-			for (int version = 0; version < 4; version++) {
-				Object reader = currentVersion.getMethod("newReader", int.class, baseType, DecodeLimits.class)
-						.invoke(null, version, t0, LIMITS);
-				assertTrue(reader.getClass().getSimpleName().equals("T0V" + version + "Reader"));
+			Class<?> boundReader = loader.loadClass("org.example.current.CurrentVersion$BoundReader");
+			for (int type = 0; type < 65; type++) {
+				Object base = enumValue(baseType, "T" + type);
+				Object value = loader.loadClass("org.example.current.data.T" + type).getMethod("of").invoke(null);
+				for (int version = 0; version < 4; version++) {
+					Object reader = currentVersion.getMethod("newReader", int.class, baseType, DecodeLimits.class)
+							.invoke(null, version, base, LIMITS);
+					assertEquals("T" + type + "V" + version + "Reader", reader.getClass().getSimpleName());
+					assertTrue(reader.getClass().getEnclosingClass().getSimpleName().startsWith("BoundReaderFactory"));
+					assertEquals(value, boundReader.getMethod("read", Buf.class).invoke(reader, Buf.create()));
+				}
 			}
 		}
 	}
@@ -160,6 +179,105 @@ class SourcesGeneratorTest {
 			InvocationTargetException unsupportedCodec = assertThrows(InvocationTargetException.class,
 					() -> version0.getMethod("getCodec", baseType).invoke(version0Instance, c));
 			assertTrue(unsupportedCodec.getCause() instanceof IllegalArgumentException);
+		}
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void introducedTypesSupportNullableAndArrayFieldsOnlySinceIntroduction(@TempDir Path temp) throws Exception {
+		String originalSchema = """
+				currentVersion: v0
+				baseTypesData:
+				  Old: {data: {value: int}}
+				versions:
+				  v0:
+				""";
+		Path ledger = temp.resolve("introduced-wrappers.wire");
+		SourcesGenerator baseline = SourcesGenerator.load(new ByteArrayInputStream(
+				originalSchema.getBytes(StandardCharsets.UTF_8)));
+		baseline.verifyOrUpdateWireSchemaLedger(ledger, false, true);
+		String originalVersionLine = Files.readString(ledger).lines()
+				.filter(line -> line.startsWith("version=0 ")).findFirst().orElseThrow();
+
+		String evolvedSchema = originalSchema.replace("currentVersion: v0", "currentVersion: v1") + """
+				  v1:
+				    previousVersion: v0
+				    transformations:
+				      - newType:
+				          name: Child
+				          data: {value: int}
+				      - newType:
+				          name: Holder
+				          data:
+				            optional: -Child
+				            children: Child[]
+				""";
+		SourcesGenerator evolved = SourcesGenerator.load(new ByteArrayInputStream(
+				evolvedSchema.getBytes(StandardCharsets.UTF_8)));
+		evolved.verifyOrUpdateWireSchemaLedger(ledger, false, true);
+		assertEquals(originalVersionLine, Files.readString(ledger).lines()
+				.filter(line -> line.startsWith("version=0 ")).findFirst().orElseThrow());
+		evolved.verifyOrUpdateWireSchemaLedger(ledger, false, false);
+
+		Path sources = temp.resolve("introduced-wrapper-sources");
+		evolved.generateSources(BASE_PACKAGE, sources, false, true, false);
+		assertFalse(Files.exists(sources.resolve("org/example/v0/data/Child.java")));
+		assertFalse(Files.exists(sources.resolve("org/example/v0/data/Holder.java")));
+		assertFalse(Files.exists(sources.resolve("org/example/v0/data/nullables/NullableChild.java")));
+		String oldVersionSource = Files.readString(sources.resolve("org/example/v0/Version.java"));
+		assertFalse(oldVersionSource.contains("NullableChildSerializerInstance"), oldVersionSource);
+		assertFalse(oldVersionSource.contains("ArrayChildSerializerInstance"), oldVersionSource);
+		assertTrue(Files.exists(sources.resolve("org/example/current/data/nullables/NullableChild.java")));
+
+		try (var loader = compileGeneratedSources(sources, temp.resolve("introduced-wrapper-classes"))) {
+			Class<?> baseType = loader.loadClass("org.example.BaseType");
+			Class<?> currentVersion = loader.loadClass("org.example.current.CurrentVersion");
+			Class<?> version = loader.loadClass("org.example.current.Version");
+			Object instance = version.getField("INSTANCE").get(null);
+			Class<?> oldVersion = loader.loadClass("org.example.v0.Version");
+			Object oldInstance = oldVersion.getField("INSTANCE").get(null);
+			Object oldBaseType = enumValue(baseType, "Old");
+			DataCodec<Object> oldCodec = (DataCodec<Object>) oldVersion.getMethod("getCodec", baseType)
+					.invoke(oldInstance, oldBaseType);
+			Class<?> oldType = loader.loadClass("org.example.current.data.Old");
+			Object oldValue = oldType.getMethod("of", int.class).invoke(null, 42);
+			BufDataOutput oldOutput = BufDataOutput.create();
+			oldCodec.serialize(oldOutput, oldValue);
+			assertArrayEquals(new byte[] {0, 0, 0, 42}, oldOutput.asList().asArray());
+			assertEquals(oldValue, oldCodec.read(BufDataInput.create(oldOutput.asList(), LIMITS)));
+			assertEquals(oldValue, currentVersion.getMethod("read", int.class, baseType, SafeDataInput.class)
+					.invoke(null, 0, oldBaseType, BufDataInput.create(oldOutput.asList(), LIMITS)));
+			Class<?> childType = loader.loadClass("org.example.current.data.Child");
+			Class<?> holderType = loader.loadClass("org.example.current.data.Holder");
+			Object child = childType.getMethod("of", int.class).invoke(null, 42);
+			Object children = java.lang.reflect.Array.newInstance(childType, 1);
+			java.lang.reflect.Array.set(children, 0, child);
+			var holderFactory = holderType.getMethod("of", childType, children.getClass());
+			Object holderBaseType = enumValue(baseType, "Holder");
+			DataCodec<Object> codec = (DataCodec<Object>) version.getMethod("getCodec", baseType)
+					.invoke(instance, holderBaseType);
+			for (Object optional : new Object[] {null, child}) {
+				for (int size : new int[] {0, 1}) {
+					Object array = size == 0 ? java.lang.reflect.Array.newInstance(childType, 0) : children;
+					Object holder = holderFactory.invoke(null, optional, array);
+					BufDataOutput output = BufDataOutput.create();
+					codec.serialize(output, holder);
+					Buf payload = output.asList();
+					BufDataInput input = BufDataInput.create(payload, LIMITS);
+					Object decoded = codec.read(input);
+					assertEquals(holder, decoded);
+					assertEquals(0, input.available());
+					BufDataOutput roundTrip = BufDataOutput.create();
+					codec.serialize(roundTrip, decoded);
+					assertArrayEquals(payload.asArray(), roundTrip.asList().asArray());
+					assertEquals(holder, currentVersion.getMethod("read", int.class, baseType, SafeDataInput.class)
+							.invoke(null, 1, holderBaseType, BufDataInput.create(payload, LIMITS)));
+				}
+			}
+			InvocationTargetException unsupported = assertThrows(InvocationTargetException.class,
+					() -> currentVersion.getMethod("newReader", int.class, baseType, DecodeLimits.class)
+							.invoke(null, 0, holderBaseType, LIMITS));
+			assertTrue(unsupported.getCause() instanceof IllegalArgumentException);
 		}
 	}
 
@@ -4549,8 +4667,12 @@ class SourcesGeneratorTest {
 	}
 
 	private static void assertBoundReaderKernelBytecode(Path classes, String typeName, int version) throws Exception {
-		Path classFile = classes.resolve("org/example/current/CurrentVersion$" + typeName + "V" + version
-				+ "Reader.class");
+		Path classFile;
+		try (var files = Files.list(classes.resolve("org/example/current"))) {
+			classFile = files.filter(path -> path.getFileName().toString().startsWith("CurrentVersion$BoundReaderFactory"))
+					.filter(path -> path.getFileName().toString().endsWith("$" + typeName + "V" + version + "Reader.class"))
+					.findFirst().orElseThrow();
+		}
 		var model = ClassFile.of().parse(classFile);
 		var allInstructions = model.methods().stream()
 				.flatMap(method -> method.code().stream())

@@ -559,7 +559,8 @@ public class DataModel {
                                 .toList();
                         // Compute nullable versioned types
                         nullableRawTypes.stream()
-                                .filter(key -> superTypesData.containsKey(key) || baseTypesData.containsKey(key))
+                                .filter(key -> computedSuperTypesConfig.get(versionIndexF).containsKey(key)
+                                        || computedClassConfig.get(versionIndexF).containsKey(key))
                                 .map(nullableName -> new VersionedType(nullableName, version))
                                 .map(baseType -> new ComputedTypeNullableVersioned(baseType, computedTypeSupplier))
                                 .forEach(versionBaseTypes::add);
@@ -585,7 +586,8 @@ public class DataModel {
                                 .toList();
                         // Compute array versioned types
                         arrayRawTypes.stream()
-                                .filter(key -> superTypesData.containsKey(key) || baseTypesData.containsKey(key))
+                                .filter(key -> computedSuperTypesConfig.get(versionIndexF).containsKey(key)
+                                        || computedClassConfig.get(versionIndexF).containsKey(key))
                                 .map(nullableName -> new VersionedType(nullableName, version))
                                 .map(baseType -> new ComputedTypeArrayVersioned(baseType, computedTypeSupplier))
                                 .forEach(versionBaseTypes::add);
