@@ -13,3 +13,6 @@
 jqwik-database
 fuzz-failures/
 /data-generator-plugin/src/test/java/it/test/
+
+*.xml.versionsBackup
+.opencode/
