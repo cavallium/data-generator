@@ -1,8 +1,5 @@
 package it.cavallium.datagen.plugin;
 
-import static java.nio.file.StandardOpenOption.TRUNCATE_EXISTING;
-import static java.nio.file.StandardOpenOption.WRITE;
-
 import it.cavallium.datagen.plugin.ClassGenerator.ClassGeneratorParams;
 import it.cavallium.datagen.plugin.classgen.GenBaseType;
 import it.cavallium.datagen.plugin.classgen.GenCurrentVersion;
@@ -30,23 +27,14 @@ import it.cavallium.datagen.plugin.classgen.GenVersions;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
-import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
 import java.util.Objects;
-import java.util.HexFormat;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -55,12 +43,6 @@ import org.yaml.snakeyaml.Yaml;
 public class SourcesGenerator {
 
     private static final Logger logger = LoggerFactory.getLogger(SourcesGenerator.class);
-    private static final String SERIAL_VERSION = "21";
-    private static final String MANIFEST_NAME = ".datagen-manifest-v1";
-    private static final String MANIFEST_HEADER = "data-generator-manifest-v2";
-    private static final String GENERATION_PREFIX = "generation=";
-    private static final String FINGERPRINT_PREFIX = "fingerprint=";
-    private static final String GENERATED_FILES_SECTION = "files:";
 
     private final SourcesGeneratorConfiguration configuration;
     private final byte[] yamlBytes;
@@ -97,7 +79,7 @@ public class SourcesGenerator {
             if (update) {
                 Files.createDirectories(normalizedLedger.getParent());
                 wireSchemaBaselineVersion = configuration.buildDataModel(binaryStrings).getCurrentVersionNumber();
-                writeTextAtomically(normalizedLedger, wireSchemaLedger(binaryStrings), ".datagen-wire-ledger-");
+                Manifests.writeTextAtomically(normalizedLedger, wireSchemaLedger(binaryStrings), ".datagen-wire-ledger-");
                 return;
             }
             throw new IllegalArgumentException("Wire-schema ledger is missing: " + normalizedLedger
@@ -108,7 +90,7 @@ public class SourcesGenerator {
         String actual = WireSchemaLedger.render(configuration.buildDataModel(binaryStrings, wireSchemaBaselineVersion),
                 binaryStrings, expected);
         if (update) {
-            writeTextAtomically(normalizedLedger, actual, ".datagen-wire-ledger-");
+            Manifests.writeTextAtomically(normalizedLedger, actual, ".datagen-wire-ledger-");
             return;
         }
         if (!expected.equals(actual)) {
@@ -148,12 +130,12 @@ public class SourcesGenerator {
             }
             basePackageNamePath = basePackageNamePathPartial;
         }
-        var manifestPath = basePackageNamePath.resolve(MANIFEST_NAME);
+        var manifestPath = basePackageNamePath.resolve(Manifests.FILE_NAME);
         var legacyHashPath = basePackageNamePath.resolve(".hash");
         var dataModel = configuration.buildDataModel(binaryStrings, wireSchemaBaselineVersion);
         String generationFingerprint = generationFingerprint(basePackageName, generateOldSerializers,
                 binaryStrings, vectorKernels, yamlBytes);
-        Manifest previousManifest = readManifest(manifestPath);
+        Manifests.Manifest previousManifest = Manifests.read(manifestPath);
         if (!force && previousManifest != null
                 && previousManifest.generationFingerprint().equals(generationFingerprint)
                 && manifestFilesMatch(outPath, previousManifest)) {
@@ -229,7 +211,7 @@ public class SourcesGenerator {
 		new GenProjection(genParams).run();
 
         for (Path generatedFileToDelete : generatedFilesToDelete) {
-            Path fileToDelete = resolveManifestFile(outPath, generatedFileToDelete);
+            Path fileToDelete = Manifests.resolveFile(outPath, generatedFileToDelete);
             if (fileToDelete != null && Files.isRegularFile(fileToDelete, LinkOption.NOFOLLOW_LINKS)) {
                 logger.debug("Deleting stale generated file {}", fileToDelete);
                 Files.delete(fileToDelete);
@@ -238,10 +220,10 @@ public class SourcesGenerator {
 
         var fileDigests = new LinkedHashMap<Path, String>();
         for (Path relativePath : generatedFiles.stream().sorted(Comparator.comparing(Path::toString)).toList()) {
-            fileDigests.put(relativePath, sha256(Files.readAllBytes(outPath.resolve(relativePath))));
+            fileDigests.put(relativePath, Fingerprints.sha256(Files.readAllBytes(outPath.resolve(relativePath))));
         }
-        writeManifestAtomically(manifestPath, new Manifest(
-                generationFingerprint, manifestFingerprint(generationFingerprint, fileDigests), fileDigests));
+        Manifests.write(manifestPath, new Manifests.Manifest(
+                generationFingerprint, Manifests.fingerprint(generationFingerprint, fileDigests), fileDigests));
         Files.deleteIfExists(legacyHashPath);
     }
 
@@ -250,143 +232,21 @@ public class SourcesGenerator {
                                                 boolean binaryStrings,
                                                 boolean vectorKernels,
                                                 byte[] yamlBytes) {
-        MessageDigest digest = newDigest();
-        updateLengthPrefixed(digest, SERIAL_VERSION.getBytes(StandardCharsets.UTF_8));
-        updateLengthPrefixed(digest, basePackageName.getBytes(StandardCharsets.UTF_8));
-        updateLengthPrefixed(digest, new byte[] {(byte) (generateOldSerializers ? 1 : 0)});
-        updateLengthPrefixed(digest, new byte[] {(byte) (binaryStrings ? 1 : 0)});
-        updateLengthPrefixed(digest, new byte[] {(byte) (vectorKernels ? 1 : 0)});
-        updateLengthPrefixed(digest, yamlBytes);
-        return HexFormat.of().formatHex(digest.digest());
+        return Fingerprints.ofSchema(yamlBytes, basePackageName, generateOldSerializers, binaryStrings,
+                vectorKernels);
     }
 
-    private static String manifestFingerprint(String generationFingerprint, Map<Path, String> generatedFiles) {
-        MessageDigest digest = newDigest();
-        updateLengthPrefixed(digest, generationFingerprint.getBytes(StandardCharsets.UTF_8));
-        generatedFiles.entrySet().stream().sorted(Map.Entry.comparingByKey(Comparator.comparing(Path::toString)))
-                .forEach(entry -> {
-                    updateLengthPrefixed(digest, entry.getKey().toString().getBytes(StandardCharsets.UTF_8));
-                    updateLengthPrefixed(digest, entry.getValue().getBytes(StandardCharsets.UTF_8));
-                });
-        return HexFormat.of().formatHex(digest.digest());
-    }
-
-    private static void updateLengthPrefixed(MessageDigest digest, byte[] value) {
-        digest.update(ByteBuffer.allocate(Integer.BYTES).putInt(value.length).array());
-        digest.update(value);
-    }
-
-    private static String sha256(byte[] value) {
-        return HexFormat.of().formatHex(newDigest().digest(value));
-    }
-
-    private static MessageDigest newDigest() {
-        try {
-            return MessageDigest.getInstance("SHA-256");
-        } catch (NoSuchAlgorithmException exception) {
-            throw new AssertionError("Every Java implementation must provide SHA-256", exception);
-        }
-    }
-
-    private static Manifest readManifest(Path manifestPath) throws IOException {
-        if (!Files.isRegularFile(manifestPath) || !Files.isReadable(manifestPath)) {
-            return null;
-        }
-        List<String> lines = Files.readAllLines(manifestPath, StandardCharsets.UTF_8);
-        if (lines.size() < 4 || !MANIFEST_HEADER.equals(lines.get(0))
-                || !lines.get(1).startsWith(GENERATION_PREFIX)
-                || !lines.get(2).startsWith(FINGERPRINT_PREFIX)
-                || !GENERATED_FILES_SECTION.equals(lines.get(3))) {
-            return null;
-        }
-        String generationFingerprint = lines.get(1).substring(GENERATION_PREFIX.length());
-        String fingerprint = lines.get(2).substring(FINGERPRINT_PREFIX.length());
-        if (!isSha256(generationFingerprint) || !isSha256(fingerprint)) return null;
-        var files = new LinkedHashMap<Path, String>();
-        for (int index = 4; index < lines.size(); index++) {
-            String line = lines.get(index);
-            int separator = line.indexOf('\t');
-            if (separator != 64) return null;
-            String digest = line.substring(0, separator);
-            final Path relativePath;
-            try {
-                relativePath = Path.of(line.substring(separator + 1));
-            } catch (InvalidPathException exception) {
-                return null;
-            }
-            Path normalized = relativePath.normalize();
-            if (!isSha256(digest) || relativePath.isAbsolute() || normalized.startsWith("..")
-                    || normalized.toString().isEmpty() || !relativePath.equals(normalized)
-                    || files.put(normalized, digest) != null) {
-                return null;
-            }
-        }
-        Map<Path, String> immutableFiles = Map.copyOf(files);
-        if (!fingerprint.equals(manifestFingerprint(generationFingerprint, immutableFiles))) return null;
-        return new Manifest(generationFingerprint, fingerprint, immutableFiles);
-    }
-
-    private static boolean manifestFilesMatch(Path outPath, Manifest manifest) throws IOException {
+    private static boolean manifestFilesMatch(Path outPath, Manifests.Manifest manifest) throws IOException {
         for (var file : manifest.files().entrySet()) {
-            Path generatedFile = resolveManifestFile(outPath, file.getKey());
+            Path generatedFile = Manifests.resolveFile(outPath, file.getKey());
             if (generatedFile == null || !Files.isRegularFile(generatedFile, LinkOption.NOFOLLOW_LINKS)
-                    || !sha256(Files.readAllBytes(generatedFile)).equals(file.getValue())) {
+                    || !Fingerprints.sha256(Files.readAllBytes(generatedFile)).equals(file.getValue())) {
                 return false;
             }
         }
         return true;
     }
 
-    private static Path resolveManifestFile(Path outPath, Path relativePath) {
-        Path root = outPath.toAbsolutePath().normalize();
-        Path candidate = root.resolve(relativePath).normalize();
-        if (!candidate.startsWith(root)) return null;
-        Path current = root;
-        for (Path component : root.relativize(candidate)) {
-            current = current.resolve(component);
-            if (Files.isSymbolicLink(current)) return null;
-        }
-        return candidate;
-    }
-
-    private static void writeManifestAtomically(Path manifestPath, Manifest manifest) throws IOException {
-        StringBuilder contents = new StringBuilder()
-                .append(MANIFEST_HEADER).append('\n')
-                .append(GENERATION_PREFIX).append(manifest.generationFingerprint()).append('\n')
-                .append(FINGERPRINT_PREFIX).append(manifest.fingerprint()).append('\n')
-                .append(GENERATED_FILES_SECTION).append('\n');
-        manifest.files().entrySet().stream()
-                .sorted(Map.Entry.comparingByKey(Comparator.comparing(Path::toString)))
-                .forEach(entry -> contents.append(entry.getValue()).append('\t')
-                        .append(entry.getKey()).append('\n'));
-        writeTextAtomically(manifestPath, contents.toString(), ".datagen-manifest-");
-    }
-
-    private static void writeTextAtomically(Path target, String contents, String temporaryPrefix) throws IOException {
-        Path temporary = Files.createTempFile(target.getParent(), temporaryPrefix, ".tmp");
-        try {
-            Files.writeString(temporary, contents, StandardCharsets.UTF_8, TRUNCATE_EXISTING, WRITE);
-            try {
-                Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE,
-                        StandardCopyOption.REPLACE_EXISTING);
-            } catch (AtomicMoveNotSupportedException exception) {
-                Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
-            }
-        } finally {
-            Files.deleteIfExists(temporary);
-        }
-    }
-
-    private static boolean isSha256(String value) {
-        if (value.length() != 64) return false;
-        for (int index = 0; index < value.length(); index++) {
-            char character = value.charAt(index);
-            if ((character < '0' || character > '9') && (character < 'a' || character > 'f')) return false;
-        }
-        return true;
-    }
-
-    private record Manifest(String generationFingerprint, String fingerprint, Map<Path, String> files) {}
 
     public static String capitalize(String field) {
         return Character.toUpperCase(field.charAt(0)) + field.substring(1);
