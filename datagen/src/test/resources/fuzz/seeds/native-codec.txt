@@ -1,0 +1,6 @@
+# curated regression seeds
+# one decimal seed per line; # starts a comment; blank lines ignored.
+1
+7
+42
+12345

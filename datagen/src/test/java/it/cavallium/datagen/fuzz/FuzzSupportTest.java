@@ -11,6 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import it.cavallium.datagen.fuzz.FuzzTiers.Tier;
 import it.cavallium.datagen.nativedata.Int52;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -360,6 +361,30 @@ class FuzzSupportTest {
 		assertArrayEquals(new long[0], FuzzReplay.replaySeeds("does-not-exist"));
 		assertArrayEquals(new long[0], FuzzReplay.replaySeeds(""));
 		assertArrayEquals(new long[0], FuzzReplay.replaySeeds(null));
+	}
+
+	@Test
+	void theCheckedInNativeCodecCorpusParsesAndSkipsCommentsAndBlankLines() {
+		// the corpus resource exists on the test classpath and carries a header comment, a comment line
+		// and a trailing blank line: the parsed seeds are exactly the four numbers, in file order.
+		assertArrayEquals(new long[] {1L, 7L, 42L, 12345L}, FuzzReplay.replaySeeds("native-codec"),
+				"corpus fuzz/seeds/native-codec.txt must parse to exactly its seed lines");
+	}
+
+	@Test
+	void aCorruptUnreadableCorpusIsLoudButNeverThrows() {
+		ClassLoader unreadable = new ClassLoader(FuzzReplay.class.getClassLoader()) {
+			@Override
+			public InputStream getResourceAsStream(String name) {
+				return new InputStream() {
+					@Override
+					public int read() throws java.io.IOException {
+						throw new java.io.IOException("simulated read failure");
+					}
+				};
+			}
+		};
+		assertArrayEquals(new long[0], assertDoesNotThrow(() -> FuzzReplay.replaySeeds("broken", unreadable)));
 	}
 
 	@Test

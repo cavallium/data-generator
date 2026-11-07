@@ -69,6 +69,12 @@ class NativeCodecCorruptionPropertyTest {
 	/** Element count cap for object-shaped arrays, so a deep rung stays a linear amount of work. */
 	private static final int MAX_OBJECT_ARRAY_ELEMENTS = 128;
 
+	/** Size rung for the curated replay pass: small and fixed, so 4 seeds &times; 25 codecs stay below 0.5 s. */
+	private static final int REPLAY_SIZE = 8;
+
+	/** Random mutations per codec in the replay pass (the truncation ladder runs on top, as always). */
+	private static final int REPLAY_MUTATIONS = 1;
+
 	@Property(tries = 1)
 	void registryExposesExactlyTheExpectedCodecCountAndEveryCodecHasAValueFactory() {
 		List<Entry> codecs = discoverCodecs();
@@ -144,6 +150,30 @@ class NativeCodecCorruptionPropertyTest {
 						entry.name() + " determinism round=" + round + " size=" + size);
 				FuzzOracles.roundTrip(entry.codec(), value, rnd,
 						entry.name() + " round trip round=" + round + " size=" + size);
+			}
+		}
+	}
+
+	/**
+	 * Curated-replay path (contract §4): every seed in the checked-in corpus
+	 * {@code fuzz/seeds/native-codec.txt} gets ONE corruption+skip pass over the full pinned registry, at the
+	 * fixed small {@value #REPLAY_SIZE} rung so the whole property stays far below 0.5 s. Results fold into
+	 * the same oracle failure reporting as the generated rounds. A silently empty corpus would make this
+	 * property dead code again, so its presence is asserted rather than assumed.
+	 */
+	@Property(tries = 1)
+	void curatedReplaySeedsCorruptAndSkipEveryRegistryCodec() {
+		long[] seeds = FuzzReplay.replaySeeds("native-codec");
+		assertTrue(seeds.length > 0, gate("corpus fuzz/seeds/native-codec.txt must exist and hold seeds"));
+		List<Entry> codecs = discoverCodecs();
+		for (long seed : seeds) {
+			Random rnd = new Random(seed);
+			for (Entry entry : codecs) {
+				Object value = entry.values().create(rnd, REPLAY_SIZE);
+				FuzzOracles.corruptAcceptOrStableFail(entry.codec(), value, rnd, REPLAY_MUTATIONS,
+						entry.name() + " replay seed=" + seed + " corruption");
+				FuzzOracles.skipConsumesOne(entry.codec(), value,
+						entry.name() + " replay seed=" + seed + " skip");
 			}
 		}
 	}

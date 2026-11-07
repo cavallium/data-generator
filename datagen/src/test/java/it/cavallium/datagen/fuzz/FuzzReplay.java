@@ -14,8 +14,10 @@ import java.util.List;
  *
  * <p>Committed corpus: {@code fuzz/seeds/<id>.txt} on the <em>test classpath</em> (i.e.
  * {@code src/test/resources/fuzz/seeds/}), one decimal seed per line, {@code #} starting a comment,
- * blank lines ignored. A missing or unreadable corpus is not an error: it yields an empty array so a
- * test that also generates its own seeds keeps running.</p>
+ * blank lines ignored. A missing corpus is not an error: it yields an empty array so a test that also
+ * generates its own seeds keeps running. A corpus that is present but unreadable (an {@link IOException})
+ * is still empty-handed but prints one line to {@code System.err} — it must never throw and never fail
+ * silently either.</p>
  *
  * <p>Recorded failures: appended to {@code target/fuzz-failures/<id>.txt}, which is build output and
  * deliberately not committed. Writing is best effort — this runs from a failing test's teardown path,
@@ -37,11 +39,19 @@ public final class FuzzReplay {
 	 * or holds no parseable line. Never throws.
 	 */
 	public static long[] replaySeeds(String id) {
+		return replaySeeds(id, FuzzReplay.class.getClassLoader());
+	}
+
+	/**
+	 * The same load against an explicit {@code loader} — the seam {@code FuzzSupportTest} uses to feed a
+	 * stream that fails mid-read, which the test-classpath resources alone cannot express.
+	 */
+	static long[] replaySeeds(String id, ClassLoader loader) {
 		if (id == null || id.isEmpty()) {
 			return new long[0];
 		}
 		List<Long> seeds = new ArrayList<>();
-		try (InputStream in = FuzzReplay.class.getClassLoader().getResourceAsStream("fuzz/seeds/" + id + ".txt")) {
+		try (InputStream in = loader.getResourceAsStream("fuzz/seeds/" + id + ".txt")) {
 			if (in == null) {
 				return new long[0];
 			}
@@ -56,7 +66,12 @@ public final class FuzzReplay {
 					// a corrupt line is data, not a test failure: skip it
 				}
 			}
-		} catch (IOException | RuntimeException ignored) {
+		} catch (IOException presentButUnreadable) {
+			// The corpus exists but cannot be read: empty-handed, but loud — never throw from here.
+			System.err.println("FuzzReplay: corpus fuzz/seeds/" + id + ".txt is present but unreadable: "
+					+ presentButUnreadable);
+			return new long[0];
+		} catch (RuntimeException ignored) {
 			return new long[0];
 		}
 		long[] result = new long[seeds.size()];
