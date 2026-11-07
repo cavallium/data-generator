@@ -71,6 +71,8 @@ class HarnessBudgetTest {
 			CompiledSchema again = cache.compile(schemaCase.config(), options(schemaCase));
 			assertSame(schemaCase.schema(), again,
 					"the shared cache returned a different instance for " + schemaCase.item().id());
+			// this use is over; hand the pin back (the spread still holds its own pin on the same instance)
+			cache.release(again);
 		}
 		CompiledSchemas.Stats afterRepeat = cache.stats();
 		assertTrue(afterRepeat.hitCount() - before.hitCount() >= DISTINCT_SCHEMAS,
@@ -129,6 +131,8 @@ class HarnessBudgetTest {
 					"the disk reload of " + schemaCase.item().id() + " ran javac (compileMillis="
 							+ reloaded.compileMillis() + ") instead of serving the on-disk artifact, "
 							+ GeneratedOracles.describe());
+			// this round's use is over; the sibling itself is deliberately left unclosed (see above)
+			sibling.release(reloaded);
 		}
 		double meanMillis = (System.nanoTime() - reloadStart) / 1_000_000.0 / DISTINCT_SCHEMAS;
 		assertEquals(DISTINCT_SCHEMAS, sibling.stats().missCount(),

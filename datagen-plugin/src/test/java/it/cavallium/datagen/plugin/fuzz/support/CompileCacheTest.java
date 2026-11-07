@@ -73,6 +73,10 @@ class CompileCacheTest {
 		assertTrue(first.generatedFileCount() > 0, "the generator produced sources");
 		assertNotNull(first.loader());
 		assertTrue(Files.isDirectory(first.cacheDir()), "the artifact lives in the fingerprint directory");
+
+		// each compile() pinned the entry once; hand both pins back so the entry stays evictable.
+		cache.release(second);
+		cache.release(first);
 	}
 
 	@Test
@@ -92,6 +96,9 @@ class CompileCacheTest {
 				"field order is the wire contract, so it must change the fingerprint");
 		assertTrue(first.generatedFileCount() > 0, "the first order compiled");
 		assertTrue(second.generatedFileCount() > 0, "the second order compiled");
+		CompiledSchemas shared = CompiledSchemas.shared();
+		shared.release(second);
+		shared.release(first);
 	}
 
 	@Test
@@ -133,13 +140,40 @@ class CompileCacheTest {
 				options("org.example.fuzz.cache.evict"));
 		Path firstDir = first.cacheDir();
 		assertTrue(Files.isDirectory(firstDir));
+		// A pinned entry is never evictable: drop this test's pin so the next overflow can evict it.
+		bounded.release(first);
 
-		bounded.compile(schema("EvictSecondRoot", "id", "long"), options("org.example.fuzz.cache.evict"));
+		CompiledSchema second = bounded.compile(schema("EvictSecondRoot", "id", "long"),
+				options("org.example.fuzz.cache.evict"));
 
 		assertEquals(1, bounded.size(), "the cache is bounded to one entry");
 		assertTrue(first.isClosed(), "the evicted schema was closed");
 		assertTrue(Files.notExists(firstDir), "the evicted schema's directory was deleted");
 		assertEquals(1L, bounded.evictionCount());
+		bounded.release(second);
+	}
+
+	@Test
+	void evictionSkipsPinnedEntriesAndTakesTheNextUnpinnedCandidate() {
+		CompiledSchemas bounded = CompiledSchemas.shared().withMaxEntries(2);
+		CompiledSchema pinned = bounded.compile(schema("PinnedRoot", "id", "long"),
+				options("org.example.fuzz.cache.pin"));
+		CompiledSchema evictable = bounded.compile(schema("UnpinnedRoot", "id", "long"),
+				options("org.example.fuzz.cache.pin"));
+		bounded.release(evictable);
+
+		// Overflow of one: the LRU candidate is the pinned entry, so eviction must pass it over and close
+		// the next unpinned one instead.
+		CompiledSchema third = bounded.compile(schema("OverflowRoot", "id", "long"),
+				options("org.example.fuzz.cache.pin"));
+
+		assertFalse(pinned.isClosed(), "a pinned entry survives overflow eviction");
+		assertTrue(Files.isDirectory(pinned.cacheDir()), "the pinned artifact is still on disk");
+		assertTrue(evictable.isClosed(), "the next unpinned candidate was evicted instead");
+		assertEquals(2, bounded.size(), "the unpinned eviction made room, so the cache is back within bounds");
+		assertEquals(1L, bounded.evictionCount());
+		bounded.release(third);
+		bounded.release(pinned);
 	}
 
 	@Test
@@ -153,6 +187,8 @@ class CompileCacheTest {
 			assertTrue(compiled.generatedFileCount() > 0, "schema " + index + " compiled");
 			assertTrue(cache.size() <= maxEntries,
 					() -> "cache size " + cache.size() + " exceeded maxEntries " + maxEntries);
+			// each iteration is done with its schema: release the pin so eviction stays possible
+			cache.release(compiled);
 		}
 
 		assertTrue(cache.size() <= maxEntries, "size stays within maxEntries");

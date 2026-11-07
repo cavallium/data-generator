@@ -28,6 +28,15 @@ import java.util.concurrent.ConcurrentHashMap;
  * cache directory; that is the only place a compiled schema is ever closed, and it is why the cache root
  * ({@code <module>/target/fuzz-schemas}) stays bounded even in a long campaign.</p>
  *
+ * <h2>Pinning</h2>
+ * <p>{@link #compile} pins the entry it returns (one pin per call), because {@link CompiledSchema#close()}
+ * deletes the artifact directory and a schema still referenced by a caller must not have its classes pulled
+ * out from under it (on Linux the recursive delete succeeds silently and only a later lazy class load would
+ * notice). LRU eviction therefore <em>skips</em> pinned entries and takes the next unpinned candidate instead;
+ * if nothing is unpinned the cache temporarily exceeds {@code maxEntries}. A caller that is done with a schema
+ * calls {@link #release}, which makes the entry evictable again. {@link #evictAll()} force-closes even pinned
+ * entries — that is documented behavior for test teardown, after which no handed-out schema may be used.</p>
+ *
  * <h2>Concurrency</h2>
  * <p>{@code javac} runs <em>outside</em> the cache lock, so two different schemas compile in parallel and the
  * lock only ever guards the map itself. Compilations are serialized <em>per fingerprint</em> by a slot lock,
@@ -59,6 +68,8 @@ public final class CompiledSchemas {
 	private final int maxEntries;
 	/** access-order, so the first entry of the iteration is the least recently used one. */
 	private final Map<String, CompiledSchema> entries = new LinkedHashMap<>(32, 0.75f, true);
+	/** pins per fingerprint; guarded by {@code this}, like {@link #entries}. Pinned entries are not evicted. */
+	private final Map<String, Integer> pins = new LinkedHashMap<>();
 	private final Map<String, Object> slots = new ConcurrentHashMap<>();
 	private long hitCount;
 	private long missCount;
@@ -117,6 +128,7 @@ public final class CompiledSchemas {
 		String fingerprint = SchemaCompiler.fingerprint(config, opts);
 		CompiledSchema immediate = cached(fingerprint);
 		if (immediate != null) {
+			pin(fingerprint);
 			return immediate;
 		}
 		Object slot = slots.computeIfAbsent(fingerprint, key -> new Object());
@@ -124,6 +136,7 @@ public final class CompiledSchemas {
 			CompiledSchema raced = cached(fingerprint);
 			if (raced != null) {
 				// Another thread finished this compilation while the current thread waited for the slot.
+				pin(fingerprint);
 				return raced;
 			}
 			// Expensive and lock-free: generation + javac, for this fingerprint only.
@@ -132,6 +145,7 @@ public final class CompiledSchemas {
 			synchronized (this) {
 				missCount++;
 				entries.put(fingerprint, compiled);
+				pin(fingerprint);
 				evicted = evictOverflowLocked();
 			}
 			slots.remove(fingerprint, slot);
@@ -140,12 +154,28 @@ public final class CompiledSchemas {
 		}
 	}
 
-	/** Closes and deletes every cached schema, emptying the cache. */
+	/**
+	 * Drops one pin taken by {@link #compile}. Until the last pin of a fingerprint is released, the entry is
+	 * never evicted (LRU takes the next unpinned candidate). Releasing an entry this cache no longer holds is
+	 * a no-op, so {@link #evictAll()} followed by the callers' pending releases stays safe.
+	 */
+	public void release(CompiledSchema schema) {
+		Objects.requireNonNull(schema, "schema");
+		synchronized (this) {
+			pins.compute(schema.fingerprint(), (key, count) -> count == null || count <= 1 ? null : count - 1);
+		}
+	}
+
+	/**
+	 * Closes and deletes every cached schema, emptying the cache — <em>including</em> pinned entries, which is
+	 * the documented teardown contract: after this call no schema handed out earlier may be used again.
+	 */
 	public void evictAll() {
 		List<CompiledSchema> all;
 		synchronized (this) {
 			all = new ArrayList<>(entries.values());
 			entries.clear();
+			pins.clear();
 			evictionCount += all.size();
 		}
 		slots.clear();
@@ -264,15 +294,26 @@ public final class CompiledSchemas {
 			return List.of();
 		}
 		List<CompiledSchema> evicted = new ArrayList<>();
+		int overflow = entries.size() - maxEntries;
 		var iterator = entries.entrySet().iterator();
-		while (entries.size() - evicted.size() > maxEntries && iterator.hasNext()) {
+		while (evicted.size() < overflow && iterator.hasNext()) {
 			Map.Entry<String, CompiledSchema> entry = iterator.next();
+			if (pins.containsKey(entry.getKey())) {
+				continue; // pinned by a live compile(): evict the next unpinned candidate instead
+			}
 			iterator.remove();
 			slots.remove(entry.getKey());
 			evicted.add(entry.getValue());
 			evictionCount++;
 		}
 		return evicted;
+	}
+
+	/** Records one pin for a handed-out fingerprint; caller takes it via {@code compile} and drops it via {@code release}. */
+	private void pin(String fingerprint) {
+		synchronized (this) {
+			pins.merge(fingerprint, 1, Integer::sum);
+		}
 	}
 
 	private static void closeAll(List<CompiledSchema> schemas) {
