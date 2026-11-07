@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import it.cavallium.datagen.DecodeLimits;
 import it.cavallium.datagen.MalformedDataException;
+import it.cavallium.datagen.fuzz.FuzzTiers;
+import it.cavallium.datagen.fuzz.FuzzValues;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.lang.foreign.Arena;
@@ -26,12 +28,16 @@ class BufDataIoDeepFuzzTest {
 	private static final long CURSOR_SEED = 0x19E4_A72B_60CD_835FL;
 	private static final long OUTPUT_SEED = 0x74B0_3F2D_91CE_68A5L;
 	private static final long ARRAY_SEED = 0x42D8_17C9_E30A_65BFL;
+	private static final int CODEC_CASES = FuzzTiers.cases("buf-io-codec-traces", 13, 128, 256, 640);
+	private static final int CURSOR_CASES = FuzzTiers.cases("buf-io-cursor-states", 10, 96, 192, 480);
+	private static final int OUTPUT_CASES = FuzzTiers.cases("buf-io-limited-output", 10, 96, 192, 480);
+	private static final int ARRAY_CASES = FuzzTiers.cases("buf-io-primitive-arrays", 26, 256, 512, 1_280);
 
 	@Test
 	void randomizedCodecTracesMatchDataOutputAndRoundTripEveryStorageKind() throws Exception {
 		var random = new Random(CODEC_SEED);
 		try (var arena = Arena.ofConfined()) {
-			for (int caseIndex = 0; caseIndex < 128; caseIndex++) {
+			for (int caseIndex = 0; caseIndex < CODEC_CASES; caseIndex++) {
 				var operations = new ArrayList<WireOperation>();
 				var actual = BufDataOutput.create(random.nextInt(257));
 				var expectedBytes = new ByteArrayOutputStream();
@@ -69,9 +75,8 @@ class BufDataIoDeepFuzzTest {
 	void cursorStateMachineMatchesAByteArrayAndKeepsFailuresAtomic() {
 		var random = new Random(CURSOR_SEED);
 		try (var arena = Arena.ofConfined()) {
-			for (int caseIndex = 0; caseIndex < 96; caseIndex++) {
-				byte[] payload = new byte[random.nextInt(513)];
-				random.nextBytes(payload);
+			for (int caseIndex = 0; caseIndex < CURSOR_CASES; caseIndex++) {
+				byte[] payload = FuzzValues.bytes(random, random.nextInt(513));
 				long caseSeed = random.nextLong();
 				for (BoundSource bound : storageKinds(arena, payload)) {
 					exerciseCursorStateMachine(payload, bound, caseSeed, caseIndex);
@@ -83,7 +88,7 @@ class BufDataIoDeepFuzzTest {
 	@Test
 	void limitedOutputStateMachineIsAtomicAndMatchesReferenceBytes() throws Exception {
 		var random = new Random(OUTPUT_SEED);
-		for (int caseIndex = 0; caseIndex < 96; caseIndex++) {
+		for (int caseIndex = 0; caseIndex < OUTPUT_CASES; caseIndex++) {
 			int limit = random.nextInt(1025);
 			int hint = switch (random.nextInt(5)) {
 				case 0 -> -1;
@@ -139,7 +144,7 @@ class BufDataIoDeepFuzzTest {
 	void randomizedPrimitiveArraysBulkReadIdenticallyAcrossStorageKinds() {
 		var random = new Random(ARRAY_SEED);
 		try (var arena = Arena.ofConfined()) {
-			for (int caseIndex = 0; caseIndex < 256; caseIndex++) {
+			for (int caseIndex = 0; caseIndex < ARRAY_CASES; caseIndex++) {
 				boolean[] booleans = randomBooleans(random);
 				byte[] bytes = randomBytes(random);
 				short[] shorts = randomShorts(random);
@@ -376,6 +381,11 @@ class BufDataIoDeepFuzzTest {
 		}
 	}
 
+	/**
+	 * Kept local on purpose: {@link StrictNativeBuf} and {@link FallbackBuf} are subclasses that throw on
+	 * the bulk helpers, which is stronger than the {@code FuzzStorages} {@link java.lang.reflect.Proxy}
+	 * disguise, and every entry here carries its own bind offset.
+	 */
 	private static List<BoundSource> storageKinds(Arena arena, byte[] payload) {
 		byte[] paddedHeap = new byte[payload.length + 6];
 		System.arraycopy(payload, 0, paddedHeap, 3, payload.length);
@@ -399,9 +409,7 @@ class BufDataIoDeepFuzzTest {
 	}
 
 	private static byte[] randomBytes(Random random) {
-		byte[] result = new byte[random.nextInt(65)];
-		random.nextBytes(result);
-		return result;
+		return FuzzValues.bytes(random, random.nextInt(65));
 	}
 
 	private static short[] randomShorts(Random random) {
@@ -526,7 +534,8 @@ class BufDataIoDeepFuzzTest {
 	}
 
 	private static String diagnostic(long seed, int caseIndex, int operation, int size) {
-		return "seed=" + seed + ", case=" + caseIndex + ", operation=" + operation + ", size=" + size;
+		return FuzzTiers.describe() + " | seed=" + seed + ", case=" + caseIndex + ", operation=" + operation
+				+ ", size=" + size;
 	}
 
 	private record BoundSource(String name, Buf source, int offset) {}
@@ -543,8 +552,7 @@ class BufDataIoDeepFuzzTest {
 				case 1, 2, 3, 4, 7 -> new WireOperation(kind, random.nextLong(), null, null);
 				case 5, 6, 8 -> new WireOperation(kind, random.nextLong(), null, null);
 				case 9 -> {
-					byte[] bytes = new byte[random.nextInt(129)];
-					random.nextBytes(bytes);
+					byte[] bytes = FuzzValues.bytes(random, random.nextInt(129));
 					yield new WireOperation(kind, 0, bytes, null);
 				}
 				case 10, 11 -> new WireOperation(kind, 0, null, randomString(random));

@@ -9,6 +9,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import it.cavallium.buffer.Buf;
 import it.cavallium.buffer.BufDataInput;
 import it.cavallium.buffer.BufDataOutput;
+import it.cavallium.datagen.fuzz.FuzzTiers;
+import it.cavallium.datagen.fuzz.FuzzValues;
 import it.cavallium.stream.SafeDataInput;
 import it.cavallium.stream.SafeDataInputStream;
 import it.cavallium.stream.SafeInputStream;
@@ -22,9 +24,10 @@ class ProjectionReadSupportDeepFuzzTest {
 	private static final long VALIDATION_SEED = 0x4E8B_173D_A096_C25FL;
 	private static final long SKIP_SEED = 0x71C5_E029_8A4D_36BFL;
 	private static final long ARRAY_SEED = 0x293A_D860_5F1C_B47EL;
-	private static final int VALIDATION_CASES = 50_000;
-	private static final int SKIP_CASES = 35_000;
-	private static final int ARRAY_CASES = 12_000;
+	private static final int VALIDATION_CASES =
+			FuzzTiers.cases("projection-validation", 5_000, 50_000, 100_000, 250_000);
+	private static final int SKIP_CASES = FuzzTiers.cases("projection-skip", 3_500, 35_000, 70_000, 175_000);
+	private static final int ARRAY_CASES = FuzzTiers.cases("projection-bulk-arrays", 1_200, 12_000, 24_000, 60_000);
 	private static final DecodeLimits UNLIMITED = DecodeLimits.unlimited();
 
 	@Test
@@ -77,8 +80,7 @@ class ProjectionReadSupportDeepFuzzTest {
 	void skipBytesDifferentiallyFuzzesAtomicRandomAccessAndZeroProgressForwardInputs() {
 		var random = new Random(SKIP_SEED);
 		for (int caseIndex = 0; caseIndex < SKIP_CASES; caseIndex++) {
-			byte[] bytes = new byte[random.nextInt(513)];
-			random.nextBytes(bytes);
+			byte[] bytes = FuzzValues.bytes(random, random.nextInt(513));
 			int start = random.nextInt(bytes.length + 1);
 			int requested = random.nextInt(bytes.length + 65) - 32;
 			String diagnostic = diagnostic(SKIP_SEED, caseIndex, start, requested);
@@ -152,8 +154,7 @@ class ProjectionReadSupportDeepFuzzTest {
 			int elements = random.nextInt(65);
 			int width = random.nextInt(9);
 			int bodyBytes = elements * width;
-			byte[] body = new byte[bodyBytes];
-			random.nextBytes(body);
+			byte[] body = FuzzValues.bytes(random, bodyBytes);
 			int sentinel = random.nextInt();
 			BufDataOutput output = BufDataOutput.create();
 			output.writeInt(elements);
@@ -304,9 +305,7 @@ class ProjectionReadSupportDeepFuzzTest {
 	}
 
 	private static byte[] randomBytes(Random random) {
-		byte[] values = new byte[random.nextInt(65)];
-		random.nextBytes(values);
-		return values;
+		return FuzzValues.bytes(random, random.nextInt(65));
 	}
 
 	private static short[] randomShorts(Random random) {
@@ -367,7 +366,8 @@ class ProjectionReadSupportDeepFuzzTest {
 	}
 
 	private static String diagnostic(long seed, int caseIndex, int first, int second) {
-		return "seed=" + seed + ", case=" + caseIndex + ", first=" + first + ", second=" + second;
+		return FuzzTiers.describe() + " | seed=" + seed + ", case=" + caseIndex + ", first=" + first
+				+ ", second=" + second;
 	}
 
 	/** Returns zero from alternating bulk reads/skips to force every progress fallback. */

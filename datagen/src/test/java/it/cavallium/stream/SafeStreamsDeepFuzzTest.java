@@ -8,6 +8,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import it.cavallium.datagen.DecodeLimits;
 import it.cavallium.datagen.MalformedDataException;
 import it.cavallium.datagen.ValueTooLargeException;
+import it.cavallium.datagen.fuzz.FuzzTiers;
+import it.cavallium.datagen.fuzz.FuzzValues;
 import it.cavallium.datagen.nativedata.Int52;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
@@ -24,22 +26,20 @@ class SafeStreamsDeepFuzzTest {
 	private static final long OUTPUT_SEED = 0x35AF_8C12_D760_49BEL;
 	private static final long DATA_SEED = 0x7E04_B93D_2CA1_658FL;
 	private static final long DELEGATE_SEED = 0x18C6_5FA0_9D32_B74EL;
-	private static final int INPUT_CASES = 12_000;
-	private static final int OUTPUT_CASES = 12_000;
-	private static final int DATA_CASES = 20_000;
-	private static final int DELEGATE_CASES = 10_000;
+	private static final int INPUT_CASES = FuzzTiers.cases("streams-input", 1_200, 12_000, 24_000, 60_000);
+	private static final int OUTPUT_CASES = FuzzTiers.cases("streams-output", 1_200, 12_000, 24_000, 60_000);
+	private static final int DATA_CASES = FuzzTiers.cases("streams-data", 2_000, 20_000, 40_000, 100_000);
+	private static final int DELEGATE_CASES = FuzzTiers.cases("streams-delegates", 1_000, 10_000, 20_000, 50_000);
 	private static final DecodeLimits UNLIMITED = DecodeLimits.unlimited();
 
 	@Test
 	void slicedByteArrayInputStateMachineMatchesAnIndependentPositionAndMarkModel() {
 		var random = new Random(INPUT_SEED);
 		for (int caseIndex = 0; caseIndex < INPUT_CASES; caseIndex++) {
-			byte[] payload = new byte[random.nextInt(257)];
-			random.nextBytes(payload);
+			byte[] payload = FuzzValues.bytes(random, random.nextInt(257));
 			int prefix = random.nextInt(17);
 			int suffix = random.nextInt(17);
-			byte[] backing = new byte[prefix + payload.length + suffix];
-			random.nextBytes(backing);
+			byte[] backing = FuzzValues.bytes(random, prefix + payload.length + suffix);
 			System.arraycopy(payload, 0, backing, prefix, payload.length);
 			SafeByteArrayInputStream input = new SafeByteArrayInputStream(backing, prefix, payload.length);
 			int position = 0;
@@ -55,8 +55,7 @@ class SafeStreamsDeepFuzzTest {
 						assertEquals(expected, input.read(), diagnostic);
 					}
 					case 1 -> {
-						byte[] destination = new byte[2 + random.nextInt(65)];
-						random.nextBytes(destination);
+						byte[] destination = FuzzValues.bytes(random, 2 + random.nextInt(65));
 						byte[] expected = destination.clone();
 						int offset = random.nextInt(destination.length + 1);
 						int length = random.nextInt(destination.length - offset + 1);
@@ -77,8 +76,7 @@ class SafeStreamsDeepFuzzTest {
 						position += count;
 					}
 					case 3 -> {
-						byte[] destination = new byte[2 + random.nextInt(65)];
-						random.nextBytes(destination);
+						byte[] destination = FuzzValues.bytes(random, 2 + random.nextInt(65));
 						byte[] expected = destination.clone();
 						int offset = random.nextInt(destination.length + 1);
 						int length = random.nextInt(destination.length - offset + 1);
@@ -169,8 +167,7 @@ class SafeStreamsDeepFuzzTest {
 						model.write((byte) value);
 					}
 					case 1 -> {
-						byte[] source = new byte[random.nextInt(65)];
-						random.nextBytes(source);
+						byte[] source = FuzzValues.bytes(random, random.nextInt(65));
 						int offset = random.nextInt(source.length + 1);
 						int length = random.nextInt(source.length - offset + 1);
 						output.write(source, offset, length);
@@ -215,8 +212,7 @@ class SafeStreamsDeepFuzzTest {
 	void wrappedByteArrayOutputFuzzesRegionRelativePositionsBoundsResetAndAliasing() {
 		var random = new Random(OUTPUT_SEED ^ Long.MIN_VALUE);
 		for (int caseIndex = 0; caseIndex < OUTPUT_CASES; caseIndex++) {
-			byte[] backing = new byte[1 + random.nextInt(257)];
-			random.nextBytes(backing);
+			byte[] backing = FuzzValues.bytes(random, 1 + random.nextInt(257));
 			int from = random.nextInt(backing.length + 1);
 			int to = from + random.nextInt(backing.length - from + 1);
 			SafeByteArrayOutputStream output = new SafeByteArrayOutputStream(backing, from, to);
@@ -235,8 +231,7 @@ class SafeStreamsDeepFuzzTest {
 						region[position++] = (byte) value;
 					}
 				} else if (kind == 1) {
-					byte[] source = new byte[random.nextInt(65)];
-					random.nextBytes(source);
+					byte[] source = FuzzValues.bytes(random, random.nextInt(65));
 					int length = random.nextInt(source.length + 1);
 					if (length > region.length - position) {
 						byte[] before = backing.clone();
@@ -360,15 +355,13 @@ class SafeStreamsDeepFuzzTest {
 				case 10 -> 7;
 				default -> throw new AssertionError(kind);
 			};
-			byte[] truncated = new byte[random.nextInt(width)];
-			random.nextBytes(truncated);
+			byte[] truncated = FuzzValues.bytes(random, random.nextInt(width));
 			SafeDataInputStream input = new SafeDataInputStream(
 					new SafeByteArrayInputStream(truncated), UNLIMITED);
 			String diagnostic = diagnostic(DATA_SEED, caseIndex, kind, truncated.length);
 			assertThrows(MalformedDataException.class, () -> readPrimitive(input, kind), diagnostic);
 
-			byte[] source = new byte[random.nextInt(257)];
-			random.nextBytes(source);
+			byte[] source = FuzzValues.bytes(random, random.nextInt(257));
 			ZeroProgressInputStream hostile = new ZeroProgressInputStream(source);
 			SafeDataInputStream bulk = new SafeDataInputStream(hostile, UNLIMITED);
 			byte[] destination = new byte[source.length + 4];
@@ -422,8 +415,7 @@ class SafeStreamsDeepFuzzTest {
 			assertEquals(0, oversized.size(), diagnostic);
 			assertEquals(0, oversizedSink.length(), diagnostic);
 
-			byte[] bytes = new byte[random.nextInt(65)];
-			random.nextBytes(bytes);
+			byte[] bytes = FuzzValues.bytes(random, random.nextInt(65));
 			SafeDataInputStream bounded = new SafeDataInputStream(
 					new SafeByteArrayInputStream(bytes), UNLIMITED);
 			ByteBuffer destination = ByteBuffer.allocate(8);
@@ -459,8 +451,7 @@ class SafeStreamsDeepFuzzTest {
 		assertEquals(0, measurable.length());
 		assertEquals(0, repositionable.position());
 		for (int caseIndex = 0; caseIndex < DELEGATE_CASES; caseIndex++) {
-			byte[] bytes = new byte[random.nextInt(513)];
-			random.nextBytes(bytes);
+			byte[] bytes = FuzzValues.bytes(random, random.nextInt(513));
 			OneByteInputStream base = new OneByteInputStream(bytes);
 			SafeFilterInputStream filter = new SafeFilterInputStream(base);
 			int prefix = random.nextInt(bytes.length + 1);
@@ -551,7 +542,8 @@ class SafeStreamsDeepFuzzTest {
 	}
 
 	private static String diagnostic(long seed, int caseIndex, int operationIndex, int kind) {
-		return "seed=" + seed + ", case=" + caseIndex + ", operation=" + operationIndex + ", kind=" + kind;
+		return FuzzTiers.describe() + " | seed=" + seed + ", case=" + caseIndex + ", operation=" + operationIndex
+				+ ", kind=" + kind;
 	}
 
 	private static final class OutputModel {

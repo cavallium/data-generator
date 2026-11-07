@@ -16,6 +16,8 @@ import it.cavallium.datagen.DecodeLimitExceededException;
 import it.cavallium.datagen.DecodeLimits;
 import it.cavallium.datagen.MalformedDataException;
 import it.cavallium.datagen.ValueTooLargeException;
+import it.cavallium.datagen.fuzz.FuzzTiers;
+import it.cavallium.datagen.fuzz.FuzzValues;
 import it.cavallium.stream.SafeByteArrayInputStream;
 import it.cavallium.stream.SafeDataInput;
 import it.cavallium.stream.SafeDataInputStream;
@@ -38,10 +40,12 @@ class NativeSerializerDeepFuzzTest {
 	private static final long TRUNCATION_SEED = 0x14E9_BC63_70A5_2DF8L;
 	private static final long PREFIX_SEED = 0x58A4_1E7D_B920_C63FL;
 	private static final long INT52_SEED = 0x37CF_62A1_9E48_05BDL;
-	private static final int ROUND_TRIP_CASES = 18_000;
-	private static final int TRUNCATION_CASES = 30_000;
-	private static final int PREFIX_CASES = 12_000;
-	private static final int INT52_CASES = 80_000;
+	private static final int ROUND_TRIP_CASES =
+			FuzzTiers.cases("serializer-round-trip", 1_800, 18_000, 36_000, 90_000);
+	private static final int TRUNCATION_CASES =
+			FuzzTiers.cases("serializer-truncation", 3_000, 30_000, 60_000, 150_000);
+	private static final int PREFIX_CASES = FuzzTiers.cases("serializer-prefix", 1_200, 12_000, 24_000, 60_000);
+	private static final int INT52_CASES = FuzzTiers.cases("serializer-int52", 8_000, 80_000, 160_000, 400_000);
 	private static final DecodeLimits GENEROUS =
 			new DecodeLimits(512, 8_192, 16_384, 262_144, 32);
 
@@ -121,8 +125,7 @@ class NativeSerializerDeepFuzzTest {
 				byte[] payload = serialize(codecCase.codec(), value);
 				int prefix = 1 + random.nextInt(8);
 				int suffix = 1 + random.nextInt(8);
-				byte[] padded = new byte[prefix + payload.length + suffix];
-				random.nextBytes(padded);
+				byte[] padded = FuzzValues.bytes(random, prefix + payload.length + suffix);
 				System.arraycopy(payload, 0, padded, prefix, payload.length);
 				MemorySegment segment = arena.allocate(padded.length, 1);
 				segment.copyFrom(MemorySegment.ofArray(padded));
@@ -265,7 +268,7 @@ class NativeSerializerDeepFuzzTest {
 	void int52ConversionAndWireHelpersFuzzTheCompleteCanonicalDomain() {
 		var random = new Random(INT52_SEED);
 		for (int caseIndex = 0; caseIndex < INT52_CASES; caseIndex++) {
-			long value = random.nextLong() & Int52.MAX_VALUE_L;
+			long value = FuzzValues.int52(random);
 			Int52 number = Int52.fromLong(value);
 			byte[] bytes = Int52Serializer.toByteArray(value);
 			String diagnostic = diagnostic(INT52_SEED, caseIndex, "int52", (int) value);
@@ -365,6 +368,11 @@ class NativeSerializerDeepFuzzTest {
 		return (DataCodec<Object>) codec;
 	}
 
+	/**
+	 * Kept local for the same reason as in {@code NativeNullableDeepFuzzTest}: valid code points only
+	 * (plus NUL), because these codecs assert an exact UTF-8 round trip; {@code FuzzValues.string}
+	 * deliberately emits unpaired surrogates.
+	 */
 	private static String randomString(Random random) {
 		int codePoints = random.nextInt(65);
 		StringBuilder result = new StringBuilder(codePoints);
@@ -383,13 +391,11 @@ class NativeSerializerDeepFuzzTest {
 	}
 
 	private static byte[] randomBytes(Random random, int exclusiveMaximumLength) {
-		byte[] result = new byte[random.nextInt(exclusiveMaximumLength)];
-		random.nextBytes(result);
-		return result;
+		return FuzzValues.bytes(random, random.nextInt(exclusiveMaximumLength));
 	}
 
 	private static Int52 randomInt52(Random random) {
-		return Int52.fromLong(random.nextLong() & Int52.MAX_VALUE_L);
+		return Int52.fromLong(FuzzValues.int52(random));
 	}
 
 	private static String[] randomStrings(Random random) {
@@ -484,6 +490,12 @@ class NativeSerializerDeepFuzzTest {
 		return Arrays.toString((double[]) value);
 	}
 
+	/**
+	 * Weaker than {@code FuzzStorages.forcedFallback}: this codec oracle lets the reader use every
+	 * bulk helper, so the proxy only hides the four strict storage probes. The surrounding list also
+	 * needs per-case random padding and per-entry bind offsets, which a {@code FuzzStorages.View}
+	 * (fixed {@code PAD_BEFORE}) cannot express, so the list stays local too.
+	 */
 	private static Buf forcedFallback(Buf delegate) {
 		return (Buf) Proxy.newProxyInstance(NativeSerializerDeepFuzzTest.class.getClassLoader(),
 				new Class<?>[] {Buf.class}, (proxy, method, arguments) -> switch (method.getName()) {
@@ -513,7 +525,8 @@ class NativeSerializerDeepFuzzTest {
 	}
 
 	private static String diagnostic(long seed, int caseIndex, String codec, int detail) {
-		return "seed=" + seed + ", case=" + caseIndex + ", codec=" + codec + ", detail=" + detail;
+		return FuzzTiers.describe() + " | seed=" + seed + ", case=" + caseIndex + ", codec=" + codec
+				+ ", detail=" + detail;
 	}
 
 	@FunctionalInterface

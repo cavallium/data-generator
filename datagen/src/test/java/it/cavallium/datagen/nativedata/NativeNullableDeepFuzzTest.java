@@ -14,6 +14,8 @@ import it.cavallium.datagen.DataUpgrader;
 import it.cavallium.datagen.DataUpgraderSimple;
 import it.cavallium.datagen.NativeNullable;
 import it.cavallium.datagen.TypedNullable;
+import it.cavallium.datagen.fuzz.FuzzTiers;
+import it.cavallium.datagen.fuzz.FuzzValues;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
@@ -30,9 +32,9 @@ class NativeNullableDeepFuzzTest {
 	private static final long NULLABLE_SEED = 0x43B7_0D9E_2A61_C85FL;
 	private static final long BLANK_SEED = 0x716C_EA25_8D40_39BFL;
 	private static final long UPGRADE_SEED = 0x19F3_5BCA_704E_D268L;
-	private static final int NULLABLE_CASES = 80_000;
-	private static final int BLANK_CASES = 30_000;
-	private static final int UPGRADE_CASES = 40_000;
+	private static final int NULLABLE_CASES = FuzzTiers.cases("nullable-families", 8_000, 80_000, 160_000, 400_000);
+	private static final int BLANK_CASES = FuzzTiers.cases("nullable-blank", 3_000, 30_000, 60_000, 150_000);
+	private static final int UPGRADE_CASES = FuzzTiers.cases("nullable-upgrade", 4_000, 40_000, 80_000, 200_000);
 
 	private static final List<Family> FAMILIES = List.of(
 			new Family("boolean", Nullableboolean::empty,
@@ -323,11 +325,14 @@ class NativeNullableDeepFuzzTest {
 	}
 
 	private static byte[] randomBytes(Random random) {
-		byte[] result = new byte[random.nextInt(129)];
-		random.nextBytes(result);
-		return result;
+		return FuzzValues.bytes(random, random.nextInt(129));
 	}
 
+	/**
+	 * Kept local: every draw is a valid, optionally astral code point, so no lone surrogate is ever
+	 * produced — which the UTF-8 round-trip assertions here rely on. {@code FuzzValues.string} draws
+	 * unpaired surrogates on purpose, so it would change what this file asserts.
+	 */
 	private static String randomString(Random random) {
 		int length = random.nextInt(65);
 		StringBuilder result = new StringBuilder(length);
@@ -349,7 +354,7 @@ class NativeNullableDeepFuzzTest {
 	}
 
 	private static String diagnostic(long seed, int caseIndex, String family) {
-		return "seed=" + seed + ", case=" + caseIndex + ", family=" + family;
+		return FuzzTiers.describe() + " | seed=" + seed + ", case=" + caseIndex + ", family=" + family;
 	}
 
 	@FunctionalInterface

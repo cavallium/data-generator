@@ -12,6 +12,8 @@ import it.cavallium.datagen.DecodeLimitExceededException;
 import it.cavallium.datagen.DecodeLimits;
 import it.cavallium.datagen.MalformedDataException;
 import it.cavallium.datagen.ValueTooLargeException;
+import it.cavallium.datagen.fuzz.FuzzTiers;
+import it.cavallium.datagen.fuzz.FuzzValues;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.reflect.InvocationTargetException;
@@ -35,10 +37,10 @@ class BufCursorBudgetTextDeepFuzzTest {
 	private static final long BUDGET_SEED = 0x6E15_BC83_40A9_D27FL;
 	private static final long BUFFER_SEED = 0x1F94_6DA0_B378_2CE5L;
 	private static final long TEXT_SEED = 0x52B7_0C3D_EA16_894FL;
-	private static final int DISPATCH_CASES = 20_000;
-	private static final int BUDGET_CASES = 50_000;
-	private static final int BUFFER_CASES = 20_000;
-	private static final int TEXT_CASES = 20_000;
+	private static final int DISPATCH_CASES = FuzzTiers.cases("buf-cursor-dispatch", 2_000, 20_000, 40_000, 100_000);
+	private static final int BUDGET_CASES = FuzzTiers.cases("buf-cursor-budget", 5_000, 50_000, 100_000, 250_000);
+	private static final int BUFFER_CASES = FuzzTiers.cases("buf-cursor-buffer", 2_000, 20_000, 40_000, 100_000);
+	private static final int TEXT_CASES = FuzzTiers.cases("buf-cursor-text", 2_000, 20_000, 40_000, 100_000);
 
 	@Test
 	void specializedDispatchDirectOffsetsAndWrongStorageRejectionsFuzzAllCursorClasses() {
@@ -69,8 +71,8 @@ class BufCursorBudgetTextDeepFuzzTest {
 					var fallback = new FallbackBufDataCursor(UNLIMITED);
 					BufDataCursor.StorageKind kind = BufDataCursor.bindSpecialized(storage.source(),
 							storage.offset(), payload.length, heap, memorySegment, fallback);
-					String diagnostic = "seed=" + DISPATCH_SEED + ", case=" + caseIndex
-							+ ", storage=" + storage.name() + ", length=" + payload.length;
+					String diagnostic = gate("seed=" + DISPATCH_SEED + ", case=" + caseIndex
+							+ ", storage=" + storage.name() + ", length=" + payload.length);
 					assertEquals(storage.kind(), kind, diagnostic);
 					BufDataCursor selected = switch (kind) {
 						case HEAP -> heap;
@@ -136,31 +138,34 @@ class BufCursorBudgetTextDeepFuzzTest {
 						new BorrowedFactory(forcedFallback(Buf.wrap(payload)), () -> FallbackBufDataCursor.borrowed()));
 
 				for (BorrowedFactory factory : factories) {
+					String diagnostic = gate("seed=" + (DISPATCH_SEED ^ Long.MIN_VALUE) + ", case=" + caseIndex);
 					DecodeBudget budget = new DecodeBudget(new DecodeLimits(1_024, 1_024, 8_192, 8_192, 32));
 					var parent = new BufDataCursor(budget);
 					BufDataCursor child = factory.child().create();
 					assertThrows(IllegalStateException.class,
-							() -> child.bind(factory.source(), 0, factory.source().size()));
+							() -> child.bind(factory.source(), 0, factory.source().size()), diagnostic);
 					parent.bind(factory.source(), 0, payload.length);
 					int from = random.nextInt(payload.length + 1);
 					int length = random.nextInt(payload.length - from + 1);
 					int parentPosition = parent.position();
 					parent.bindRegion(child, from, length);
-					assertSame(parent.decodeBudget(), child.decodeBudget());
-					assertEquals(parentPosition, parent.position());
-					assertArrayEquals(Arrays.copyOfRange(payload, from, from + length), child.readAllBytes());
+					assertSame(parent.decodeBudget(), child.decodeBudget(), diagnostic);
+					assertEquals(parentPosition, parent.position(), diagnostic);
+					assertArrayEquals(Arrays.copyOfRange(payload, from, from + length), child.readAllBytes(),
+							diagnostic);
 					child.close();
-					assertEquals(0, child.remainingIncludingClosed());
-					assertFalse(child.isBound());
+					assertEquals(0, child.remainingIncludingClosed(), diagnostic);
+					assertFalse(child.isBound(), diagnostic);
 
 					int reserved = parent.reserve(length);
 					parent.bindReservedRegion(child, reserved, length);
 					assertArrayEquals(Arrays.copyOfRange(payload, reserved, reserved + length),
 							child.readAllBytes(),
-							"reserved region must use parent-relative coordinates");
+							gate("reserved region must use parent-relative coordinates, seed="
+									+ (DISPATCH_SEED ^ Long.MIN_VALUE) + ", case=" + caseIndex));
 					child.unbind();
 					parent.unbind();
-					assertFalse(parent.isBound());
+					assertFalse(parent.isBound(), diagnostic);
 				}
 			}
 		}
@@ -185,8 +190,8 @@ class BufCursorBudgetTextDeepFuzzTest {
 
 			for (int operationIndex = 0; operationIndex < 64; operationIndex++) {
 				int operation = random.nextInt(4);
-				String diagnostic = "seed=" + BUDGET_SEED + ", case=" + caseIndex
-						+ ", operation=" + operationIndex + ", kind=" + operation;
+				String diagnostic = gate("seed=" + BUDGET_SEED + ", case=" + caseIndex
+						+ ", operation=" + operationIndex + ", kind=" + operation);
 				if (operation == 0) {
 					int claim = random.nextInt(81) - 8;
 					long before = budget.claimedArrayElements();
@@ -259,8 +264,8 @@ class BufCursorBudgetTextDeepFuzzTest {
 				var cursor = new BufDataCursor(budget);
 				cursor.bind(Buf.wrap(new byte[byteLength]), 0, byteLength);
 				read.read(cursor, length);
-				assertEquals(length, budget.claimedArrayElements(), read + ", length=" + length);
-				assertEquals(byteLength, cursor.position(), read + ", length=" + length);
+				assertEquals(length, budget.claimedArrayElements(), gate(read + ", length=" + length));
+				assertEquals(byteLength, cursor.position(), gate(read + ", length=" + length));
 				cursor.unbind();
 			}
 		}
@@ -271,17 +276,17 @@ class BufCursorBudgetTextDeepFuzzTest {
 			int byteLength = Math.multiplyExact(length, read.width);
 			var cursor = new BufDataCursor(limits);
 			cursor.bind(Buf.wrap(new byte[byteLength]), 0, byteLength);
-			assertThrows(DecodeLimitExceededException.class, () -> read.read(cursor, length), read.name());
-			assertEquals(0, cursor.position(), read.name());
+			assertThrows(DecodeLimitExceededException.class, () -> read.read(cursor, length), gate(read.name()));
+			assertEquals(0, cursor.position(), gate(read.name()));
 			cursor.unbind();
 		}
 
 		var stringCursor = new BufDataCursor(limits);
 		stringCursor.bind(Buf.wrap(new byte[4]), 0, 4);
 		assertThrows(DecodeLimitExceededException.class,
-				() -> stringCursor.readString(4, StandardCharsets.UTF_8));
-		assertEquals(0, stringCursor.position());
-		assertEquals(0, stringCursor.decodeBudget().claimedPayloadBytes());
+				() -> stringCursor.readString(4, StandardCharsets.UTF_8), gate("string read"));
+		assertEquals(0, stringCursor.position(), gate("string read"));
+		assertEquals(0, stringCursor.decodeBudget().claimedPayloadBytes(), gate("string read"));
 		stringCursor.unbind();
 	}
 
@@ -299,26 +304,29 @@ class BufCursorBudgetTextDeepFuzzTest {
 						new MemorySegmentBuf(segment.asSlice(4, bytes.length)),
 						forcedFallback(Buf.wrap(bytes)));
 				for (Buf source : sources) {
+					String diagnostic = gate("seed=" + BUFFER_SEED + ", case=" + caseIndex);
 					BufDataInput input = BufDataInput.create(source, UNLIMITED);
 					input.close();
-					assertEquals(0, input.position());
-					assertEquals(bytes.length, input.length());
-					assertEquals(bytes.length, input.remainingBytesIfKnown());
+					assertEquals(0, input.position(), diagnostic);
+					assertEquals(bytes.length, input.length(), diagnostic);
+					assertEquals(bytes.length, input.remainingBytesIfKnown(), diagnostic);
 					if (bytes.length >= Long.BYTES) {
 						int offset = random.nextInt(bytes.length - Long.BYTES + 1);
 						ByteBuffer reference = ByteBuffer.wrap(bytes);
-						assertEquals(reference.get(offset) != 0, input.getBooleanAt(offset));
-						assertEquals(reference.get(offset), input.getByteAt(offset));
-						assertEquals(Byte.toUnsignedInt(reference.get(offset)), input.getUnsignedByteAt(offset));
-						assertEquals(reference.getShort(offset), input.getShortAt(offset));
-						assertEquals(Short.toUnsignedInt(reference.getShort(offset)), input.getUnsignedShortAt(offset));
-						assertEquals(reference.getChar(offset), input.getCharAt(offset));
-						assertEquals(reference.getInt(offset), input.getIntAt(offset));
-						assertEquals(reference.getLong(offset), input.getLongAt(offset));
+						assertEquals(reference.get(offset) != 0, input.getBooleanAt(offset), diagnostic);
+						assertEquals(reference.get(offset), input.getByteAt(offset), diagnostic);
+						assertEquals(Byte.toUnsignedInt(reference.get(offset)), input.getUnsignedByteAt(offset),
+								diagnostic);
+						assertEquals(reference.getShort(offset), input.getShortAt(offset), diagnostic);
+						assertEquals(Short.toUnsignedInt(reference.getShort(offset)), input.getUnsignedShortAt(offset),
+								diagnostic);
+						assertEquals(reference.getChar(offset), input.getCharAt(offset), diagnostic);
+						assertEquals(reference.getInt(offset), input.getIntAt(offset), diagnostic);
+						assertEquals(reference.getLong(offset), input.getLongAt(offset), diagnostic);
 						assertEquals(Float.floatToRawIntBits(reference.getFloat(offset)),
-								Float.floatToRawIntBits(input.getFloatAt(offset)));
+								Float.floatToRawIntBits(input.getFloatAt(offset)), diagnostic);
 						assertEquals(Double.doubleToRawLongBits(reference.getDouble(offset)),
-								Double.doubleToRawLongBits(input.getDoubleAt(offset)));
+								Double.doubleToRawLongBits(input.getDoubleAt(offset)), diagnostic);
 					}
 
 					int position = random.nextInt(bytes.length + 1);
@@ -333,15 +341,16 @@ class BufCursorBudgetTextDeepFuzzTest {
 					destination.flip();
 					byte[] actual = new byte[length];
 					destination.get(actual);
-					assertArrayEquals(Arrays.copyOfRange(bytes, position, position + length), actual);
-					assertEquals(position + length, input.position());
+					assertArrayEquals(Arrays.copyOfRange(bytes, position, position + length), actual, diagnostic);
+					assertEquals(position + length, input.position(), diagnostic);
 
 					int before = input.position();
 					ByteBuffer readOnly = ByteBuffer.allocate(8).asReadOnlyBuffer();
 					int attempted = Math.min(1, bytes.length - before);
 					if (attempted != 0) {
-						assertThrows(ReadOnlyBufferException.class, () -> input.readFully(readOnly, attempted));
-						assertEquals(before, input.position());
+						assertThrows(ReadOnlyBufferException.class, () -> input.readFully(readOnly, attempted),
+								diagnostic);
+						assertEquals(before, input.position(), diagnostic);
 					}
 				}
 			}
@@ -368,8 +377,8 @@ class BufCursorBudgetTextDeepFuzzTest {
 				var encoder = new ZeroAllocationEncoder(1 + random.nextInt(65));
 				BufDataOutput output = BufDataOutput.createLimited(expected.length);
 				encoder.encodeTo(value, output);
-				String diagnostic = "seed=" + TEXT_SEED + ", case=" + caseIndex
-						+ ", chars=" + value.length() + ", bytes=" + expected.length;
+				String diagnostic = gate("seed=" + TEXT_SEED + ", case=" + caseIndex
+						+ ", chars=" + value.length() + ", bytes=" + expected.length);
 				assertArrayEquals(expected, output.asList().asArray(), diagnostic);
 
 				byte[] arbitrary = randomBytes(random, 2_049);
@@ -409,7 +418,7 @@ class BufCursorBudgetTextDeepFuzzTest {
 					BufDataOutput output = BufDataOutput.create();
 					ZeroAllocationEncoder.INSTANCE.encodeTo(value, output);
 					assertArrayEquals(expected, output.asList().asArray(),
-							"laneSeed=" + laneSeed + ", iteration=" + iteration);
+							gate("laneSeed=" + laneSeed + ", iteration=" + iteration));
 					var cursor = new BufDataCursor(UNLIMITED);
 					cursor.bind(Buf.wrap(expected), 0, expected.length);
 					assertEquals(new String(expected, StandardCharsets.UTF_8),
@@ -464,13 +473,25 @@ class BufCursorBudgetTextDeepFuzzTest {
 				byte[] snapshot = candidate.asList().asArray().clone();
 				assertThrows(RuntimeException.class,
 						() -> candidate.write(new byte[4], offset, length),
-						"offset=" + offset + ", length=" + length);
+						gate("offset=" + offset + ", length=" + length));
 				assertArrayEquals(snapshot, candidate.asList().asArray());
 				assertEquals(1, candidate.position());
 			}
 		}
 	}
 
+	/** Every failure message states the gate it ran under. */
+	private static String gate(String what) {
+		return FuzzTiers.describe() + " | " + what;
+	}
+
+	/**
+	 * Same disguise as the private {@code FuzzStorages.forcedFallback} proxy, kept here because this
+	 * file's storage lists are shaped differently: several cases need a {@link Buf} whose size is
+	 * exactly the payload (a one-shot {@link BufDataInput} asserts {@code length()}), and the dispatch
+	 * cases pair each storage with a fixed offset and an expected direct-storage offset, which a padded
+	 * {@link it.cavallium.datagen.fuzz.FuzzStorages.View} cannot express.
+	 */
 	private static Buf forcedFallback(Buf delegate) {
 		return (Buf) Proxy.newProxyInstance(BufCursorBudgetTextDeepFuzzTest.class.getClassLoader(),
 				new Class<?>[] {Buf.class}, (proxy, method, arguments) -> switch (method.getName()) {
@@ -503,9 +524,7 @@ class BufCursorBudgetTextDeepFuzzTest {
 	}
 
 	private static byte[] randomBytes(Random random, int exclusiveMaximumLength) {
-		byte[] result = new byte[random.nextInt(exclusiveMaximumLength)];
-		random.nextBytes(result);
-		return result;
+		return FuzzValues.bytes(random, random.nextInt(exclusiveMaximumLength));
 	}
 
 	private record StorageCase(String name,

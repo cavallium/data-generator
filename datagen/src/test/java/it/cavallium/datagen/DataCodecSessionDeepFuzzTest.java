@@ -8,6 +8,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import it.cavallium.buffer.Buf;
 import it.cavallium.buffer.BufDataInput;
 import it.cavallium.buffer.BufDataOutput;
+import it.cavallium.datagen.fuzz.FuzzTiers;
+import it.cavallium.datagen.fuzz.FuzzValues;
 import it.cavallium.stream.SafeDataInput;
 import it.cavallium.stream.SafeDataOutput;
 import java.lang.reflect.Field;
@@ -20,9 +22,9 @@ class DataCodecSessionDeepFuzzTest {
 	private static final long SESSION_SEED = 0x58C1_2D7A_904E_B36FL;
 	private static final long RESERVED_SEED = 0x2A94_F70C_61D8_3BE5L;
 	private static final long STATE_SEED = 0x739E_04B5_C218_6AFDL;
-	private static final int SESSION_CASES = 40_000;
-	private static final int RESERVED_CASES = 25_000;
-	private static final int STATE_CASES = 20_000;
+	private static final int SESSION_CASES = FuzzTiers.cases("codec-session-lifecycle", 4_000, 40_000, 80_000, 200_000);
+	private static final int RESERVED_CASES = FuzzTiers.cases("codec-session-reserved", 2_500, 25_000, 50_000, 125_000);
+	private static final int STATE_CASES = FuzzTiers.cases("codec-session-state", 2_000, 20_000, 40_000, 100_000);
 	private static final DecodeLimits GENEROUS =
 			new DecodeLimits(1_024, 1_024, 1_000_000, 1_000_000, 64);
 
@@ -72,8 +74,7 @@ class DataCodecSessionDeepFuzzTest {
 			int value = random.nextInt();
 			int prefix = random.nextInt(17);
 			int suffix = random.nextInt(17);
-			byte[] bytes = new byte[prefix + 1 + Integer.BYTES + 1 + suffix];
-			random.nextBytes(bytes);
+			byte[] bytes = FuzzValues.bytes(random, prefix + 1 + Integer.BYTES + 1 + suffix);
 			bytes[prefix] = 0;
 			putInt(bytes, prefix + 1, value);
 			BufDataInput parent = BufDataInput.create(Buf.wrap(bytes), GENEROUS);
@@ -166,7 +167,7 @@ class DataCodecSessionDeepFuzzTest {
 		assertThrows(NullPointerException.class,
 				() -> state.session("null-session", new NullSessionCodec()));
 		assertEquals(expected.size() + 1, state.initializedSessionCount(),
-				"failed factories must not install a slot");
+				FuzzTiers.describe() + " | failed factories must not install a slot");
 	}
 
 	@Test
@@ -202,14 +203,16 @@ class DataCodecSessionDeepFuzzTest {
 		DecodeBudget rootOverflow = new DecodeBudget(unlimited);
 		setInt(rootOverflow, "rootEntries", Integer.MAX_VALUE);
 		assertThrows(ArithmeticException.class, rootOverflow::enterRoot);
-		assertRootEntries(rootOverflow, Integer.MAX_VALUE, "root entry overflow must be atomic");
+		assertRootEntries(rootOverflow, Integer.MAX_VALUE,
+				FuzzTiers.describe() + " | root entry overflow must be atomic");
 
 		DecodeBudget depthOverflow = new DecodeBudget(unlimited);
 		depthOverflow.enterRoot();
 		setInt(depthOverflow, "structuralDepth", Integer.MAX_VALUE);
 		assertThrows(ArithmeticException.class, depthOverflow::enterStructure);
 		assertEquals(Integer.MAX_VALUE, depthOverflow.structuralDepth());
-		assertRootEntries(depthOverflow, 1, "failed nested structure must unwind its root entry");
+		assertRootEntries(depthOverflow, 1,
+				FuzzTiers.describe() + " | failed nested structure must unwind its root entry");
 		setInt(depthOverflow, "structuralDepth", 0);
 		depthOverflow.exitRoot();
 
@@ -327,7 +330,8 @@ class DataCodecSessionDeepFuzzTest {
 	}
 
 	private static String diagnostic(long seed, int caseIndex, int first, int second) {
-		return "seed=" + seed + ", case=" + caseIndex + ", first=" + first + ", second=" + second;
+		return FuzzTiers.describe() + " | seed=" + seed + ", case=" + caseIndex + ", first=" + first
+				+ ", second=" + second;
 	}
 
 	private static final class LifecycleSession extends ReadSession<Integer> {

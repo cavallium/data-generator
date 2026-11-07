@@ -10,6 +10,8 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import it.cavallium.datagen.fuzz.FuzzTiers;
+import it.cavallium.datagen.fuzz.FuzzValues;
 import it.cavallium.stream.SafeByteArrayOutputStream;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -35,10 +37,10 @@ class BufStorageLifecycleDeepFuzzTest {
 	private static final long TRANSFER_SEED = 0x71E3_B940_2D5A_C86FL;
 	private static final long TEXT_SEED = 0x5A10_D7EC_349B_82F6L;
 	private static final long COMPARATOR_SEED = 0x0CB4_6F91_E2D8_357AL;
-	private static final int PRIMITIVE_CASES = 20_000;
-	private static final int TRANSFER_CASES = 20_000;
-	private static final int TEXT_CASES = 10_000;
-	private static final int COMPARATOR_CASES = 100_000;
+	private static final int PRIMITIVE_CASES = FuzzTiers.cases("buf-lifecycle-primitives", 2_000, 20_000, 40_000, 100_000);
+	private static final int TRANSFER_CASES = FuzzTiers.cases("buf-lifecycle-transfers", 2_000, 20_000, 40_000, 100_000);
+	private static final int TEXT_CASES = FuzzTiers.cases("buf-lifecycle-text", 1_000, 10_000, 20_000, 50_000);
+	private static final int COMPARATOR_CASES = FuzzTiers.cases("buf-lifecycle-comparator", 10_000, 100_000, 200_000, 500_000);
 
 	@Test
 	void primitiveGettersAndSettersMatchByteBufferAtEveryValidOffsetAndStorageKind() {
@@ -133,11 +135,10 @@ class BufStorageLifecycleDeepFuzzTest {
 		var random = new Random(PRIMITIVE_SEED ^ -1L);
 		try (var arena = Arena.ofConfined()) {
 			for (int size = 0; size <= 96; size++) {
-				byte[] bytes = new byte[size];
-				random.nextBytes(bytes);
+				byte[] bytes = FuzzValues.bytes(random, size);
 				for (Buf buffer : List.of(Buf.wrap(bytes.clone()), nativeCopy(arena, bytes),
 						new MemorySegmentBuf(MemorySegment.ofArray(bytes.clone())))) {
-					String diagnostic = "size=" + size + ", storage=" + storageName(buffer);
+					String diagnostic = FuzzTiers.describe() + " | size=" + size + ", storage=" + storageName(buffer);
 					for (int index : hostileIndices(size)) {
 						if (index < 0 || index >= size) {
 							assertThrows(RuntimeException.class, () -> buffer.getByte(index), diagnostic + ", byte=" + index);
@@ -357,7 +358,7 @@ class BufStorageLifecycleDeepFuzzTest {
 			byte[] left = randomBytes(random, 257);
 			byte[] right = randomBytes(random, 257);
 			int expected = lengthFirstCompare(left, 0, left.length, right, 0, right.length);
-			String diagnostic = "seed=" + COMPARATOR_SEED + ", case=" + caseIndex;
+			String diagnostic = FuzzTiers.describe() + " | seed=" + COMPARATOR_SEED + ", case=" + caseIndex;
 			assertEquals(Integer.signum(expected), Integer.signum(comparator.compare(left, right)), diagnostic);
 
 			int leftFrom = random.nextInt(left.length + 1);
@@ -439,6 +440,12 @@ class BufStorageLifecycleDeepFuzzTest {
 		return bytes.length == 0 ? new MemorySegmentBuf(segment.asSlice(0, 0)) : new MemorySegmentBuf(segment);
 	}
 
+	/**
+	 * Deliberately weaker than {@code FuzzStorages.forcedFallback}: this case asserts the default
+	 * {@link Buf} conversions, so the proxy must still <em>answer</em> {@code asArray} and
+	 * {@code asByteBuffer} and only hide the strict storage probes; the shared proxy throws on the bulk
+	 * helpers, which would fail {@code defaultBufFallbackConversionsAndIgnoreCoverageMetadataAreExplicit}.
+	 */
 	private static Buf forcedFallback(Buf delegate) {
 		return (Buf) Proxy.newProxyInstance(BufStorageLifecycleDeepFuzzTest.class.getClassLoader(),
 				new Class<?>[] {Buf.class}, (proxy, method, arguments) -> switch (method.getName()) {
@@ -483,9 +490,7 @@ class BufStorageLifecycleDeepFuzzTest {
 	}
 
 	private static byte[] randomBytes(Random random, int exclusiveMaximumLength) {
-		byte[] result = new byte[random.nextInt(exclusiveMaximumLength)];
-		random.nextBytes(result);
-		return result;
+		return FuzzValues.bytes(random, random.nextInt(exclusiveMaximumLength));
 	}
 
 	private static String storageName(Buf buffer) {
@@ -495,6 +500,7 @@ class BufStorageLifecycleDeepFuzzTest {
 	}
 
 	private static String diagnostic(long seed, int caseIndex, int operation, int size) {
-		return "seed=" + seed + ", case=" + caseIndex + ", operation=" + operation + ", size=" + size;
+		return FuzzTiers.describe() + " | seed=" + seed + ", case=" + caseIndex + ", operation=" + operation
+				+ ", size=" + size;
 	}
 }

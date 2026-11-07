@@ -10,14 +10,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import it.cavallium.datagen.DecodeLimits;
 import it.cavallium.datagen.MalformedDataException;
+import it.cavallium.datagen.fuzz.FuzzStorages;
+import it.cavallium.datagen.fuzz.FuzzTiers;
+import it.cavallium.datagen.fuzz.FuzzValues;
 import it.cavallium.stream.SafeByteArrayOutputStream;
 import it.unimi.dsi.fastutil.bytes.ByteListIterator;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
@@ -33,23 +34,24 @@ class BufApiSurfaceDeepFuzzTest {
 	private static final long OUTPUT_SEED = 0x68A2_D3F5_19CE_470BL;
 	private static final long FIXED_LIST_SEED = 0x51C7_0EA4_BD93_268FL;
 	private static final long LIFECYCLE_SEED = 0x7D30_4AE9_C516_82BFL;
-	private static final int BULK_CASES = 20_000;
-	private static final int OUTPUT_CASES = 10_000;
-	private static final int FIXED_LIST_CASES = 20_000;
-	private static final int LIFECYCLE_CASES = 20_000;
+
+	/** The storage families this file read through before {@link FuzzStorages} existed: same three. */
+	private static final List<FuzzStorages.Kind> STORAGES = List.of(
+			FuzzStorages.Kind.HEAP, FuzzStorages.Kind.MEMORY_SEGMENT, FuzzStorages.Kind.FORCED_FALLBACK);
 
 	@Test
 	void bulkDestinationReadsAndStreamConveniencesFuzzEveryStorageAndPrimitiveFamily() {
 		var random = new Random(BULK_SEED);
-		try (var arena = Arena.ofConfined()) {
-			for (int caseIndex = 0; caseIndex < BULK_CASES; caseIndex++) {
+		int cases = FuzzTiers.cases("buf-api-surface-bulk", 2_000, 20_000, 40_000, 100_000);
+		for (int caseIndex = 0; caseIndex < cases; caseIndex++) {
 				BulkKind kind = BulkKind.values()[random.nextInt(BulkKind.values().length)];
 				BulkVector vector = kind.randomVector(random, random.nextInt(65));
-				String diagnostic = "seed=" + BULK_SEED + ", case=" + caseIndex
-						+ ", kind=" + kind + ", bytes=" + vector.payload().length;
-				for (Storage storage : storages(arena, vector.payload())) {
+				String diagnostic = gate("seed=" + BULK_SEED + ", case=" + caseIndex
+						+ ", kind=" + kind + ", bytes=" + vector.payload().length);
+				try (var storages = new FuzzStorages(vector.payload())) {
+				for (FuzzStorages.View storage : views(storages)) {
 					var cursor = new BufDataCursor(UNLIMITED);
-					cursor.bind(storage.source(), storage.offset(), vector.payload().length);
+					cursor.bind(storage.buf(), storage.offset(), vector.payload().length);
 					assertTrue(cursor.markSupported(), diagnostic);
 					assertEquals(vector.payload().length, cursor.available(), diagnostic);
 
@@ -57,7 +59,7 @@ class BufApiSurfaceDeepFuzzTest {
 					kind.fillSentinel(destination);
 					kind.read(cursor, destination, 2, vector.length());
 					kind.assertSlice(vector.values(), destination, 2, vector.length(),
-							diagnostic + ", storage=" + storage.name());
+							diagnostic + ", storage=" + storage.kind());
 					assertEquals(vector.payload().length, cursor.position(), diagnostic);
 					assertEquals(0, cursor.available(), diagnostic);
 					assertEquals(-1, cursor.read(), diagnostic);
@@ -92,7 +94,7 @@ class BufApiSurfaceDeepFuzzTest {
 					cursor.unbind();
 
 					if (vector.payload().length != 0) {
-						cursor.bind(storage.source(), storage.offset(), vector.payload().length - 1);
+						cursor.bind(storage.buf(), storage.offset(), vector.payload().length - 1);
 						Object truncatedDestination = kind.destination(vector.length());
 						assertThrows(MalformedDataException.class,
 								() -> kind.read(cursor, truncatedDestination, 0, vector.length()), diagnostic);
@@ -100,16 +102,17 @@ class BufApiSurfaceDeepFuzzTest {
 						cursor.unbind();
 					}
 				}
+				}
 			}
-		}
 	}
 
 	@Test
 	@SuppressWarnings({"deprecation", "removal"})
 	void outputTextBulkAndBufWritesMatchDataOutputAcrossAllFactoriesAndSourceStorage() throws Exception {
 		var random = new Random(OUTPUT_SEED);
-		try (var arena = Arena.ofConfined()) {
-			for (int caseIndex = 0; caseIndex < OUTPUT_CASES; caseIndex++) {
+		int cases = FuzzTiers.cases("buf-api-surface-output", 1_000, 10_000, 20_000, 50_000);
+		{
+			for (int caseIndex = 0; caseIndex < cases; caseIndex++) {
 				BufDataOutput actual = switch (caseIndex % 4) {
 					case 0 -> BufDataOutput.create();
 					case 1 -> BufDataOutput.create(random.nextInt(257));
@@ -120,8 +123,8 @@ class BufApiSurfaceDeepFuzzTest {
 				try (var expected = new DataOutputStream(expectedBytes)) {
 					for (int operationIndex = 0; operationIndex < 64; operationIndex++) {
 						int operation = random.nextInt(8);
-						String diagnostic = "seed=" + OUTPUT_SEED + ", case=" + caseIndex
-								+ ", operation=" + operationIndex + ", kind=" + operation;
+						String diagnostic = gate("seed=" + OUTPUT_SEED + ", case=" + caseIndex
+								+ ", operation=" + operationIndex + ", kind=" + operation);
 						switch (operation) {
 							case 0 -> {
 								String text = randomCodeUnits(random, 65);
@@ -141,11 +144,14 @@ class BufApiSurfaceDeepFuzzTest {
 								expected.write(encoded);
 							}
 							case 3 -> {
-								byte[] bytes = randomBytes(random, 129);
-								Storage storage = storages(arena, bytes).get(random.nextInt(3));
-								Buf source = storage.source().subListForced(storage.offset(),
-										storage.offset() + bytes.length);
-								actual.writeBytes(source);
+								byte[] bytes = FuzzValues.bytes(random, random.nextInt(129));
+								try (var storages = new FuzzStorages(bytes)) {
+									FuzzStorages.View storage = storages.kind(
+											STORAGES.get(random.nextInt(STORAGES.size())));
+									Buf source = storage.buf().subListForced(storage.offset(),
+											storage.offset() + bytes.length);
+									actual.writeBytes(source);
+								}
 								expected.write(bytes);
 							}
 							case 4 -> {
@@ -229,14 +235,15 @@ class BufApiSurfaceDeepFuzzTest {
 	void memorySegmentBufBehavesAsAMutableFixedSizeListAndRejectsEveryStructuralMutation() {
 		var random = new Random(FIXED_LIST_SEED);
 		try (var arena = Arena.ofConfined()) {
-			for (int caseIndex = 0; caseIndex < FIXED_LIST_CASES; caseIndex++) {
+			int cases = FuzzTiers.cases("buf-api-surface-fixed-list", 2_000, 20_000, 40_000, 100_000);
+			for (int caseIndex = 0; caseIndex < cases; caseIndex++) {
 				byte[] initial = randomBytes(random, 257);
 				if (initial.length == 0) initial = new byte[] {0};
 				MemorySegment segment = arena.allocate(initial.length, 1);
 				segment.copyFrom(MemorySegment.ofArray(initial));
 				Buf buffer = new MemorySegmentBuf(segment);
 				byte[] expected = initial.clone();
-				String diagnostic = "seed=" + FIXED_LIST_SEED + ", case=" + caseIndex;
+				String diagnostic = gate("seed=" + FIXED_LIST_SEED + ", case=" + caseIndex);
 
 				int index = random.nextInt(expected.length);
 				byte replacement = (byte) random.nextInt();
@@ -284,8 +291,9 @@ class BufApiSurfaceDeepFuzzTest {
 	@SuppressWarnings({"deprecation", "removal"})
 	void cursorBindingLifecycleUnsignedReadsAndAbsoluteTextViewsFuzzEveryStorage() {
 		var random = new Random(LIFECYCLE_SEED);
-		try (var arena = Arena.ofConfined()) {
-			for (int caseIndex = 0; caseIndex < LIFECYCLE_CASES; caseIndex++) {
+		int cases = FuzzTiers.cases("buf-api-surface-lifecycle", 2_000, 20_000, 40_000, 100_000);
+		{
+			for (int caseIndex = 0; caseIndex < cases; caseIndex++) {
 				int unsignedShort = random.nextInt(1 << Short.SIZE);
 				String sourceText = randomCodeUnits(random, 129);
 				String expectedText = new String(sourceText.getBytes(StandardCharsets.UTF_8),
@@ -297,30 +305,31 @@ class BufApiSurfaceDeepFuzzTest {
 				int mediumTextOffset = encoded.size();
 				encoded.writeMediumText(sourceText, StandardCharsets.UTF_8);
 				byte[] payload = encoded.asList().asArray().clone();
-				String diagnostic = "seed=" + LIFECYCLE_SEED + ", case=" + caseIndex
-						+ ", unsignedShort=" + unsignedShort + ", bytes=" + payload.length;
+				String diagnostic = gate("seed=" + LIFECYCLE_SEED + ", case=" + caseIndex
+						+ ", unsignedShort=" + unsignedShort + ", bytes=" + payload.length);
 
-				for (Storage storage : storages(arena, payload)) {
-					Buf exact = storage.source().subListForced(storage.offset(),
+				try (var storages = new FuzzStorages(payload)) {
+				for (FuzzStorages.View storage : views(storages)) {
+					Buf exact = storage.buf().subListForced(storage.offset(),
 							storage.offset() + payload.length);
 					assertEquals(expectedText, exact.getShortText(shortTextOffset, StandardCharsets.UTF_8),
-							diagnostic + ", short view=" + storage.name());
+							diagnostic + ", short view=" + storage.kind());
 					assertEquals(expectedText, exact.getMediumText(mediumTextOffset, StandardCharsets.UTF_8),
-							diagnostic + ", medium view=" + storage.name());
+							diagnostic + ", medium view=" + storage.kind());
 
 					var cursor = new BufDataCursor(UNLIMITED);
 					assertThrows(IllegalStateException.class, cursor::remainingIncludingClosed, diagnostic);
 					assertThrows(IndexOutOfBoundsException.class,
-							() -> cursor.bind(storage.source(), -1, payload.length), diagnostic);
+							() -> cursor.bind(storage.buf(), -1, payload.length), diagnostic);
 					assertThrows(IndexOutOfBoundsException.class,
-							() -> cursor.bind(storage.source(), storage.source().size(), 1), diagnostic);
+							() -> cursor.bind(storage.buf(), storage.buf().size(), 1), diagnostic);
 					assertFalse(cursor.isBound(), diagnostic);
 
-					cursor.bind(storage.source(), storage.offset(), payload.length);
+					cursor.bind(storage.buf(), storage.offset(), payload.length);
 					assertEquals(unsignedShort, cursor.readUnsignedShort(), diagnostic);
 					int beforeDoubleBind = cursor.position();
 					assertThrows(IllegalStateException.class,
-							() -> cursor.bind(storage.source(), storage.offset(), payload.length), diagnostic);
+							() -> cursor.bind(storage.buf(), storage.offset(), payload.length), diagnostic);
 					assertEquals(beforeDoubleBind, cursor.position(), diagnostic);
 					assertEquals(expectedText, cursor.readUTF(), diagnostic);
 					assertEquals(expectedText, cursor.readMediumText(StandardCharsets.UTF_8), diagnostic);
@@ -341,41 +350,14 @@ class BufApiSurfaceDeepFuzzTest {
 
 					int from = random.nextInt(payload.length + 1);
 					int length = random.nextInt(payload.length - from + 1);
-					cursor.bind(storage.source(), storage.offset() + from, length);
+					cursor.bind(storage.buf(), storage.offset() + from, length);
 					assertEquals(length, cursor.remainingIncludingClosed(), diagnostic);
 					cursor.close();
 					assertEquals(length, cursor.remainingIncludingClosed(), diagnostic);
 				}
+				}
 			}
 		}
-	}
-
-	private static List<Storage> storages(Arena arena, byte[] payload) {
-		byte[] padded = new byte[payload.length + 6];
-		System.arraycopy(payload, 0, padded, 3, payload.length);
-		MemorySegment nativeSegment = arena.allocate(Math.max(1, padded.length), 1);
-		MemorySegment.copy(MemorySegment.ofArray(padded), 0, nativeSegment, 0, padded.length);
-		return List.of(
-				new Storage("heap", Buf.wrap(padded), 3),
-				new Storage("native", new MemorySegmentBuf(nativeSegment), 3),
-				new Storage("fallback", forcedFallback(Buf.wrap(padded)), 3));
-	}
-
-	private static Buf forcedFallback(Buf delegate) {
-		return (Buf) Proxy.newProxyInstance(BufApiSurfaceDeepFuzzTest.class.getClassLoader(),
-				new Class<?>[] {Buf.class}, (proxy, method, arguments) -> switch (method.getName()) {
-					case "getBackingByteArrayStrict", "asMemorySegmentStrict", "asArrayStrict",
-							"asUnboundedArrayStrict" -> null;
-					case "getBackingByteArray", "asArray", "asUnboundedArray", "binaryInputStream" ->
-							throw new AssertionError("fallback bulk path copied the complete payload");
-					default -> {
-						try {
-							yield method.invoke(delegate, arguments);
-						} catch (InvocationTargetException failure) {
-							throw failure.getCause();
-						}
-					}
-				});
 	}
 
 	private static long readInt52(byte[] bytes, int offset) {
@@ -394,13 +376,20 @@ class BufApiSurfaceDeepFuzzTest {
 		return new String(value);
 	}
 
+	/** Hostile byte payloads come from the shared pool: random length, uniform bytes. */
 	private static byte[] randomBytes(Random random, int exclusiveMaximumLength) {
-		byte[] result = new byte[random.nextInt(exclusiveMaximumLength)];
-		random.nextBytes(result);
-		return result;
+		return FuzzValues.bytes(random, random.nextInt(exclusiveMaximumLength));
 	}
 
-	private record Storage(String name, Buf source, int offset) {}
+	/** The three storages this file has always read through, now as shared {@link FuzzStorages} views. */
+	private static List<FuzzStorages.View> views(FuzzStorages storages) {
+		return STORAGES.stream().map(storages::kind).toList();
+	}
+
+	/** Every failure message states the gate it ran under. */
+	private static String gate(String what) {
+		return FuzzTiers.describe() + " | " + what;
+	}
 
 	private record BulkVector(byte[] payload, Object values, int length) {}
 

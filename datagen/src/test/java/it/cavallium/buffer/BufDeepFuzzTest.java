@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import it.cavallium.datagen.fuzz.FuzzTiers;
+import it.cavallium.datagen.fuzz.FuzzValues;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
@@ -23,9 +25,13 @@ class BufDeepFuzzTest {
 	private static final long DYNAMIC_STATE_SEED = 0x71C5_3A80_2E4B_69DFL;
 	private static final long RANGE_SEED = 0x2D90_64BE_173A_5CF8L;
 	private static final int FIXED_CASES = 64;
-	private static final int OPERATIONS_PER_FIXED_CASE = 1_000;
-	private static final int DYNAMIC_OPERATIONS = 50_000;
-	private static final int RANGE_CASES = 50_000;
+	/** The volume knob of the fixed-state machine; the 64 distinct states stay fixed across tiers. */
+	private static final int OPERATIONS_PER_FIXED_CASE =
+			FuzzTiers.cases("buf-fixed-operations", 100, 1_000, 2_000, 5_000);
+	private static final int DYNAMIC_OPERATIONS =
+			FuzzTiers.cases("buf-dynamic-operations", 5_000, 50_000, 100_000, 250_000);
+	private static final int RANGE_CASES = FuzzTiers.cases("buf-range-cases", 5_000, 50_000, 100_000, 250_000);
+	private static final int FROZEN_CASES = FuzzTiers.cases("buf-frozen-slices", 1_000, 10_000, 20_000, 50_000);
 
 	@Test
 	void fixedSizeMutationStateMachineMatchesByteArrayForHeapAndNativeStorage() {
@@ -33,8 +39,7 @@ class BufDeepFuzzTest {
 		try (var arena = Arena.ofConfined()) {
 			for (int caseIndex = 0; caseIndex < FIXED_CASES; caseIndex++) {
 				int size = 8 + random.nextInt(505);
-				byte[] model = new byte[size];
-				random.nextBytes(model);
+				byte[] model = FuzzValues.bytes(random, size);
 				Buf heap = Buf.wrap(model.clone());
 				Buf nativeBuf = nativeBuf(arena, model);
 
@@ -107,8 +112,7 @@ class BufDeepFuzzTest {
 							System.arraycopy(model, sourceOffset, model, targetOffset, length);
 						}
 						case 9 -> {
-							byte[] sourceBytes = new byte[random.nextInt(257)];
-							random.nextBytes(sourceBytes);
+							byte[] sourceBytes = FuzzValues.bytes(random, random.nextInt(257));
 							Buf source = randomView(random, arena, sourceBytes);
 							int length = random.nextInt(Math.min(size, source.size()) + 1);
 							int sourceOffset = random.nextInt(source.size() - length + 1);
@@ -203,8 +207,7 @@ class BufDeepFuzzTest {
 				}
 				case 5 -> {
 					if (!modelView.isEmpty()) {
-						byte[] source = new byte[view.size()];
-						random.nextBytes(source);
+						byte[] source = FuzzValues.bytes(random, view.size());
 						int length = random.nextInt(source.length + 1);
 						int sourceOffset = random.nextInt(source.length - length + 1);
 						int targetOffset = random.nextInt(view.size() - length + 1);
@@ -233,10 +236,10 @@ class BufDeepFuzzTest {
 		var random = new Random(RANGE_SEED);
 		try (var arena = Arena.ofConfined()) {
 			for (int iteration = 0; iteration < RANGE_CASES; iteration++) {
-				byte[] leftBytes = new byte[random.nextInt(257)];
-				byte[] rightBytes = new byte[random.nextInt(257)];
-				random.nextBytes(leftBytes);
-				random.nextBytes(rightBytes);
+				int leftLength = random.nextInt(257);
+				int rightLength = random.nextInt(257);
+				byte[] leftBytes = FuzzValues.bytes(random, leftLength);
+				byte[] rightBytes = FuzzValues.bytes(random, rightLength);
 				Buf left = randomView(random, arena, leftBytes);
 				Buf right = randomView(random, arena, rightBytes);
 				int leftOffset = rangeComponent(random, left.size());
@@ -271,33 +274,34 @@ class BufDeepFuzzTest {
 	void frozenRandomSlicesRemainZeroCopyAndRejectEveryMutationPath() {
 		var random = new Random(0x5E40_18C7_3B2D_69AFL);
 		try (var arena = Arena.ofConfined()) {
-			for (int iteration = 0; iteration < 10_000; iteration++) {
-				byte[] values = new byte[1 + random.nextInt(256)];
-				random.nextBytes(values);
+			for (int iteration = 0; iteration < FROZEN_CASES; iteration++) {
+				byte[] values = FuzzValues.bytes(random, 1 + random.nextInt(256));
 				int from = random.nextInt(values.length);
 				int to = from + 1 + random.nextInt(values.length - from);
 				byte replacement = (byte) (values[from] + 1);
+				String diagnostic = FuzzTiers.describe() + " | seed=0x5E4018C73B2D69AF, case=" + iteration
+						+ ", from=" + from + ", to=" + to;
 
 				byte[] heapStorage = values.clone();
 				Buf heapFrozen = Buf.wrap(heapStorage).subList(from, to).freeze();
 				heapStorage[from] = replacement;
-				assertFrozenView(heapFrozen, replacement);
+				assertFrozenView(heapFrozen, replacement, diagnostic);
 
 				Buf nativeMutable = nativeBuf(arena, values);
 				Buf nativeFrozen = nativeMutable.subList(from, to).freeze();
 				nativeMutable.setByte(from, replacement);
-				assertFrozenView(nativeFrozen, replacement);
+				assertFrozenView(nativeFrozen, replacement, diagnostic);
 			}
 		}
 	}
 
-	private static void assertFrozenView(Buf frozen, byte expectedFirstByte) {
-		assertEquals(expectedFirstByte, frozen.getByte(0));
-		assertFalse(frozen.isMutable());
+	private static void assertFrozenView(Buf frozen, byte expectedFirstByte, String diagnostic) {
+		assertEquals(expectedFirstByte, frozen.getByte(0), diagnostic);
+		assertFalse(frozen.isMutable(), diagnostic);
 		assertThrows(UnsupportedOperationException.class,
-				() -> frozen.setByte(0, (byte) 1));
+				() -> frozen.setByte(0, (byte) 1), diagnostic);
 		assertThrows(UnsupportedOperationException.class,
-				() -> frozen.setBytesFromBuf(0, Buf.wrap((byte) 1), 0, 1));
+				() -> frozen.setBytesFromBuf(0, Buf.wrap((byte) 1), 0, 1), diagnostic);
 	}
 
 	private static void mutateNestedView(Buf root,
@@ -376,6 +380,11 @@ class BufDeepFuzzTest {
 		}
 	}
 
+	/**
+	 * Five random storage shapes (plain heap, padded slice, nested slice, native, padded native slice)
+	 * chosen per call: broader than {@link it.cavallium.datagen.fuzz.FuzzStorages}, which exposes one
+	 * view per kind, so this file keeps its own list.
+	 */
 	private static Buf randomView(Random random, Arena arena, byte[] values) {
 		return switch (random.nextInt(5)) {
 			case 0 -> Buf.wrap(values.clone());
@@ -450,7 +459,7 @@ class BufDeepFuzzTest {
 			int operation,
 			int kind,
 			int size) {
-		return "seed=" + seed + ", case=" + caseIndex + ", operation=" + operation
+		return FuzzTiers.describe() + " | seed=" + seed + ", case=" + caseIndex + ", operation=" + operation
 				+ ", kind=" + kind + ", size=" + size;
 	}
 }

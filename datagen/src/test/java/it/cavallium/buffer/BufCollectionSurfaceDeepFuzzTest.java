@@ -8,6 +8,8 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import it.cavallium.datagen.fuzz.FuzzTiers;
+import it.cavallium.datagen.fuzz.FuzzValues;
 import it.unimi.dsi.fastutil.bytes.ByteArrayList;
 import it.unimi.dsi.fastutil.bytes.ByteCollection;
 import it.unimi.dsi.fastutil.bytes.ByteConsumer;
@@ -44,9 +46,13 @@ class BufCollectionSurfaceDeepFuzzTest {
 	private static final long CONSTRUCTOR_SEED = 0x65A1_0F3C_D947_2B8EL;
 	private static final long ITERATION_SEED = 0x7C42_E905_18AD_63BFL;
 	private static final int STATE_CASES = 96;
-	private static final int OPERATIONS_PER_CASE = 2_000;
-	private static final int CONSTRUCTOR_CASES = 20_000;
-	private static final int ITERATION_CASES = 20_000;
+	/** The volume knob of the collection state machine; the 96 initial-buffer shapes stay fixed. */
+	private static final int OPERATIONS_PER_CASE =
+			FuzzTiers.cases("buf-collection-operations", 200, 2_000, 4_000, 10_000);
+	private static final int CONSTRUCTOR_CASES =
+			FuzzTiers.cases("buf-collection-constructors", 2_000, 20_000, 40_000, 100_000);
+	private static final int ITERATION_CASES =
+			FuzzTiers.cases("buf-collection-iteration", 2_000, 20_000, 40_000, 100_000);
 
 	@Test
 	void everyMutableCollectionPathMatchesAnArrayListStateMachine() {
@@ -54,8 +60,7 @@ class BufCollectionSurfaceDeepFuzzTest {
 		for (int caseIndex = 0; caseIndex < STATE_CASES; caseIndex++) {
 			long caseSeed = seedSource.nextLong();
 			var random = new Random(caseSeed);
-			byte[] initial = new byte[random.nextInt(129)];
-			random.nextBytes(initial);
+			byte[] initial = FuzzValues.bytes(random, random.nextInt(129));
 			Buf actual = switch (caseIndex % 4) {
 				case 0 -> Buf.create();
 				case 1 -> Buf.create(random.nextInt(257));
@@ -250,7 +255,7 @@ class BufCollectionSurfaceDeepFuzzTest {
 		var random = new Random(CONSTRUCTOR_SEED);
 		for (int caseIndex = 0; caseIndex < CONSTRUCTOR_CASES; caseIndex++) {
 			byte[] bytes = randomBytes(random, 257);
-			String diagnostic = "seed=" + CONSTRUCTOR_SEED + ", case=" + caseIndex
+			String diagnostic = FuzzTiers.describe() + " | seed=" + CONSTRUCTOR_SEED + ", case=" + caseIndex
 					+ ", length=" + bytes.length;
 			var boxed = boxed(bytes);
 			var byteList = new ByteArrayList(bytes);
@@ -315,7 +320,7 @@ class BufCollectionSurfaceDeepFuzzTest {
 			int fourth = third + random.nextInt(second - first - third + 1);
 			Buf view = root.subListForced(first, second).subListForced(third, fourth);
 			byte[] expected = Arrays.copyOfRange(bytes, first + third, first + fourth);
-			String diagnostic = "seed=" + ITERATION_SEED + ", case=" + caseIndex
+			String diagnostic = FuzzTiers.describe() + " | seed=" + ITERATION_SEED + ", case=" + caseIndex
 					+ ", rootLength=" + bytes.length + ", range=" + (first + third)
 					+ ".." + (first + fourth);
 
@@ -433,14 +438,15 @@ class BufCollectionSurfaceDeepFuzzTest {
 				new FrozenMutation("binary-output", buf -> buf.binaryOutputStream().write(7)));
 
 		for (FrozenMutation mutation : mutations) {
+			String diagnostic = gate(mutation.name());
 			Buf root = Buf.wrap(new byte[] {1, 2, 3, 4});
 			Buf frozen = root.freeze();
-			assertSame(root, frozen, mutation.name());
-			assertFalse(frozen.isMutable(), mutation.name());
+			assertSame(root, frozen, diagnostic);
+			assertFalse(frozen.isMutable(), diagnostic);
 			byte[] before = frozen.asArray().clone();
 			assertThrows(UnsupportedOperationException.class, () -> mutation.action().execute(frozen),
-					mutation.name());
-			assertArrayEquals(before, frozen.asArray(), mutation.name());
+					diagnostic);
+			assertArrayEquals(before, frozen.asArray(), diagnostic);
 		}
 	}
 
@@ -534,13 +540,16 @@ class BufCollectionSurfaceDeepFuzzTest {
 	}
 
 	private static byte[] randomBytes(Random random, int exclusiveMaximumLength) {
-		byte[] result = new byte[random.nextInt(exclusiveMaximumLength)];
-		random.nextBytes(result);
-		return result;
+		return FuzzValues.bytes(random, random.nextInt(exclusiveMaximumLength));
 	}
 
 	private static byte randomByte(Random random) {
 		return (byte) random.nextInt();
+	}
+
+	/** Every failure message states the gate it ran under. */
+	private static String gate(String what) {
+		return FuzzTiers.describe() + " | " + what;
 	}
 
 	private static ArrayList<Byte> boxed(byte[] values) {
@@ -560,7 +569,7 @@ class BufCollectionSurfaceDeepFuzzTest {
 			int operationIndex,
 			int operation,
 			int size) {
-		return "seed=" + seed + ", case=" + caseIndex + ", operationIndex=" + operationIndex
+		return FuzzTiers.describe() + " | seed=" + seed + ", case=" + caseIndex + ", operationIndex=" + operationIndex
 				+ ", operation=" + operation + ", size=" + size;
 	}
 
