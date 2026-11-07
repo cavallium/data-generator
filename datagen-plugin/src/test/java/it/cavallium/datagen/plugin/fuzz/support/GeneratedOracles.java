@@ -922,8 +922,7 @@ public final class GeneratedOracles {
 					return null;
 				}
 			}
-			Method accessor = findGeneratedAccessor(current.getClass(), step);
-			current = invokeNoArg(accessor, current);
+			current = readGeneratedAccessor(current, step);
 		}
 		if (current instanceof NativeNullable<?> nullable) {
 			current = nullable.getNullable();
@@ -932,19 +931,49 @@ public final class GeneratedOracles {
 	}
 
 	/**
-	 * The accessor a generated class exposes for a field: {@code fOrNull()} for nullable fields (the plain
-	 * {@code f()} throws on an empty nullable, so the OrNull form is preferred); and for arrays only the
-	 * size/index/{@code fCopy()} family — there the defensive copy is the value.
+	 * The value a generated class exposes for a field: {@code fOrNull()} for nullable fields whose base is
+	 * a reference type (the plain {@code f()} throws on an empty nullable, so the OrNull form is preferred);
+	 * for a nullable field whose base is a PRIMITIVE the class exposes no {@code fOrNull()} but a presence
+	 * boolean {@code hasF()}, so an absent one resolves to {@code null} and a present one to the plain
+	 * {@code f()}; and for arrays only the size/index/{@code fCopy()} family — there the defensive copy is
+	 * the value.
+	 *
+	 * <p>The primitive-nullable form is proven by the generated file {@code datagen-plugin/target/
+	 * fuzz-schemas/680c77ee267787ab217644f49fc69d020f31ca82f7f6aab5a0d7bce61ce8f146/sources/org/example/
+	 * fuzz/e2e/current/data/G1taspsT0.java} (repro of {@code target/fuzz-failures/
+	 * projections.force_CONTEXT_PARAMETERS.txt}): it exposes {@code hasF0()} (line 46, returning
+	 * {@code $datagen$present$f0}) and {@code f0()} (lines 50-55) that throws
+	 * {@code NoSuchElementException("Nullable field f0 is empty")} when the flag is false — and no
+	 * {@code f0OrNull()}. Emission rule: {@code GenDataBaseX.addNullableAccessorsAndWithers} always emits
+	 * {@code hasF()} (GenDataBaseX.java:233-237) and the throwing plain accessor (GenDataBaseX.java:239-248),
+	 * but {@code fOrNull} only for non-primitive bases (GenDataBaseX.java:250-257).</p>
+	 *
+	 * <p>A {@code NoSuchElementException} from a plain accessor is therefore never caught blindly: absence
+	 * is decided ONLY by the class's own {@code hasF()}. A genuine accessor error (a throwing accessor
+	 * with {@code hasF()} true, or with no presence boolean at all) still propagates as
+	 * {@link IllegalStateException} from {@link #invokeNoArg}.</p>
 	 */
-	private static Method findGeneratedAccessor(Class<?> type, String field) {
-		for (String candidate : new String[] {field + "OrNull", field, field + "Copy"}) {
-			Method method = findNoArg(type, candidate);
-			if (method != null) {
-				return method;
-			}
+	static Object readGeneratedAccessor(Object target, String field) {
+		Class<?> type = target.getClass();
+		Method orNull = findNoArg(type, field + "OrNull");
+		if (orNull != null) {
+			return invokeNoArg(orNull, target);
+		}
+		Method present = findNoArg(type, "has" + Character.toUpperCase(field.charAt(0)) + field.substring(1));
+		Method plain = findNoArg(type, field);
+		if (present != null && plain != null) {
+			return (Boolean) invokeNoArg(present, target) ? invokeNoArg(plain, target) : null;
+		}
+		if (plain != null) {
+			return invokeNoArg(plain, target);
+		}
+		Method copy = findNoArg(type, field + "Copy");
+		if (copy != null) {
+			return invokeNoArg(copy, target);
 		}
 		throw new IllegalStateException("Generated class " + type.getName() + " exposes no accessor for "
-				+ field + " (tried " + field + ", " + field + "OrNull, " + field + "Copy)");
+				+ field + " (tried " + field + ", " + field + "OrNull, has"
+				+ Character.toUpperCase(field.charAt(0)) + field.substring(1) + ", " + field + "Copy)");
 	}
 
 	private static Method findNoArg(Class<?> type, String name) {
