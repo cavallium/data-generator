@@ -8,6 +8,9 @@
 	<packaging>pom</packaging>
 	<properties>
 		<revision>1.0.0.0-SNAPSHOT</revision>
+		<jqwik.version>1.10.2</jqwik.version>
+		<!-- must match the junit-platform version pulled transitively by jqwik -->
+		<junit-platform.version>1.14.4</junit-platform.version>
 	</properties>
 	<modules>
 		<module>datagen-plugin</module>
@@ -31,6 +34,23 @@
 		<developerConnection>scm:git:https://git.ignuranza.net/andreacavalli/data-generator.git</developerConnection>
 		<tag>HEAD</tag>
 	</scm>
+
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>net.jqwik</groupId>
+				<artifactId>jqwik</artifactId>
+				<version>${jqwik.version}</version>
+				<scope>test</scope>
+			</dependency>
+			<dependency>
+				<groupId>org.junit.platform</groupId>
+				<artifactId>junit-platform-launcher</artifactId>
+				<version>${junit-platform.version}</version>
+				<scope>test</scope>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
 
 	<build>
 		<plugins>

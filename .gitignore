@@ -9,4 +9,7 @@
 
 .flattened-pom.xml
 /.idea/
+.jqwik-database
+jqwik-database
+fuzz-failures/
 /data-generator-plugin/src/test/java/it/test/

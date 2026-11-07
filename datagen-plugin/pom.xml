@@ -78,7 +78,7 @@
 					<dependency>
 						<groupId>org.junit.jupiter</groupId>
 						<artifactId>junit-jupiter-engine</artifactId>
-						<version>5.12.1</version>
+						<version>5.14.4</version>
 					</dependency>
 				</dependencies>
 			</plugin>
@@ -231,7 +231,7 @@
 		<dependency>
 			<groupId>org.junit.jupiter</groupId>
 			<artifactId>junit-jupiter-api</artifactId>
-			<version>5.12.1</version>
+			<version>5.14.4</version>
 			<scope>test</scope>
 			<exclusions>
 				<exclusion>
@@ -239,6 +239,16 @@
 					<artifactId>hamcrest-core</artifactId>
 				</exclusion>
 			</exclusions>
+		</dependency>
+		<dependency>
+			<groupId>net.jqwik</groupId>
+			<artifactId>jqwik</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.junit.platform</groupId>
+			<artifactId>junit-platform-launcher</artifactId>
+			<scope>test</scope>
 		</dependency>
 		<dependency>
 			<groupId>it.cavallium</groupId>
