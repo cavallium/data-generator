@@ -6,12 +6,18 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import it.cavallium.datagen.DataContextNone;
 import it.cavallium.datagen.plugin.ClassConfiguration;
 import it.cavallium.datagen.plugin.DataModel;
 import it.cavallium.datagen.plugin.NewTypeConfiguration;
+import it.cavallium.datagen.plugin.ReadTransformConfiguration;
 import it.cavallium.datagen.plugin.SourcesGeneratorConfiguration;
+import it.cavallium.datagen.plugin.TestSimpleIntToLongUpgrader;
+import it.cavallium.datagen.plugin.TestSimpleLongInitializer;
+import it.cavallium.datagen.plugin.TortureTransforms;
 import it.cavallium.datagen.plugin.VersionConfiguration;
 import it.cavallium.datagen.plugin.VersionTransformation;
+import it.cavallium.datagen.plugin.fuzz.FuzzInstanceLocations;
 import it.cavallium.datagen.plugin.fuzz.support.SchemaGenProfile.Feature;
 
 import java.lang.reflect.Field;
@@ -131,6 +137,56 @@ class SchemaGenTest {
 		assertTrue(checked > 20, "Expected to check many upgrades, checked " + checked);
 	}
 
+	/**
+	 * A {@code readTransform} is the fused read's fast path, while the codec-read +
+	 * {@code upgradeDataToLatestVersion} oracle path calls the transformation's plain initializer/upgrader
+	 * ({@code GenUpgraderBaseX} resolves that location even when a readTransform exists). The pair therefore has to
+	 * compute the SAME value: {@code constant(7)} on a field whose initializer returns {@code 123} compiles, builds
+	 * and then makes the two read paths disagree, which is the defect
+	 * {@code GeneratedOracles.upgradeEquivalence} reports. This test pins the sanctioned pairs as a table and checks
+	 * the two values against each other.
+	 */
+	@Test
+	void readTransformsAgreeWithTheirPlainLocation() {
+		int checked = 0;
+		var locations = new java.util.HashSet<String>();
+		for (int seed = 0; seed < 60; seed++) {
+			for (SchemaGenProfile profile : profileSpread()) {
+				checked += assertReadTransformPairsAreValueConserving(
+						SchemaGen.generate(new Random(seed * 1_000_003L + profile.hashCode()), profile), locations);
+			}
+			checked += assertReadTransformPairsAreValueConserving(
+					SchemaGen.generate(new Random(seed * 100_003L),
+							SchemaGenProfile.productionLike(new Random(seed * 7919L), 60)), locations);
+		}
+		assertTrue(checked > 20, "Expected to check many readTransform pairs, checked " + checked);
+		// Both sanctioned locations must actually appear, or the table would silently stop covering the
+		// upgrade-side fused read — the exact pair the value-consistency oracle exists for.
+		assertTrue(locations.contains(SchemaGen.LONG_INITIALIZER) && locations.contains(SchemaGen.INT_TO_LONG_UPGRADER),
+				"The spread paired readTransforms only with " + locations);
+	}
+
+	/**
+	 * {@code commonData}/{@code commonGetters} of a union interface are abstract methods of that interface, so every
+	 * alternative must carry those fields as real data — in production, {@code ChatEntityId}'s {@code tableId} is a
+	 * field of {@code SuperCollectionId}, {@code BasicGroupId}, {@code UserId} and {@code DeprecatedId}. Replayed
+	 * against every version, this also pins that no transformation ever moves or removes such a field and that a
+	 * {@code newSubtype} never joins a union whose interface declares them.
+	 */
+	@Test
+	void interfaceCommonFieldsAreDataOfEveryAlternative() {
+		int checked = 0;
+		for (int seed = 0; seed < 60; seed++) {
+			for (SchemaGenProfile profile : profileSpread()) {
+				checked += assertInterfaceCommonFields(
+						SchemaGen.generate(new Random(seed * 1_000_003L + profile.hashCode()), profile));
+			}
+			checked += assertInterfaceCommonFields(SchemaGen.generate(new Random(seed * 100_003L),
+					SchemaGenProfile.productionLike(new Random(seed * 7919L), 60)));
+		}
+		assertTrue(checked > 20, "Expected to check many common-field alternatives, checked " + checked);
+	}
+
 	/** The pinned native-type list is the model's list; if {@code DataModel} changes, this test says so. */
 	@Test
 	void nativeNamesMatchTheModel() throws Exception {
@@ -162,9 +218,205 @@ class SchemaGenTest {
 		}
 	}
 
+	/**
+	 * The field transformations must be replayable against the evolving shape: a move reads a field the previous
+	 * shape declares and writes a name it does not yet have, a remove reads an existing field, a new field never
+	 * shadows an existing one, an explicit index (the {@code INDEX_INSERTION} feature) is within bounds for the
+	 * shape at that point, and the {@code stringRepresenter} field — which every version must keep — is never
+	 * moved or removed. Without these invariants the model rejects the schema (or the generated upgrade code
+	 * misbehaves), so a violation here is a generator defect, not a flaky input.
+	 */
+	@Test
+	void fieldOrderRenamesAndRemovesStayConsistent() {
+		int checked = 0;
+		for (int seed = 0; seed < 60; seed++) {
+			for (SchemaGenProfile profile : profileSpread()) {
+				checked += assertFieldTransformationsAreConsistent(
+						SchemaGen.generate(new Random(seed * 1_000_003L + profile.hashCode()), profile));
+			}
+			// the production-like profile is denser in transformations, so it gets its own replay budget
+			var productionProfile = SchemaGenProfile.productionLike(new Random(seed * 7919L), 60);
+			checked += assertFieldTransformationsAreConsistent(
+					SchemaGen.generate(new Random(seed * 100_003L), productionProfile));
+		}
+		assertTrue(checked > 100, "Expected to check many field transformations, checked " + checked);
+	}
+
+	/**
+	 * {@link SchemaGenProfile#productionLike} must really be production-shaped, not just bigger: a long version
+	 * chain, several transformations in every later version, all six transformation kinds, unions, and wide
+	 * records — and the result must still build under both strictness modes.
+	 */
+	@Test
+	void productionLikeSchemasAreDenseAndAlwaysValid() {
+		Set<String> allKinds = Set.of("moveData", "removeData", "newData", "upgradeData", "newType", "newSubtype");
+		for (int seed = 0; seed < 4; seed++) {
+			final int s = seed;
+			var profile = SchemaGenProfile.productionLike(new Random(seed * 7919L), 60);
+			var config = SchemaGen.generate(new Random(seed * 1_000_003L), profile);
+			assertDoesNotThrow(() -> config.buildDataModel(false),
+					() -> "productionLike seed " + s + " was rejected:\n" + SchemaYamlEmitter.emit(config));
+			assertDoesNotThrow(() -> config.buildDataModel(true),
+					() -> "productionLike seed " + s + " was rejected in strict mode");
+			Set<String> kinds = new TreeSet<>();
+			int laterVersions = 0;
+			int widestRecord = 0;
+			if (config.baseTypesData != null) {
+				for (var type : config.baseTypesData.values()) {
+					widestRecord = Math.max(widestRecord, type.data.size());
+				}
+			}
+			for (var versionEntry : config.versions.entrySet()) {
+				VersionConfiguration version = versionEntry.getValue();
+				if (version == null || version.transformations == null) {
+					continue;
+				}
+				if (version.previousVersion != null) {
+					laterVersions++;
+					assertTrue(version.transformations.size() >= profile.minTransformationsPerVersion(),
+							"productionLike seed " + seed + " version " + versionEntry.getKey() + " has only "
+									+ version.transformations.size() + " transformations");
+				}
+				for (VersionTransformation transformation : version.transformations) {
+					if (transformation == null) {
+						continue;
+					}
+					if (transformation.moveData != null) {
+						kinds.add("moveData");
+					}
+					if (transformation.removeData != null) {
+						kinds.add("removeData");
+					}
+					if (transformation.newData != null) {
+						kinds.add("newData");
+					}
+					if (transformation.upgradeData != null) {
+						kinds.add("upgradeData");
+					}
+					if (transformation.newType != null) {
+						kinds.add("newType");
+						widestRecord = Math.max(widestRecord, transformation.newType.data.size());
+					}
+					if (transformation.newSubtype != null) {
+						kinds.add("newSubtype");
+					}
+				}
+			}
+			assertEquals(allKinds, kinds, "productionLike seed " + seed + " did not emit every transformation kind");
+			assertTrue(laterVersions >= profile.minVersions() - 1,
+					"productionLike seed " + seed + " built only " + laterVersions + " later versions");
+			assertTrue(config.superTypesData != null && config.superTypesData.size() >= profile.minUnions(),
+					"productionLike seed " + seed + " built fewer unions than minUnions=" + profile.minUnions());
+			assertTrue(widestRecord >= 10,
+					"productionLike seed " + seed + " never exceeded " + widestRecord + " fields per record");
+		}
+	}
+
 	// ------------------------------------------------------------------------------------------------
 	// helpers
 	// ------------------------------------------------------------------------------------------------
+
+	/**
+	 * Replays the version chain the way {@code DataModel} does and asserts the target invariants of every
+	 * {@code moveData}, {@code removeData} and {@code newData} against the shape as it stood at that version.
+	 *
+	 * @return the number of field transformations checked
+	 */
+	private static int assertFieldTransformationsAreConsistent(SourcesGeneratorConfiguration config) {
+		var shapes = new java.util.LinkedHashMap<String, Map<String, String>>();
+		var representers = new java.util.HashMap<String, String>();
+		if (config.baseTypesData != null) {
+			config.baseTypesData.forEach((name, type) -> {
+				shapes.put(name, new java.util.LinkedHashMap<>(type.data));
+				if (type.stringRepresenter != null) {
+					representers.put(name, type.stringRepresenter);
+				}
+			});
+		}
+		int checked = 0;
+		if (config.versions == null) {
+			return checked;
+		}
+		for (var versionEntry : config.versions.entrySet()) {
+			VersionConfiguration version = versionEntry.getValue();
+			if (version == null || version.transformations == null) {
+				continue;
+			}
+			for (VersionTransformation transformation : version.transformations) {
+				if (transformation == null) {
+					continue;
+				}
+				if (transformation.newType != null) {
+					shapes.put(transformation.newType.name, new java.util.LinkedHashMap<>(transformation.newType.data));
+					if (transformation.newType.stringRepresenter != null) {
+						representers.put(transformation.newType.name, transformation.newType.stringRepresenter);
+					}
+				}
+				var fields = transformation.newData != null ? shapes.get(transformation.newData.transformClass)
+						: transformation.moveData != null ? shapes.get(transformation.moveData.transformClass)
+								: transformation.removeData != null
+										? shapes.get(transformation.removeData.transformClass)
+										: transformation.upgradeData != null
+												? shapes.get(transformation.upgradeData.transformClass)
+												: null;
+				if (fields == null) {
+					continue;
+				}
+				if (transformation.newData != null) {
+					var newData = transformation.newData;
+					assertTrue(!fields.containsKey(newData.to), () -> "Version " + versionEntry.getKey() + " adds "
+							+ newData.transformClass + "." + newData.to + " but the shape already has it:\n"
+							+ SchemaYamlEmitter.emit(config));
+					assertIndexInRange(newData.index, fields.size(), versionEntry.getKey(), newData.transformClass,
+							config);
+					fields.put(newData.to, newData.type);
+					checked++;
+				} else if (transformation.moveData != null) {
+					var moveData = transformation.moveData;
+					assertTrue(fields.containsKey(moveData.from), () -> "Version " + versionEntry.getKey()
+							+ " moves " + moveData.transformClass + "." + moveData.from + " which the shape lacks:\n"
+							+ SchemaYamlEmitter.emit(config));
+					assertTrue(!fields.containsKey(moveData.to), () -> "Version " + versionEntry.getKey() + " renames "
+							+ moveData.transformClass + "." + moveData.from + " to the occupied name " + moveData.to
+							+ ":\n" + SchemaYamlEmitter.emit(config));
+					assertTrue(!moveData.from.equals(representers.get(moveData.transformClass)),
+							() -> "Version " + versionEntry.getKey() + " moves the stringRepresenter field of "
+									+ moveData.transformClass + ":\n" + SchemaYamlEmitter.emit(config));
+					// the index is applied after the field was conceptually removed
+					assertIndexInRange(moveData.index, Math.max(0, fields.size() - 1), versionEntry.getKey(),
+							moveData.transformClass, config);
+					String movedType = fields.remove(moveData.from);
+					fields.put(moveData.to, movedType);
+					checked++;
+				} else if (transformation.removeData != null) {
+					var removeData = transformation.removeData;
+					assertTrue(fields.containsKey(removeData.from), () -> "Version " + versionEntry.getKey()
+							+ " removes " + removeData.transformClass + "." + removeData.from
+							+ " which the shape lacks:\n" + SchemaYamlEmitter.emit(config));
+					assertTrue(!removeData.from.equals(representers.get(removeData.transformClass)),
+							() -> "Version " + versionEntry.getKey() + " removes the stringRepresenter field of "
+									+ removeData.transformClass + ":\n" + SchemaYamlEmitter.emit(config));
+					fields.remove(removeData.from);
+					checked++;
+				} else if (transformation.upgradeData != null) {
+					// the int-source invariant is pinned by upgradesAlwaysStartFromAnIntField; here the replay only
+					// has to keep the shape current
+					fields.put(transformation.upgradeData.from, transformation.upgradeData.type);
+				}
+			}
+		}
+		return checked;
+	}
+
+	private static void assertIndexInRange(Integer index, int size, Object version, String transformClass,
+			SourcesGeneratorConfiguration config) {
+		if (index == null) {
+			return;
+		}
+		assertTrue(index >= 0 && index <= size, () -> "Version " + version + " indexes into " + transformClass
+				+ " at " + index + " which is out of bounds for a shape of " + size + " fields:\n"
+				+ SchemaYamlEmitter.emit(config));
+	}
 
 	/**
 	 * Replays the version chain the way {@code DataModel} does and asserts the invariant of every
@@ -223,6 +475,247 @@ class SchemaGenTest {
 			}
 		}
 		return upgrades;
+	}
+
+	/**
+	 * The (plain location → {@code readTransform} shape) pairs the generator may emit, as canonical shape keys.
+	 * Every listed shape computes exactly what the location computes; an unlisted pairing fails the test.
+	 */
+	private static final Map<String, Set<String>> SANCTIONED_READ_TRANSFORM_PAIRS = Map.of(
+			// TestSimpleLongInitializer.initialize(context) == 123L.
+			SchemaGen.LONG_INITIALIZER, Set.of("constant(123)", "widen(constant(-877))"),
+			// TestSimpleIntToLongUpgrader.upgrade(context, old) == old + 1000.
+			SchemaGen.INT_TO_LONG_UPGRADER, Set.of("widen(identity(value))",
+					"widenWithAnchor(identity(value), constant(-1000))"),
+			// The instance-form locations are never paired with a readTransform — the generator's branches are
+			// mutually exclusive, so a pairing here would be a new shape nothing has validated.
+			SchemaGen.INSTANCE_INITIALIZER, Set.of(),
+			SchemaGen.INSTANCE_UPGRADER, Set.of());
+
+	/** The old value the upgrader-side pairs are evaluated at (any int would do; the shapes are linear). */
+	private static final int SAMPLE_OLD_VALUE = 7;
+
+	/**
+	 * Asserts for every {@code newData}/{@code upgradeData} that carries both a {@code readTransform} and a plain
+	 * location: the pairing is sanctioned, and the value the declarative transform computes equals the value the
+	 * real initializer/upgrader computes.
+	 *
+	 * @param locations collects the plain locations that appeared with a readTransform
+	 * @return the number of pairs checked
+	 */
+	private static int assertReadTransformPairsAreValueConserving(SourcesGeneratorConfiguration config,
+			Set<String> locations) {
+		int checked = 0;
+		if (config.versions == null) {
+			return checked;
+		}
+		for (var versionEntry : config.versions.entrySet()) {
+			VersionConfiguration version = versionEntry.getValue();
+			if (version == null || version.transformations == null) {
+				continue;
+			}
+			for (VersionTransformation transformation : version.transformations) {
+				if (transformation == null) {
+					continue;
+				}
+				String location;
+				ReadTransformConfiguration readTransform;
+				String where;
+				if (transformation.newData != null) {
+					location = transformation.newData.initializer != null
+							? transformation.newData.initializer
+							: transformation.newData.initializerInstance;
+					readTransform = transformation.newData.readTransform;
+					where = "version " + versionEntry.getKey() + " newData " + transformation.newData.to;
+				} else if (transformation.upgradeData != null) {
+					location = transformation.upgradeData.upgrader != null
+							? transformation.upgradeData.upgrader
+							: transformation.upgradeData.upgraderInstance;
+					readTransform = transformation.upgradeData.readTransform;
+					where = "version " + versionEntry.getKey() + " upgradeData " + transformation.upgradeData.from;
+				} else {
+					continue;
+				}
+				if (readTransform == null) {
+					continue;
+				}
+				assertNotNull(location, () -> where + " carries a readTransform but no plain location:\n"
+						+ SchemaYamlEmitter.emit(config));
+				locations.add(location);
+				String shape = readTransformShape(readTransform);
+				Set<String> sanctioned = SANCTIONED_READ_TRANSFORM_PAIRS.get(location);
+				assertNotNull(sanctioned, () -> where + " pairs an unknown plain location " + location + ":\n"
+						+ SchemaYamlEmitter.emit(config));
+				assertTrue(sanctioned.contains(shape), () -> where + " pairs " + location + " with the unsanctioned "
+						+ "readTransform shape " + shape + " (the fused read and the initializer/upgrader path would "
+						+ "compute different values):\n" + SchemaYamlEmitter.emit(config));
+				Long plainValue = plainLocationValue(location, SAMPLE_OLD_VALUE);
+				Long fusedValue = readTransformValue(readTransform, SAMPLE_OLD_VALUE);
+				assertNotNull(fusedValue, () -> where + " has a readTransform shape the test cannot evaluate: "
+						+ shape);
+				assertEquals(plainValue, fusedValue, () -> where + ": " + location + " computes " + plainValue
+						+ " but its readTransform " + shape + " computes " + fusedValue + ":\n"
+						+ SchemaYamlEmitter.emit(config));
+				checked++;
+			}
+		}
+		return checked;
+	}
+
+	/** Canonical, human-readable key of a readTransform shape: {@code method(arg, arg)} or {@code constant(v)}. */
+	private static String readTransformShape(ReadTransformConfiguration transform) {
+		if (transform.constant != null) {
+			return "constant(" + transform.constant.value + ")";
+		}
+		if (transform.identity != null) {
+			return "identity(" + transform.identity.source + ")";
+		}
+		if (transform.invokeStatic != null) {
+			String method = transform.invokeStatic.method;
+			String arguments = transform.invokeStatic.getArguments().stream()
+					.map(SchemaGenTest::readTransformShape)
+					.reduce((left, right) -> left + ", " + right)
+					.orElse("");
+			return method.substring(method.lastIndexOf('.') + 1) + "(" + arguments + ")";
+		}
+		return transform.kind().name().toLowerCase(java.util.Locale.ROOT);
+	}
+
+	/** Value the declarative transform computes for {@code oldValue}, or {@code null} when it cannot be evaluated. */
+	private static Long readTransformValue(ReadTransformConfiguration transform, int oldValue) {
+		if (transform.constant != null) {
+			return ((Number) transform.constant.value).longValue();
+		}
+		if (transform.identity != null) {
+			// Only `value` (the old field) is emitted here; it widens int -> long unchanged.
+			return "value".equals(transform.identity.source) ? (long) oldValue : null;
+		}
+		if (transform.invokeStatic != null) {
+			var arguments = transform.invokeStatic.getArguments();
+			String method = transform.invokeStatic.method;
+			if (!method.equals(SchemaGen.TORTURE_TRANSFORMS + ".widen")
+					&& !method.equals(SchemaGen.TORTURE_TRANSFORMS + ".widenWithAnchor")) {
+				return null;
+			}
+			Long first = readTransformValue(arguments.get(0), oldValue);
+			if (first == null) {
+				return null;
+			}
+			if (method.endsWith(".widen")) {
+				return arguments.size() == 1 ? TortureTransforms.widen(Math.toIntExact(first)) : null;
+			}
+			Long anchor = arguments.size() == 2 ? readTransformValue(arguments.get(1), oldValue) : null;
+			return anchor == null ? null : TortureTransforms.widenWithAnchor(Math.toIntExact(first), anchor);
+		}
+		return null;
+	}
+
+	/** Value the real initializer/upgrader at {@code location} computes; unknown locations fail the test. */
+	private static Long plainLocationValue(String location, int oldValue) {
+		if (location.equals(SchemaGen.LONG_INITIALIZER)) {
+			return new TestSimpleLongInitializer().initialize(DataContextNone.INSTANCE);
+		}
+		if (location.equals(SchemaGen.INT_TO_LONG_UPGRADER)) {
+			return new TestSimpleIntToLongUpgrader().upgrade(DataContextNone.INSTANCE, oldValue);
+		}
+		if (location.equals(SchemaGen.INSTANCE_INITIALIZER)) {
+			return FuzzInstanceLocations.LONG.initialize(DataContextNone.INSTANCE);
+		}
+		if (location.equals(SchemaGen.INSTANCE_UPGRADER)) {
+			return FuzzInstanceLocations.INT_TO_LONG.upgrade(DataContextNone.INSTANCE, oldValue);
+		}
+		throw new AssertionError("Unknown plain location " + location);
+	}
+
+	/**
+	 * Replays the version chain and asserts, for every version, that each alternative of a union whose interface
+	 * declares {@code commonData} or {@code commonGetters} (directly or through {@code extendInterfaces}) really
+	 * declares those fields.
+	 *
+	 * @return the number of union-alternative pairs checked
+	 */
+	private static int assertInterfaceCommonFields(SourcesGeneratorConfiguration config) {
+		if (config.interfacesData == null || config.interfacesData.isEmpty() || config.versions == null) {
+			return 0;
+		}
+		var shapes = new java.util.LinkedHashMap<String, Map<String, String>>();
+		if (config.baseTypesData != null) {
+			config.baseTypesData.forEach((name, type) -> shapes.put(name, new java.util.LinkedHashMap<>(type.data)));
+		}
+		var alternatives = new java.util.LinkedHashMap<String, List<String>>();
+		if (config.superTypesData != null) {
+			config.superTypesData.forEach((name, names) -> alternatives.put(name, new ArrayList<>(names)));
+		}
+		int checked = 0;
+		for (var versionEntry : config.versions.entrySet()) {
+			VersionConfiguration version = versionEntry.getValue();
+			if (version != null && version.transformations != null) {
+				for (VersionTransformation transformation : version.transformations) {
+					if (transformation == null) {
+						continue;
+					}
+					if (transformation.newType != null) {
+						shapes.put(transformation.newType.name,
+								new java.util.LinkedHashMap<>(transformation.newType.data));
+					}
+					if (transformation.newData != null) {
+						shapes.get(transformation.newData.transformClass).put(transformation.newData.to,
+								transformation.newData.type);
+					}
+					if (transformation.moveData != null) {
+						var fields = shapes.get(transformation.moveData.transformClass);
+						fields.put(transformation.moveData.to, fields.remove(transformation.moveData.from));
+					}
+					if (transformation.removeData != null) {
+						shapes.get(transformation.removeData.transformClass).remove(transformation.removeData.from);
+					}
+					if (transformation.upgradeData != null) {
+						shapes.get(transformation.upgradeData.transformClass).put(transformation.upgradeData.from,
+								transformation.upgradeData.type);
+					}
+					if (transformation.newSubtype != null) {
+						alternatives.computeIfAbsent(transformation.newSubtype.superType,
+								key -> new ArrayList<>()).add(transformation.newSubtype.subtype);
+					}
+				}
+			}
+			for (var entry : config.interfacesData.entrySet()) {
+				for (String field : commonFieldsOf(entry.getKey(), config.interfacesData)) {
+					for (String alternative : alternatives.getOrDefault(entry.getKey(), List.of())) {
+						Map<String, String> fields = shapes.get(alternative);
+						assertTrue(fields != null && fields.containsKey(field),
+								() -> "Version " + versionEntry.getKey() + ": " + entry.getKey() + " declares " + field
+										+ " as common interface data, but " + alternative + " does not have it:\n"
+										+ SchemaYamlEmitter.emit(config));
+						checked++;
+					}
+				}
+			}
+		}
+		return checked;
+	}
+
+	/** The common fields a union demands: its own {@code commonData}/{@code commonGetters} plus inherited ones. */
+	private static Set<String> commonFieldsOf(String union,
+			Map<String, it.cavallium.datagen.plugin.InterfaceDataConfiguration> interfaces) {
+		Set<String> fields = new LinkedHashSet<>();
+		Set<String> visited = new LinkedHashSet<>();
+		var pending = new java.util.ArrayDeque<String>();
+		pending.add(union);
+		while (!pending.isEmpty()) {
+			String current = pending.poll();
+			if (!visited.add(current)) {
+				continue;
+			}
+			var configured = interfaces.get(current);
+			if (configured == null) {
+				continue;
+			}
+			fields.addAll(configured.commonData.keySet());
+			fields.addAll(configured.commonGetters.keySet());
+			pending.addAll(configured.extendInterfaces);
+		}
+		return fields;
 	}
 
 	/** The two extremes, every tier, and one profile per feature. */

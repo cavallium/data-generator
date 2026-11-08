@@ -210,6 +210,12 @@ public final class SchemaCompiler {
 				return new Loaded(new CompiledCompile(fingerprint, countJavaFiles(sourcesDir), 0L, 0L, List.of()),
 						entryDir, true, newLoader(classesDir));
 			}
+			if (Files.exists(entryDir)) {
+				// stale entry (the fingerprint matches but the marker does not — e.g. different extra
+				// sources): publish() would refuse to overwrite it and the fresh tree would be discarded,
+				// silently serving the stale classes. Drop the stale entry first.
+				deleteRecursively(entryDir);
+			}
 			return generateCompileAndLoad(fingerprint, yaml, options, entryDir, sourcesDir, classesDir, marker);
 		} catch (IOException exception) {
 			deleteRecursively(entryDir);
@@ -441,7 +447,7 @@ public final class SchemaCompiler {
 	 * failures are swallowed: a leftover directory under {@code target/} is never worth failing a run over,
 	 * while the plan's hazard is the opposite one — blocking on a directory an open loader still holds.
 	 */
-	static void deleteRecursively(Path dir) {
+	public static void deleteRecursively(Path dir) {
 		if (dir == null || !Files.exists(dir)) {
 			return;
 		}

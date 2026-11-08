@@ -35,6 +35,14 @@ import java.util.Set;
  * @param allowInt52         whether {@code Int52} may be used
  * @param allowBinaryString  advisory knob for the caller: value to pass to
  *                           {@code buildDataModel(boolean)}/{@code generateSources}; the YAML never carries it
+ * @param minUnions            lower bound for the number of unions declared in version one
+ * @param maxUnions            upper bound for the number of unions declared in version one
+ *                             (the tier profiles keep the historical 1..2; {@link #productionLike} goes wider)
+ * @param minTransformationsPerVersion lowest number of transformations a later version attempts
+ * @param maxTransformationsPerVersion highest number of transformations a later version attempts
+ * @param maxStringRepresenters upper bound for the records that declare a {@code stringRepresenter}
+ * @param projectionMiddleRanges whether projections select a MIDDLE range of their source's fields
+ *                               instead of the leading prefix
  * @param forcedFeatures     features that MUST be present in the generated schema, whatever the tier says
  */
 public record SchemaGenProfile(int minTypes,
@@ -57,6 +65,12 @@ public record SchemaGenProfile(int minTypes,
 		boolean allowArrays,
 		boolean allowInt52,
 		boolean allowBinaryString,
+		int minUnions,
+		int maxUnions,
+		int minTransformationsPerVersion,
+		int maxTransformationsPerVersion,
+		int maxStringRepresenters,
+		boolean projectionMiddleRanges,
 		Set<Feature> forcedFeatures) {
 
 	/**
@@ -151,6 +165,16 @@ public record SchemaGenProfile(int minTypes,
 		if (maxDepth < 1) {
 			throw new IllegalArgumentException("maxDepth must be >= 1: " + maxDepth);
 		}
+		if (maxUnions < 1 || minUnions > maxUnions) {
+			throw new IllegalArgumentException("Invalid unions range [" + minUnions + ", " + maxUnions + "]");
+		}
+		if (minTransformationsPerVersion < 0 || maxTransformationsPerVersion < minTransformationsPerVersion) {
+			throw new IllegalArgumentException("Invalid transformations-per-version range ["
+					+ minTransformationsPerVersion + ", " + maxTransformationsPerVersion + "]");
+		}
+		if (maxStringRepresenters < 1) {
+			throw new IllegalArgumentException("maxStringRepresenters must be >= 1: " + maxStringRepresenters);
+		}
 		forcedFeatures = Set.copyOf(Objects.requireNonNull(forcedFeatures, "forcedFeatures"));
 	}
 
@@ -164,6 +188,7 @@ public record SchemaGenProfile(int minTypes,
 	public static SchemaGenProfile minimal() {
 		return new SchemaGenProfile(1, 1, 1, 1, 1, 1, 0, 1,
 				false, false, false, false, false, false, false, false, false, false, false, false,
+				1, 1, 0, 3, 1, false,
 				EnumSet.noneOf(Feature.class));
 	}
 
@@ -171,7 +196,53 @@ public record SchemaGenProfile(int minTypes,
 	public static SchemaGenProfile maximal() {
 		return new SchemaGenProfile(6, 10, 4, 12, 4, 7, 12, 4,
 				true, true, true, true, true, true, true, true, true, true, true, true,
+				1, 3, 0, 3, 3, false,
 				EnumSet.allOf(Feature.class));
+	}
+
+	/**
+	 * A production-realistic schema at the requested {@code scale}: the shape real datagen databases have
+	 * (Yotsuba has 769 base types and 18 versions; telegramdb 23 and 1) — a long version chain
+	 * ({@code min(18, 2 + scale/8)}, exactly as long every time), multiple transformations per version,
+	 * up to ~40 fields per record, several unions with large alternative sets (the 256 production cap is
+	 * never exceeded), interfaces with common data and extensions, several {@code stringRepresenter}
+	 * records, {@code contextParameters}, fixed-size custom types and projections selecting middle field
+	 * ranges. Every feature that is always present in production schemas is forced; the remaining
+	 * (instance-form upgraders, index insertion, read transforms, recursion, Int52) are forced
+	 * independently at 50% through {@code rnd}, so repeated calls at one scale differ in a controlled way.
+	 *
+	 * @param scale schema width driver: type count caps at {@code scale}, field counts, union sizes and
+	 *              chain length grow with it; 30 is mid-size, 60 approaches the validator's
+	 *              production-shape checks (they activate at 30 types), 90 is large
+	 * @return a profile {@link SchemaGen} always fulfills (the same validity contract as every profile)
+	 */
+	public static SchemaGenProfile productionLike(java.util.Random rnd, int scale) {
+		Objects.requireNonNull(rnd, "rnd");
+		if (scale < 1) {
+			throw new IllegalArgumentException("scale must be >= 1: " + scale);
+		}
+		int maxTypes = Math.max(6, scale);
+		int minTypes = Math.max(3, maxTypes / 4);
+		int maxFields = Math.min(40, Math.max(6, scale * 2 / 3));
+		int chainLength = Math.min(18, 2 + scale / 8);
+		int maxAlternatives = Math.min(256, Math.max(6, scale));
+		int unions = Math.min(4, Math.max(1, scale / 20 + rnd.nextInt(3)));
+		int maxTransformations = Math.min(12, Math.max(3, 2 + scale / 8));
+		EnumSet<Feature> forced = EnumSet.of(Feature.UNIONS, Feature.UNION_EXTENSIONS, Feature.INTERFACES,
+				Feature.CUSTOM_TYPES, Feature.PROJECTIONS, Feature.STRING_REPRESENTERS,
+				Feature.CONTEXT_PARAMETERS, Feature.DATA_ADDS, Feature.DATA_MOVES, Feature.DATA_REMOVALS,
+				Feature.DATA_UPGRADES, Feature.NEW_TYPES, Feature.MULTI_VERSION, Feature.VERSION_DETAILS);
+		for (Feature optional : java.util.List.of(Feature.INSTANCE_FORM_UPGRADERS, Feature.INDEX_INSERTION,
+				Feature.READ_TRANSFORMS, Feature.RECURSION, Feature.INT52)) {
+			if (rnd.nextInt(2) == 0) {
+				forced.add(optional);
+			}
+		}
+		return new SchemaGenProfile(minTypes, maxTypes, 3, maxFields, chainLength, chainLength,
+				maxAlternatives, 4,
+				true, true, true, true, true, true, true, true, true, true, true, true,
+				unions, unions, 2, maxTransformations, Math.max(3, scale / 10), true,
+				forced);
 	}
 
 	/** Tier ladder: QUICK is a smoke schema, NIGHTLY is wide, deep and uses every feature. */
@@ -180,15 +251,19 @@ public record SchemaGenProfile(int minTypes,
 		return switch (tier) {
 			case QUICK -> new SchemaGenProfile(1, 2, 1, 3, 1, 2, 3, 2,
 					false, false, true, false, false, false, false, false, true, true, false, false,
+					1, 1, 0, 3, 2, false,
 					EnumSet.noneOf(Feature.class));
 			case DEFAULT -> new SchemaGenProfile(2, 4, 2, 6, 1, 3, 4, 2,
 					true, true, true, false, true, false, false, false, true, true, true, true,
+					1, 1, 0, 3, 2, false,
 					EnumSet.noneOf(Feature.class));
 			case DEEP -> new SchemaGenProfile(2, 7, 2, 9, 1, 4, 6, 3,
 					true, true, true, true, true, true, true, true, true, true, true, true,
+					1, 1, 0, 3, 2, false,
 					EnumSet.of(Feature.MULTI_VERSION));
 			case NIGHTLY -> new SchemaGenProfile(3, 10, 3, 12, 2, 6, 10, 4,
 					true, true, true, true, true, true, true, true, true, true, true, true,
+					1, 2, 0, 3, 2, false,
 					EnumSet.allOf(Feature.class));
 		};
 	}
@@ -218,6 +293,8 @@ public record SchemaGenProfile(int minTypes,
 				allowArrays || forced.contains(Feature.ARRAY_SCALAR) || forced.contains(Feature.ARRAY_VERSIONED),
 				allowInt52 || forced.contains(Feature.INT52),
 				allowBinaryString,
+				minUnions, maxUnions, minTransformationsPerVersion, maxTransformationsPerVersion,
+				maxStringRepresenters, projectionMiddleRanges,
 				forced);
 	}
 

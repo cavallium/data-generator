@@ -1,0 +1,102 @@
+# Corpus file copied from telegramdb/telegramdb/src/main/data-generator/database-records.yaml.
+# The upstream file uses the old datagen schema format (classes/superTypes nested under each
+# version); because SourcesGeneratorConfiguration no longer parses that layout, the content here
+# was mechanically moved to the current format (single version 0.0.0 -> top-level baseTypesData
+# and superTypesData). Content is otherwise unchanged.
+# A type that starts with "-" is an optional type, otherwise it can't be null
+currentVersion: "0.0.0"
+interfacesData:
+  ChatEntityId:
+    commonData:
+      tableId: Int52
+  GroupId:
+    extendInterfaces: [ChatEntityId]
+  ChatEntity:
+    commonGetters:
+      id: ChatEntityId
+superTypesData:
+  ChatEntityId: [SuperCollectionId, BasicGroupId, UserId, DeprecatedId]
+  GroupId: [SuperCollectionId, BasicGroupId, DeprecatedId]
+  ChatType: [ChatTypeUnknown, ChatTypeChannel, ChatTypeUser, ChatTypeGroup]
+  PictureFormat: [PictureFormatWebp, PictureFormatJpeg]
+baseTypesData:
+  BChatEntityId: {data: {value: ChatEntityId}}
+  BUserId: {data: {value: UserId}}
+  BChannelId: {data: {value: SuperCollectionId}}
+  BGroupId: {data: {value: GroupId}}
+  BChatType: {data: {value: ChatType}}
+
+  Timestamp: {data: {value: long}}
+  SuperCollectionId:
+    stringRepresenter: "org.telegramdb.utils.RecordsUtils.toStringUID"
+    data:
+      tableId: Int52
+  BasicGroupId:
+    stringRepresenter: "org.telegramdb.utils.RecordsUtils.toStringUID"
+    data:
+      tableId: Int52
+  UserId:
+    stringRepresenter: "org.telegramdb.utils.RecordsUtils.toStringUID"
+    data:
+      tableId: Int52
+  DeprecatedId:
+    stringRepresenter: "org.telegramdb.utils.RecordsUtils.toStringUID"
+    data:
+      tableId: Int52
+
+  ChatTypeUnknown: {data: {}}
+  ChatTypeChannel: {data: {}}
+  ChatTypeUser: {data: {}}
+  ChatTypeGroup: {data:{}}
+
+  PictureFormatWebp: {data: {}}
+  PictureFormatJpeg: {data: {}}
+
+  BriefChatInfo:
+    data:
+      id: ChatEntityId
+      type: ChatType
+      username: -String
+      title: String
+  ChatInfo:
+    data:
+      id: ChatEntityId
+      type: ChatType
+      username: -String
+      title: String
+      members: int
+      membersAll: int
+      messages: int
+      description: -String
+      lastRefreshTimestamp: long
+      lastModifiedTimestamp: long
+  ChatMoreLikeThis:
+    data:
+      id: ChatEntityId
+      similarChats: BriefChatInfo[]
+      moreLikeThisTimestamp: Timestamp
+  UserInfo:
+    data:
+      id: ChatEntityId
+      username: -String
+      commands: Command[]
+      firstName: String
+      lastName: -String
+      shareText: -String
+  Command:
+    data:
+      name: String
+      description: String
+  IndexDetails:
+    data:
+      totalChats: long
+      reindexTime: Timestamp
+      totalUnindicizedChats: long
+  TotalUnindicizedChats:
+    data:
+      value: long
+# versions must have only numbers, lowercase letters, dots, dashes. Maximum: 99.999.9999
+versions:
+  0.0.0:
+    details:
+      changelog: "First revision"

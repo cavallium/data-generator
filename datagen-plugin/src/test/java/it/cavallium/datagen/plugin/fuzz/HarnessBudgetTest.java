@@ -9,6 +9,7 @@ import it.cavallium.datagen.plugin.fuzz.support.CompiledSchemas;
 import it.cavallium.datagen.plugin.fuzz.support.GeneratedOracles;
 import it.cavallium.datagen.plugin.fuzz.support.GeneratedOracles.SchemaCase;
 import it.cavallium.datagen.plugin.fuzz.support.SchemaCompiler;
+import it.cavallium.datagen.plugin.fuzz.support.SchemaGen;
 import it.cavallium.datagen.plugin.fuzz.support.SchemaGenProfile;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -108,6 +109,78 @@ class HarnessBudgetTest {
 				"mean disk-reload per schema was " + meanMillis + " ms, budget is " + MAX_MEAN_RELOAD_MILLIS
 						+ " ms (" + GeneratedOracles.describe() + ")");
 	}
+
+	/**
+	 * The complexity-scale compile cost, stated LOUDLY rather than hidden behind a budget: one
+	 * {@link SchemaGenProfile#productionLike} schema at scale 60 must compile through the shared cache
+	 * (a real {@code javac}: counted as a miss, non-zero {@code compileMillis}; a leftover on-disk entry of
+	 * this fingerprint is deleted first so the cold start is deterministic across runs) and the SAME
+	 * request again must be a pure cache reuse — exactly one additional hit, zero additional misses, the
+	 * SAME instance, marked cache-served. The shared instance keeps the artifact's javac time in its final
+	 * {@code compileMillis()} by design (an in-memory hit IS the same object; the javac-free artifact is
+	 * proven by the sibling disk-reload test above), so the zero-javac proof is the stats delta, not a
+	 * reset of that number. Printed, not asserted, are the fingerprint, the generated-file count and the
+	 * compile time: the number a fuzz campaign at this scale actually pays.
+	 */
+	@Test
+	@DisplayName("productionLike(60): one loud compile, then an in-memory reuse with zero javac")
+	void productionSizedCompileIsLoudThenCached() {
+		GeneratedOracles.requireMinimumTier(SchemaGenProfile.Tier.DEEP);
+		CompiledSchemas cache = CompiledSchemas.shared();
+		// Fixed seed: the same production shape on every run, so the printed compile time is comparable.
+		SchemaGen.Coverage coverage = new SchemaGen.Coverage();
+		var config = SchemaGen.generate(new java.util.Random(0xB16E60L),
+				SchemaGenProfile.productionLike(new java.util.Random(0x60_0001L), PRODUCTION_SCALE), coverage);
+		SchemaCompiler.CompileOptions options = new SchemaCompiler.CompileOptions(
+				GeneratedOracles.FUZZ_BASE_PACKAGE, true, false, false,
+				CompiledSchemas.defaultCacheRoot(), Map.of());
+		// Always start cold: a leftover on-disk entry of this fingerprint (valid marker from an earlier
+		// run) would make the FIRST call a javac-free disk hit with compileMillis()==0 and hide the loud
+		// cost this test exists to print. Deleting only this fingerprint's entry keeps every other cache
+		// entry untouched. (The stale-entry fix in SchemaCompiler.compileLoading stays covered: a marker
+		// mismatch still deletes the entry there.)
+		SchemaCompiler.deleteRecursively(CompiledSchemas.defaultCacheRoot()
+				.resolve(SchemaCompiler.fingerprint(config, options)));
+
+		CompiledSchemas.Stats beforeCold = cache.stats();
+		CompiledSchema compiled = cache.compile(config, options);
+		CompiledSchemas.Stats afterCold = cache.stats();
+		assertEquals(1, afterCold.missCount() - beforeCold.missCount(),
+				"the scale-" + PRODUCTION_SCALE + " compile must be a real compile (cache miss): "
+						+ beforeCold + " -> " + afterCold);
+		assertTrue(compiled.compileMillis() > 0,
+				"a cold compile reported compileMillis=" + compiled.compileMillis());
+		System.out.println("[budget] productionLike(" + PRODUCTION_SCALE + ") fingerprint="
+				+ compiled.fingerprint() + " files=" + compiled.generatedFileCount()
+				+ " compileMillis=" + compiled.compileMillis()
+				+ " types=" + compiled.typeNames().size() + " versions=" + compiled.versionCount()
+				+ " " + GeneratedOracles.describe());
+
+		CompiledSchemas.Stats beforeWarm = cache.stats();
+		CompiledSchema again = cache.compile(config, options);
+		CompiledSchemas.Stats afterWarm = cache.stats();
+		assertEquals(1, afterWarm.hitCount() - beforeWarm.hitCount(),
+				"the repeat request was not exactly one cache hit: " + beforeWarm + " -> " + afterWarm);
+		assertEquals(0, afterWarm.missCount() - beforeWarm.missCount(),
+				"the repeat request recompiled: " + beforeWarm + " -> " + afterWarm);
+		assertSame(compiled, again, "the shared cache returned a different instance for the same fingerprint");
+		// The in-memory hit IS the same instance, so compileMillis() there is the artifact's final javac
+		// time BY DESIGN (a resettable zero would require a per-request wrapper the cache never had). The
+		// genuine zero-cost proof is above — one hit, zero misses, same instance — plus the cache-served
+		// mark CompiledSchemas.cached() sets on every served-from-memory request.
+		assertTrue(again.isCached(), "the reused scale-" + PRODUCTION_SCALE + " schema was not marked "
+				+ "cache-served: " + beforeWarm + " -> " + afterWarm);
+		System.out.println("[budget] productionLike(" + PRODUCTION_SCALE + ") reuse stats-delta hits="
+				+ (afterWarm.hitCount() - beforeWarm.hitCount()) + " misses="
+				+ (afterWarm.missCount() - beforeWarm.missCount()) + " compileMillis(artifact)="
+				+ again.compileMillis() + " cache=" + cache.stats());
+		// both uses over: hand both pins back
+		cache.release(compiled);
+		cache.release(again);
+	}
+
+	/** Production scale the loud compile is built at (between the fuzz property's 40 and 90). */
+	private static final int PRODUCTION_SCALE = 60;
 
 	private static SchemaCompiler.CompileOptions options(SchemaCase schemaCase) {
 		return new SchemaCompiler.CompileOptions(GeneratedOracles.FUZZ_BASE_PACKAGE,

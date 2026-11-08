@@ -23,6 +23,7 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -57,12 +58,19 @@ import it.cavallium.datagen.plugin.fuzz.support.SchemaGenProfile.Feature;
  *   and the union stays within 256 alternatives;</li>
  *   <li>{@code stringRepresenter} names a field the record keeps in every version, so it is only set on records no
  *   transformation touches;</li>
+ *   <li>{@code commonData}/{@code commonGetters} of a union interface are real data of EVERY alternative — the way
+ *   {@code ChatEntityId.tableId} is data of {@code SuperCollectionId}, {@code UserId}, … — so the fields are declared
+ *   in version one of every member (also of every union extending it through {@code extendInterfaces}), are never
+ *   moved or removed, and only unions that can guarantee them get them;</li>
  *   <li>no nullable array: {@code -T[]} is rejected by {@code DataModel.fixType}, so it is never emitted;</li>
  *   <li>{@code contextParameters} only on {@code newData}/{@code upgradeData}, naming fields the record already has
  *   at that point;</li>
  *   <li>every {@link VersionTransformation} holds exactly one operation and every {@code readTransform} node holds
  *   exactly one operation; {@code construct} gets exactly one of {@code type}/{@code className} and {@code type:} is
  *   only ever a native name;</li>
+ *   <li>a {@code readTransform} only ever comes from the value-conserving shapes of its paired plain location
+ *   ({@link ReadPairedLocation}), because the fused read and the initializer/upgrader path must return the same
+ *   value;</li>
  *   <li>projections have at least one field, valid Java identifier names, and paths that resolve in every version —
  *   they only read records that exist since version one and that no transformation ever touched.</li>
  * </ul>
@@ -95,11 +103,37 @@ public final class SchemaGen {
 	 */
 	static final String INSTANCE_INITIALIZER = "it.cavallium.datagen.plugin.fuzz.FuzzInstanceLocations.LONG";
 	static final String INSTANCE_UPGRADER = "it.cavallium.datagen.plugin.fuzz.FuzzInstanceLocations.INT_TO_LONG";
+	/** Static targets a {@code readTransform} may call; they mirror the initializer/upgrader values. */
+	static final String TORTURE_TRANSFORMS = "it.cavallium.datagen.plugin.TortureTransforms";
 	/** Custom types need a value class plus a {@code FixedDataCodec}; this pair is the one SourcesGeneratorTest uses. */
 	static final String CUSTOM_JAVA_CLASS = "java.lang.Integer";
 	static final String CUSTOM_CODEC = "it.cavallium.datagen.plugin.TestFixedIntCodec";
 	/** Context parameter the shared {@code TestContext*} transforms read through {@code context.messageId()}. */
 	static final String CONTEXT_FIELD = "messageId";
+	/**
+	 * The two interface-bound fields a union with {@code commonData}/{@code commonGetters} demands. Production is the
+	 * model: {@code ChatEntityId}'s {@code commonData: tableId} is a real field of every alternative, so these are
+	 * emitted as version-one data of every member and are never moved or removed afterwards.
+	 */
+	static final String COMMON_DATA_FIELD = "c0";
+	static final String COMMON_GETTER_FIELD = "c1";
+
+	/**
+	 * The plain initializer/upgrader a {@code readTransform} is paired with, and the value that location computes.
+	 *
+	 * <p>A transformation that carries BOTH a {@code readTransform} and a plain location is read two different ways:
+	 * the fused {@code CurrentVersion.read} compiles the declarative transform, while {@code GenUpgraderBaseX}
+	 * resolves the plain location and the codec-read + {@code upgradeDataToLatestVersion} path calls it. The two
+	 * values must be equal or the {@code GeneratedOracles.upgradeEquivalence} oracle fails, so a {@code readTransform}
+	 * is only ever drawn from the value-conserving shapes of its paired location — pinned by
+	 * {@code SchemaGenTest.readTransformsAgreeWithTheirPlainLocation}.</p>
+	 */
+	enum ReadPairedLocation {
+		/** {@link #LONG_INITIALIZER}: {@code initialize(context) == 123}, independent of any context. */
+		INITIALIZED_LONG,
+		/** {@link #INT_TO_LONG_UPGRADER}: {@code upgrade(old) == old + 1000}. */
+		UPGRADED_FROM_INT
+	}
 
 	public static SourcesGeneratorConfiguration generate(Random rnd, SchemaGenProfile profile) {
 		return generate(rnd, profile, null);
@@ -372,6 +406,10 @@ public final class SchemaGen {
 		private final Map<String, Integer> depth = new HashMap<>();
 		private final LinkedHashMap<String, List<String>> unions = new LinkedHashMap<>();
 		private final LinkedHashMap<String, List<String>> initialUnions = new LinkedHashMap<>();
+		/** Decided with the unions: an interface with common data needs those fields as data of every member. */
+		private final LinkedHashMap<String, InterfaceDataConfiguration> interfacePlan = new LinkedHashMap<>();
+		private final Set<String> commonFieldUnions = new LinkedHashSet<>();
+		private final Set<String> extendingUnions = new LinkedHashSet<>();
 		private final LinkedHashMap<String, CustomTypesConfiguration> customs = new LinkedHashMap<>();
 		private final Set<String> touched = new HashSet<>();
 		private String reserved;
@@ -624,7 +662,8 @@ public final class SchemaGen {
 					|| !(enabled(Feature.UNIONS, true, 50) || needsUnion)) {
 				return;
 			}
-			int unionCount = Math.min(between(1, 2), Math.max(1, live.size() / 2));
+			int unionCount = Math.min(between(profile.minUnions(), profile.maxUnions()),
+					Math.max(1, live.size() / 2));
 			List<String> members = new ArrayList<>(live.keySet());
 			for (int index = 0; index < unionCount; index++) {
 				Collections.shuffle(members, rnd);
@@ -635,7 +674,103 @@ public final class SchemaGen {
 				}
 				unions.put(prefix + "U" + index, new ArrayList<>(members.subList(0, alternatives)));
 			}
+			planInterfaces();
+			// The snapshot is taken AFTER the interface plan, which may have grown a union's alternatives and gave
+			// the common fields to their records: version one must already contain both.
 			initialUnions.putAll(copies(unions));
+		}
+
+		/**
+		 * Decides {@code interfacesData} together with the unions, because both demand things a later transformation
+		 * cannot provide:
+		 *
+		 * <ul>
+		 *   <li>{@code commonData}/{@code commonGetters} are abstract methods of the union interface, so every
+		 *   alternative must carry those fields as real data — production's {@code ChatEntityId} declares
+		 *   {@code tableId} and {@code SuperCollectionId}, {@code BasicGroupId}, {@code UserId} and
+		 *   {@code DeprecatedId} all have it as a field. They are therefore declared in version one of every
+		 *   member, where no transformation can miss them;</li>
+		 *   <li>{@code extendInterfaces} makes the extended union's abstract methods (its common data and its
+		 *   {@code getMetaId$<Union>()}) part of the extending union's contract too, so the extended union must list
+		 *   EVERY alternative of the extending one — again exactly what the telegramdb corpus does with
+		 *   {@code GroupId extends ChatEntityId}.</li>
+		 * </ul>
+		 *
+		 * <p>{@code extendInterfaces} only ever points at the lower-numbered union, so the common-field requirement
+		 * propagates along that chain. A {@code newSubtype} can join neither a common-field union (its fields must
+		 * exist since version one) nor an extending one (the parent could only be extended by a second
+		 * {@code newSubtype}), so with a forced {@code UNION_EXTENSIONS} the first union stays free of both.</p>
+		 */
+		private void planInterfaces() {
+			if (unions.isEmpty() || !enabled(Feature.INTERFACES, profile.allowInterfaces(), 50)) {
+				return;
+			}
+			List<String> unionNames = new ArrayList<>(unions.keySet());
+			String reservedUnion = profile.forced(Feature.UNION_EXTENSIONS) ? unionNames.get(0) : null;
+			var plans = new ArrayList<InterfaceDataConfiguration>();
+			for (int index = 0; index < unionNames.size(); index++) {
+				boolean reserved = unionNames.get(index).equals(reservedUnion);
+				boolean extendsLower = index > 0 && !reserved && (profile.forced(Feature.INTERFACES) || chance(60));
+				boolean common = !reserved && (profile.forced(Feature.INTERFACES) || chance(70));
+				var configured = new InterfaceDataConfiguration();
+				if (extendsLower) {
+					configured.extendInterfaces.add(unionNames.get(index - 1));
+				}
+				if (common) {
+					configured.commonData.put(COMMON_DATA_FIELD, "long");
+					configured.commonGetters.put(COMMON_GETTER_FIELD, "boolean");
+				}
+				plans.add(configured);
+			}
+			// Grow the extended unions BEFORE any common field is handed out, so a record that only became an
+			// alternative of the parent through this step still gets the parent's fields.
+			for (int index = 0; index < unionNames.size(); index++) {
+				for (String parent : plans.get(index).extendInterfaces) {
+					absorbAlternatives(parent, unionNames.get(index));
+				}
+			}
+			for (int index = 0; index < unionNames.size(); index++) {
+				String union = unionNames.get(index);
+				boolean common = !plans.get(index).commonData.isEmpty();
+				boolean extendsLower = !plans.get(index).extendInterfaces.isEmpty();
+				// Ascending order: the extended union (index - 1) was already classified here, because
+				// extendInterfaces only ever points at the lower-numbered union.
+				boolean inherited = extendsLower && index > 0 && commonFieldUnions.contains(unionNames.get(index - 1));
+				if (common || inherited) {
+					commonFieldUnions.add(union);
+					addCommonFields(union);
+				}
+				if (extendsLower) {
+					extendingUnions.add(union);
+				}
+				interfacePlan.put(union, plans.get(index));
+			}
+		}
+
+		/**
+		 * Makes {@code parent} an alternative-holder of every alternative of {@code child}, which is what an
+		 * {@code extendInterfaces} relation demands; the union cap of 256 alternatives still wins.
+		 */
+		private void absorbAlternatives(String parent, String child) {
+			List<String> parentAlternatives = unions.get(parent);
+			for (String alternative : unions.get(child)) {
+				if (!parentAlternatives.contains(alternative) && parentAlternatives.size() < 256) {
+					parentAlternatives.add(alternative);
+				}
+			}
+		}
+
+		/**
+		 * Gives every alternative of {@code union} the interface's common fields, in the version-one snapshot as
+		 * well as in the live simulation, so they are present in every later shape without a transformation.
+		 */
+		private void addCommonFields(String union) {
+			for (String member : unions.get(union)) {
+				for (Map<String, String> shape : List.of(live.get(member), initial.get(member))) {
+					shape.put(COMMON_DATA_FIELD, "long");
+					shape.put(COMMON_GETTER_FIELD, "boolean");
+				}
+			}
 		}
 
 		private static LinkedHashMap<String, List<String>> copies(Map<String, List<String>> source) {
@@ -671,7 +806,12 @@ public final class SchemaGen {
 			if (candidates.isEmpty()) {
 				return;
 			}
-			int count = profile.forced(Feature.STRING_REPRESENTERS) ? 1 : between(1, Math.min(2, candidates.size()));
+			// A forced representer may spread over up to maxStringRepresenters records (production schemas
+			// carry several); unforced ones keep the historical one-or-two.
+			int cap = profile.forced(Feature.STRING_REPRESENTERS)
+					? profile.maxStringRepresenters()
+					: Math.min(2, profile.maxStringRepresenters());
+			int count = between(1, Math.min(cap, candidates.size()));
 			for (int index = 0; index < count; index++) {
 				String name = candidates.get(index % candidates.size());
 				baseTypes.get(name).stringRepresenter = representableField(name);
@@ -715,9 +855,13 @@ public final class SchemaGen {
 			var version = new VersionConfiguration();
 			version.previousVersion = previousVersion;
 			var transformations = new ArrayList<VersionTransformation>();
-			int wanted = between(0, 3);
+			int wanted = between(profile.minTransformationsPerVersion(), profile.maxTransformationsPerVersion());
 			int rounds = Math.max(wanted, pendingOperations.size());
-			for (int index = 0; index < rounds; index++) {
+			// An operation can return null (no candidate record at this point); retry until the version really
+			// carries `rounds` transformations, bounded so an exhausted shape still emits what it has.
+			int attempts = 0;
+			int maxAttempts = 4 * rounds + 4;
+			while (transformations.size() < rounds && attempts++ < maxAttempts) {
 				VersionTransformation transformation = !pendingOperations.isEmpty()
 						? operation(pendingOperations.remove(0))
 						: randomOperation();
@@ -789,8 +933,22 @@ public final class SchemaGen {
 		}
 
 		private boolean hasUnionExtension() {
-			return unions.values().stream().anyMatch(alternatives -> alternatives.size() < 256)
+			return !extensibleUnions().isEmpty()
 					&& live.keySet().stream().anyMatch(name -> !inAnyUnion(name));
+		}
+
+		/**
+		 * Unions a {@code newSubtype} may join. Excluded are unions whose interface declares common data (those
+		 * fields are version-one data of every alternative, and a type that only joins in a later version cannot
+		 * have carried them then) and unions that extend another one (their alternatives must be alternatives of
+		 * the extended union too, which a single {@code newSubtype} cannot express).
+		 */
+		private List<String> extensibleUnions() {
+			return unions.entrySet().stream()
+					.filter(entry -> entry.getValue().size() < 256)
+					.map(Map.Entry::getKey)
+					.filter(name -> !commonFieldUnions.contains(name) && !extendingUnions.contains(name))
+					.toList();
 		}
 
 		private boolean inAnyUnion(String name) {
@@ -810,7 +968,11 @@ public final class SchemaGen {
 			boolean useContext = enabled(Feature.CONTEXT_PARAMETERS, profile.allowContextParameters(), 35)
 					&& fields.containsKey(CONTEXT_FIELD);
 			if (enabled(Feature.READ_TRANSFORMS, true, 30) && !useContext) {
-				newData.readTransform = readTransform();
+				// A non-custom readTransform still needs the plain initializer location
+				// (GenUpgraderBaseX resolves it before consulting the readTransform), and the transform has to
+				// compute the value that initializer computes.
+				newData.initializer = LONG_INITIALIZER;
+				newData.readTransform = readTransform(newData.type, ReadPairedLocation.INITIALIZED_LONG);
 				emitted.add(Feature.READ_TRANSFORMS);
 			} else if (useContext) {
 				newData.initializer = CONTEXT_LONG_INITIALIZER;
@@ -832,14 +994,16 @@ public final class SchemaGen {
 		}
 
 		private MoveDataConfiguration moveData() {
-			String type = pick(liveTypesWithFields());
+			String type = pick(mutableTypes().stream()
+					.filter(candidate -> !movableFields(candidate).isEmpty())
+					.toList());
 			if (type == null) {
 				return null;
 			}
 			var fields = live.get(type);
 			var moveData = new MoveDataConfiguration();
 			moveData.transformClass = type;
-			moveData.from = pick(new ArrayList<>(fields.keySet()));
+			moveData.from = pick(movableFields(type));
 			// `to` is a name this record never used, so it can never collide with an existing field.
 			moveData.to = nextField(type);
 			// DataModel removes the field first and only then inserts, so the index bound is the size after the
@@ -857,7 +1021,7 @@ public final class SchemaGen {
 
 		private RemoveDataConfiguration removeData() {
 			List<String> candidates = mutableTypes().stream()
-					.filter(type -> live.get(type).size() > 1)
+					.filter(type -> live.get(type).size() > 1 && !movableFields(type).isEmpty())
 					.toList();
 			String type = pick(candidates);
 			if (type == null) {
@@ -865,10 +1029,25 @@ public final class SchemaGen {
 			}
 			var removeData = new RemoveDataConfiguration();
 			removeData.transformClass = type;
-			removeData.from = pick(new ArrayList<>(live.get(type).keySet()));
+			removeData.from = pick(movableFields(type));
 			live.get(type).remove(removeData.from);
 			touched.add(type);
 			return removeData;
+		}
+
+		/**
+		 * The fields a {@code moveData} or {@code removeData} may touch. The interface common fields are excluded
+		 * for the same reason the {@code stringRepresenter} field is: a union interface declares accessors for
+		 * them, so every alternative must keep them in every version.
+		 */
+		private List<String> movableFields(String type) {
+			return live.get(type).keySet().stream()
+					.filter(field -> !isInterfaceBound(field))
+					.toList();
+		}
+
+		private static boolean isInterfaceBound(String field) {
+			return COMMON_DATA_FIELD.equals(field) || COMMON_GETTER_FIELD.equals(field);
 		}
 
 		private UpgradeDataConfiguration upgradeData() {
@@ -909,7 +1088,10 @@ public final class SchemaGen {
 				upgradeData.upgraderInstance = INSTANCE_UPGRADER;
 				emitted.add(Feature.INSTANCE_FORM_UPGRADERS);
 			} else if (enabled(Feature.READ_TRANSFORMS, true, 25)) {
-				upgradeData.readTransform = readTransform();
+				// Same rule as newData: the plain upgrader location is resolved even for
+				// non-custom readTransforms (GenUpgraderBaseX), so both must compute old + 1000.
+				upgradeData.upgrader = INT_TO_LONG_UPGRADER;
+				upgradeData.readTransform = readTransform(upgradeData.type, ReadPairedLocation.UPGRADED_FROM_INT);
 				emitted.add(Feature.READ_TRANSFORMS);
 			} else {
 				upgradeData.upgrader = INT_TO_LONG_UPGRADER;
@@ -994,10 +1176,7 @@ public final class SchemaGen {
 		}
 
 		private NewSubtypeConfiguration newSubtype() {
-			String union = pick(unions.entrySet().stream()
-					.filter(entry -> entry.getValue().size() < 256)
-					.map(Map.Entry::getKey)
-					.toList());
+			String union = pick(extensibleUnions());
 			if (union == null) {
 				return null;
 			}
@@ -1013,32 +1192,72 @@ public final class SchemaGen {
 			return newSubtype;
 		}
 
-		/** A {@code readTransform} that declares exactly one operation, as {@code ReadTransformConfiguration} demands. */
-		private ReadTransformConfiguration readTransform() {
+		/**
+		 * A {@code readTransform} that declares exactly one operation, as {@code ReadTransformConfiguration}
+		 * demands, whose shape fits the declared result type ({@code GenReadPlan} requires a non-null
+		 * expected-or-explicit type for {@code constant}/{@code invokeStatic}, so the node declares its
+		 * {@code type} explicitly), and — decisively — whose VALUE equals the value of the plain location the
+		 * same transformation declares, see {@link ReadPairedLocation}. The fused read compiles the declarative
+		 * transform while the codec-read + {@code upgradeDataToLatestVersion} path calls the initializer/upgrader,
+		 * so an arbitrary pairing makes the two read paths disagree.
+		 *
+		 * <p>Only the two {@link ReadPairedLocation} shapes are emitted, both non-nullable: {@code mapNullable}
+		 * needs a nullable result type, and this generator never carries a {@code readTransform} on a nullable
+		 * field (a {@code newData} is always {@code long}, and the nullable {@code upgradeData} variant always
+		 * runs with context parameters, which has no plain location to agree with). A {@code mapNullable} over a
+		 * {@code null} source would also yield a non-null value the initializer path never produces.</p>
+		 */
+		private ReadTransformConfiguration readTransform(String resultType, ReadPairedLocation location) {
+			if (resultType != null && resultType.startsWith("-")) {
+				throw new IllegalStateException("No value-conserving readTransform shape exists for a nullable "
+						+ "field: a paired plain location must compute the same value, and the nullable variants "
+						+ "of this generator carry context parameters instead. Got " + resultType);
+			}
 			var transform = new ReadTransformConfiguration();
-			switch (rnd.nextInt(4)) {
-				case 0 -> transform.constant = constant(7L);
-				case 1 -> {
-					var invokeStatic = new ReadTransformConfiguration.InvokeStatic();
-					invokeStatic.method = "it.cavallium.datagen.plugin.TortureTransforms.widen";
-					invokeStatic.arguments = new ArrayList<>(List.of(constantNode(3L)));
-					transform.invokeStatic = invokeStatic;
+			transform.type = resultType != null ? resultType : "long";
+			// `construct` is deliberately not emitted: with a native `type:` the generator casts the
+			// primitive TypeName to a ClassName and throws ClassCastException (GenReadPlan:1017) —
+			// only class shapes are constructible. Reported as a generator ergonomics nit.
+			switch (location) {
+				// TestSimpleLongInitializer.initialize(...) == 123.
+				case INITIALIZED_LONG -> {
+					switch (rnd.nextInt(2)) {
+						case 0 -> transform.constant = constant(123L);
+						// TortureTransforms.widen(-877) == -877 + 1000 == 123.
+						default -> transform.invokeStatic = invokeStatic(TORTURE_TRANSFORMS + ".widen",
+								List.of(constantNode(-877, "int")));
+					}
 				}
-				case 2 -> {
-					// `type:` only ever names a native; anything else must use `className:`.
-					var construct = new ReadTransformConfiguration.Construct();
-					construct.type = "long";
-					construct.arguments = new ArrayList<>(List.of(constantNode(11L)));
-					transform.construct = construct;
-				}
-				default -> {
-					var mapNullable = new ReadTransformConfiguration.MapNullable();
-					mapNullable.source = constantNode(5L);
-					mapNullable.transform = constantNode(9L);
-					transform.mapNullable = mapNullable;
+				// TestSimpleIntToLongUpgrader.upgrade(old) == old + 1000.
+				case UPGRADED_FROM_INT -> {
+					switch (rnd.nextInt(2)) {
+						// widen(value) == old + 1000; `value` is the old field, so the node needs no type.
+						case 0 -> transform.invokeStatic = invokeStatic(TORTURE_TRANSFORMS + ".widen",
+								List.of(identityNode("value")));
+						// widenWithAnchor(old, -1000) == old - 1000 + 2000 == old + 1000.
+						default -> transform.invokeStatic = invokeStatic(TORTURE_TRANSFORMS + ".widenWithAnchor",
+								List.of(identityNode("value"), constantNode(-1000L, "long")));
+					}
 				}
 			}
 			return transform;
+		}
+
+		private static ReadTransformConfiguration.InvokeStatic invokeStatic(String method,
+				List<ReadTransformConfiguration> arguments) {
+			var invokeStatic = new ReadTransformConfiguration.InvokeStatic();
+			invokeStatic.method = method;
+			// Argument nodes are compiled with NO expected type, so a constant node must declare the target's
+			// PARAMETER type explicitly: a `long` node feeding `widen(int)` makes javac reject the call.
+			invokeStatic.arguments = new ArrayList<>(arguments);
+			return invokeStatic;
+		}
+
+		private static ReadTransformConfiguration identityNode(String source) {
+			var node = new ReadTransformConfiguration();
+			node.identity = new ReadTransformConfiguration.Identity();
+			node.identity.source = source;
+			return node;
 		}
 
 		private static ReadTransformConfiguration.Constant constant(Object value) {
@@ -1047,8 +1266,14 @@ public final class SchemaGen {
 			return constant;
 		}
 
-		private static ReadTransformConfiguration constantNode(Object value) {
+		/**
+		 * Argument nodes are compiled with NO expected type, so they must declare it explicitly, and the declared
+		 * type has to be the target's PARAMETER type: a {@code long} node feeding {@code widen(int)} makes javac
+		 * reject the call as a lossy conversion.
+		 */
+		private static ReadTransformConfiguration constantNode(Object value, String type) {
 			var node = new ReadTransformConfiguration();
+			node.type = type;
 			node.constant = constant(value);
 			return node;
 		}
@@ -1089,7 +1314,7 @@ public final class SchemaGen {
 			}
 			if (profile.forced(Feature.READ_TRANSFORMS) && !emitted.contains(Feature.READ_TRANSFORMS)) {
 				var newData = plainNewData(target);
-				newData.readTransform = readTransform();
+				newData.readTransform = readTransform(newData.type, ReadPairedLocation.INITIALIZED_LONG);
 				added |= commit(transformations, newData);
 			}
 			if (profile.forced(Feature.INSTANCE_FORM_UPGRADERS) && !emitted.contains(Feature.INSTANCE_FORM_UPGRADERS)) {
@@ -1141,24 +1366,7 @@ public final class SchemaGen {
 		// ---- current version only ------------------------------------------------------------------
 
 		private Map<String, InterfaceDataConfiguration> interfaces() {
-			if (initialUnions.isEmpty() || !enabled(Feature.INTERFACES, profile.allowInterfaces(), 50)) {
-				return null;
-			}
-			var result = new LinkedHashMap<String, InterfaceDataConfiguration>();
-			List<String> unionNames = new ArrayList<>(initialUnions.keySet());
-			for (int index = 0; index < unionNames.size(); index++) {
-				var configured = new InterfaceDataConfiguration();
-				if (index > 0 && chance(60)) {
-					// Extending a lower-numbered union keeps the interface graph acyclic.
-					configured.extendInterfaces.add(unionNames.get(index - 1));
-				}
-				if (chance(70)) {
-					configured.commonData.put("c0", "long");
-					configured.commonGetters.put("c1", "boolean");
-				}
-				result.put(unionNames.get(index), configured);
-			}
-			return result;
+			return interfacePlan.isEmpty() ? null : new LinkedHashMap<>(interfacePlan);
 		}
 
 		private Map<String, ProjectionConfiguration> projections() {
@@ -1175,9 +1383,13 @@ public final class SchemaGen {
 				projection.sourceType = sourceType;
 				var selected = new LinkedHashMap<String, String>();
 				int selectedCount = between(1, Math.min(4, fields.size()));
+				// With projectionMiddleRanges the selection is a strict MIDDLE range of the source's fields
+				// (production projections rarely start at the first field); otherwise it stays a prefix.
+				int maxStart = fields.size() - selectedCount;
+				int start = profile.projectionMiddleRanges() && maxStart > 1 ? 1 + between(0, maxStart - 1) : 0;
 				for (int fieldIndex = 0; fieldIndex < selectedCount; fieldIndex++) {
 					// Field names are valid Java identifiers; the path is a field that exists in every version.
-					selected.put("p" + fieldIndex, fields.get(fieldIndex));
+					selected.put("p" + fieldIndex, fields.get(start + fieldIndex));
 				}
 				projection.fields = selected;
 				if (!profile.forced(Feature.PROJECTIONS) && chance(50)) {
