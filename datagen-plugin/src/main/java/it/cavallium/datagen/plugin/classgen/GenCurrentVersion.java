@@ -162,7 +162,12 @@ public class GenCurrentVersion extends ClassGenerator {
 					.addParameter(ParameterSpec.builder(TypeVariableName.get("T"), "oldData").build())
 					.addStatement("$T data = oldData", Object.class);
 			upgradeDataToLatestVersion2MethodBuilder.beginControlFlow("switch (oldVersion)");
-			for (var versionConfiguration : dataModel.getVersionsSet()) {
+			// The cases fall through to chain one-hop upgrades up to the current version, so they must be
+			// emitted in ascending version order (getVersionsSet() is a fastutil hash view, whose iteration
+			// order stops being ascending once a schema has enough versions).
+			var orderedVersions = new ArrayList<>(dataModel.getVersionsSet());
+			orderedVersions.sort(java.util.Comparator.comparingInt(ComputedVersion::getVersion));
+			for (var versionConfiguration : orderedVersions) {
 				// Upgrade an already materialized value through each structural boundary.
 				upgradeDataToLatestVersion2MethodBuilder.addCode("case $T.$N: ",
 						versionsClassName,

@@ -22,6 +22,7 @@ import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
@@ -270,6 +271,11 @@ final class ReadPlanCompiler {
 	}
 
 	private ValueShape canonicalize(ValueShape shape) {
+		// Fast path: a shape whose value is already in the intern table is canonical (children are
+		// interned bottom-up); returning the interned instance keeps canonicalization of shared
+		// subtrees linear and preserves the identity invariant of the table.
+		ValueShape interned = canonicalShapes.get(shape);
+		if (interned != null) return interned;
 		ValueShape normalized = switch (shape) {
 			case NullableShape nullable -> new NullableShape(canonicalize(nullable.value()),
 					nullable.minimumSerializedSize());
@@ -509,18 +515,101 @@ final class ReadPlanCompiler {
 	record CustomShape(String name, String javaType, String codec, Integer fixedSize,
 			int minimumSerializedSize) implements ValueShape { }
 
-	record NullableShape(ValueShape value, int minimumSerializedSize) implements ValueShape { }
-
-	record ArrayShape(ValueShape element, int minimumSerializedSize) implements ValueShape { }
-
-	record RecordShape(String name, List<ValueShape> fields,
-			int minimumSerializedSize) implements ValueShape {
-		RecordShape { fields = List.copyOf(fields); }
+	// Composite shapes precompute their hash once at construction: canonicalize() looks shapes up
+	// in HashMaps, and a recursively computed hashCode is quadratic on deeply nested read plans.
+	// Equality stays component-wise (identical to the previous records'); everything is immutable.
+	static final class NullableShape implements ValueShape {
+		private final ValueShape value;
+		private final int minimumSerializedSize;
+		private final int hash;
+		NullableShape(ValueShape value, int minimumSerializedSize) {
+			this.value = value;
+			this.minimumSerializedSize = minimumSerializedSize;
+			this.hash = Objects.hashCode(value) * 31 + minimumSerializedSize;
+		}
+		ValueShape value() { return value; }
+		@Override public int minimumSerializedSize() { return minimumSerializedSize; }
+		@Override public int hashCode() { return hash; }
+		@Override public boolean equals(Object other) {
+			return other instanceof NullableShape that
+					&& value.equals(that.value) && minimumSerializedSize == that.minimumSerializedSize;
+		}
+		@Override public String toString() {
+			return "NullableShape[value=" + value + ", minimumSerializedSize=" + minimumSerializedSize + "]";
+		}
 	}
 
-	record UnionShape(String name, List<ValueShape> alternatives,
-			int minimumSerializedSize) implements ValueShape {
-		UnionShape { alternatives = List.copyOf(alternatives); }
+	static final class ArrayShape implements ValueShape {
+		private final ValueShape element;
+		private final int minimumSerializedSize;
+		private final int hash;
+		ArrayShape(ValueShape element, int minimumSerializedSize) {
+			this.element = element;
+			this.minimumSerializedSize = minimumSerializedSize;
+			this.hash = Objects.hashCode(element) * 31 + minimumSerializedSize;
+		}
+		ValueShape element() { return element; }
+		@Override public int minimumSerializedSize() { return minimumSerializedSize; }
+		@Override public int hashCode() { return hash; }
+		@Override public boolean equals(Object other) {
+			return other instanceof ArrayShape that
+					&& element.equals(that.element) && minimumSerializedSize == that.minimumSerializedSize;
+		}
+		@Override public String toString() {
+			return "ArrayShape[element=" + element + ", minimumSerializedSize=" + minimumSerializedSize + "]";
+		}
+	}
+
+	static final class RecordShape implements ValueShape {
+		private final String name;
+		private final List<ValueShape> fields;
+		private final int minimumSerializedSize;
+		private final int hash;
+		RecordShape(String name, List<ValueShape> fields, int minimumSerializedSize) {
+			this.name = name;
+			this.fields = List.copyOf(fields);
+			this.minimumSerializedSize = minimumSerializedSize;
+			this.hash = (Objects.hashCode(name) * 31 + this.fields.hashCode()) * 31 + minimumSerializedSize;
+		}
+		String name() { return name; }
+		List<ValueShape> fields() { return fields; }
+		@Override public int minimumSerializedSize() { return minimumSerializedSize; }
+		@Override public int hashCode() { return hash; }
+		@Override public boolean equals(Object other) {
+			return other instanceof RecordShape that
+					&& name.equals(that.name) && fields.equals(that.fields)
+					&& minimumSerializedSize == that.minimumSerializedSize;
+		}
+		@Override public String toString() {
+			return "RecordShape[name=" + name + ", fields=" + fields
+					+ ", minimumSerializedSize=" + minimumSerializedSize + "]";
+		}
+	}
+
+	static final class UnionShape implements ValueShape {
+		private final String name;
+		private final List<ValueShape> alternatives;
+		private final int minimumSerializedSize;
+		private final int hash;
+		UnionShape(String name, List<ValueShape> alternatives, int minimumSerializedSize) {
+			this.name = name;
+			this.alternatives = List.copyOf(alternatives);
+			this.minimumSerializedSize = minimumSerializedSize;
+			this.hash = (Objects.hashCode(name) * 31 + this.alternatives.hashCode()) * 31 + minimumSerializedSize;
+		}
+		String name() { return name; }
+		List<ValueShape> alternatives() { return alternatives; }
+		@Override public int minimumSerializedSize() { return minimumSerializedSize; }
+		@Override public int hashCode() { return hash; }
+		@Override public boolean equals(Object other) {
+			return other instanceof UnionShape that
+					&& name.equals(that.name) && alternatives.equals(that.alternatives)
+					&& minimumSerializedSize == that.minimumSerializedSize;
+		}
+		@Override public String toString() {
+			return "UnionShape[name=" + name + ", alternatives=" + alternatives
+					+ ", minimumSerializedSize=" + minimumSerializedSize + "]";
+		}
 	}
 
 	record RecursiveShape(String name, int version, int minimumSerializedSize) implements ValueShape { }
