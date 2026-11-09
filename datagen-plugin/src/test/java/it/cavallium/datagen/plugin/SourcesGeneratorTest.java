@@ -91,24 +91,39 @@ class SourcesGeneratorTest {
 				"(?s).*case T0 -> BoundReaderFactory[0-2]\\.newT0BoundReader\\(version, limits\\);.*"),
 				currentVersionSource);
 		for (int chunk = 0; chunk < 3; chunk++) {
-			assertTrue(currentVersionSource.contains("private static final class BoundReaderFactory" + chunk),
-					currentVersionSource);
+			// The factories are their own top-level classes. Nesting them in CurrentVersion instead costs two
+			// constant-pool entries per (type x version) in the nest host, which overflowed the 65535 limit
+			// ("too many constants") on a real 21-version schema.
+			String factorySource = Files.readString(
+					sources.resolve("org/example/current/BoundReaderFactory" + chunk + ".java"));
+			assertTrue(factorySource.contains("final class BoundReaderFactory" + chunk + " {"), factorySource);
+			assertFalse(factorySource.contains("class CurrentVersion"), factorySource);
 		}
-		assertTrue(currentVersionSource.contains(
-				"private static BoundReader<T0> newT0BoundReader(int version, DecodeLimits limits)"),
-				currentVersionSource);
-		assertTrue(currentVersionSource.contains("case 0 -> new T0V0Reader(limits);"), currentVersionSource);
-		assertTrue(currentVersionSource.contains("case 3 -> new T0V3Reader(limits);"), currentVersionSource);
+		// Types are dispatched in schema order, so T0's factory index is not fixed; assert on all factories.
+		// BoundReader is nested in CurrentVersion, so from a factory file it is named from outside.
+		String factorySources = boundReaderFactoriesSource(sources);
+		assertTrue(factorySources.contains(
+				"static CurrentVersion.BoundReader<T0> newT0BoundReader(int version, DecodeLimits limits)"),
+				factorySources);
+		assertTrue(factorySources.contains("case 0 -> new T0V0Reader(limits);"), factorySources);
+		assertTrue(factorySources.contains("case 3 -> new T0V3Reader(limits);"), factorySources);
 
 		try (var loader = compileGeneratedSources(sources, temp.resolve("classes"))) {
 			for (int chunk = 0; chunk < 3; chunk++) {
-				Class<?> factory = loader.loadClass("org.example.current.CurrentVersion$BoundReaderFactory" + chunk);
+				Class<?> factory = loader.loadClass("org.example.current.BoundReaderFactory" + chunk);
 				assertTrue(factory.getDeclaredMethods().length <= 32);
 				assertTrue(factory.getDeclaredClasses().length <= 32 * 4);
-				Path classFile = temp.resolve("classes/org/example/current/CurrentVersion$BoundReaderFactory"
+				Path classFile = temp.resolve("classes/org/example/current/BoundReaderFactory"
 						+ chunk + ".class");
 				assertTrue(ClassFile.of().parse(classFile).constantPool().size() < 10_000);
 			}
+			// Every nested class at any depth is listed in its nest host's constant pool, so CurrentVersion
+			// must not carry any factory-bound reader as a nest member: that listing is what grew without
+			// bound as the version history lengthened.
+			String currentVersionBytes = new String(Files.readAllBytes(
+					temp.resolve("classes/org/example/current/CurrentVersion.class")), StandardCharsets.ISO_8859_1);
+			assertFalse(currentVersionBytes.contains("BoundReaderFactory" + '$'),
+					"CurrentVersion still nests bound readers, so its constant pool grows per version again");
 			Class<?> baseType = loader.loadClass("org.example.BaseType");
 			Class<?> currentVersion = loader.loadClass("org.example.current.CurrentVersion");
 			Class<?> boundReader = loader.loadClass("org.example.current.CurrentVersion$BoundReader");
@@ -163,8 +178,11 @@ class SourcesGeneratorTest {
 		evolved.generateSources(BASE_PACKAGE, sources, false, true, false);
 
 		String currentVersion = Files.readString(sources.resolve("org/example/current/CurrentVersion.java"));
-		assertFalse(currentVersion.contains("CV0Reader"), currentVersion);
-		assertTrue(currentVersion.contains("CV1Reader"), currentVersion);
+		// Version-bound readers are generated into the BoundReaderFactory files, which are top-level classes
+		// so that CurrentVersion's constant pool does not grow with the version history.
+		String generatedReaders = currentVersion + boundReaderFactoriesSource(sources);
+		assertFalse(generatedReaders.contains("CV0Reader"), generatedReaders);
+		assertTrue(generatedReaders.contains("CV1Reader"), generatedReaders);
 		try (var loader = compileGeneratedSources(sources, temp.resolve("introduced-classes"))) {
 			Class<?> baseType = loader.loadClass("org.example.BaseType");
 			Object c = enumValue(baseType, "C");
@@ -1606,8 +1624,11 @@ class SourcesGeneratorTest {
 		assertTrue(plan.matches("(?s).*readPlan\\d+Fallback\\(FallbackBufDataCursor input, State state\\).*"));
 		String currentVersionSource = Files.readString(sources.resolve("org/example/current/CurrentVersion.java"));
 		assertTrue(currentVersionSource.contains("BufDataCursor.bindSpecialized"));
-		assertTrue(currentVersionSource.contains("protected final Root readHeapValue(HeapBufDataCursor input)"));
-		assertTrue(currentVersionSource.contains("RootReadPlan.readV0(input, state)"));
+		// The bound reader bodies live in the factory files; only the storage dispatch stays in CurrentVersion.
+		String boundReaders = boundReaderFactoriesSource(sources);
+		assertTrue(boundReaders.contains("protected final Root readHeapValue(HeapBufDataCursor input)"),
+				boundReaders);
+		assertTrue(boundReaders.contains("RootReadPlan.readV0(input, state)"), boundReaders);
 		assertFalse(currentVersionSource.contains("java.util.function.Function"));
 		assertFalse(currentVersionSource.contains("::read"));
 
@@ -4666,10 +4687,29 @@ class SourcesGeneratorTest {
 				});
 	}
 
+	/**
+	 * The generated bound reader factories ({@code BoundReaderFactory<N>.java}) are top-level classes of the
+	 * current package rather than nested in {@code CurrentVersion}: each nested class at any depth costs two
+	 * constant-pool entries in the nest host, and one is generated per (type x version), which overflowed the
+	 * 65535 limit on a long real-world version history.
+	 */
+	private static String boundReaderFactoriesSource(Path sources) throws Exception {
+		var builder = new StringBuilder();
+		try (var files = Files.list(sources.resolve("org/example/current"))) {
+			for (Path file : files.filter(path -> {
+				String name = path.getFileName().toString();
+				return name.startsWith("BoundReaderFactory") && name.endsWith(".java");
+			}).sorted().toList()) {
+				builder.append(Files.readString(file));
+			}
+		}
+		return builder.toString();
+	}
+
 	private static void assertBoundReaderKernelBytecode(Path classes, String typeName, int version) throws Exception {
 		Path classFile;
 		try (var files = Files.list(classes.resolve("org/example/current"))) {
-			classFile = files.filter(path -> path.getFileName().toString().startsWith("CurrentVersion$BoundReaderFactory"))
+			classFile = files.filter(path -> path.getFileName().toString().startsWith("BoundReaderFactory"))
 					.filter(path -> path.getFileName().toString().endsWith("$" + typeName + "V" + version + "Reader.class"))
 					.findFirst().orElseThrow();
 		}

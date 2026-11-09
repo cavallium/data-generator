@@ -700,10 +700,29 @@ class AdversarialEvolutionTest {
 				"fused reads must not re-enter the historical payload upgrader chain");
 		assertFalse(currentVersion.contains("java.util.function.Function"));
 		assertFalse(currentVersion.contains("::read"));
+		// Version-bound readers are generated into the top-level BoundReaderFactory files; check the same
+		// no-lambda shape there and that every version still has its own specialized reader.
+		String boundReaders = boundReaderFactoriesSource(sources);
+		assertFalse(boundReaders.contains("java.util.function.Function"), boundReaders);
+		assertFalse(boundReaders.contains("::read"), boundReaders);
 		for (int version = 0; version < VERSION_COUNT; version++) {
-			assertTrue(currentVersion.contains("new MegaRootV" + version + "Reader(limits)"),
+			assertTrue(boundReaders.contains("new MegaRootV" + version + "Reader(limits)"),
 					"missing version-bound reader " + version);
 		}
+	}
+
+	/** See GenCurrentVersion: the factories are top-level classes, not nested in CurrentVersion. */
+	private static String boundReaderFactoriesSource(Path sources) throws IOException {
+		var builder = new StringBuilder();
+		try (var files = Files.list(sources.resolve("org/example/current"))) {
+			for (Path file : files.filter(path -> {
+				String name = path.getFileName().toString();
+				return name.startsWith("BoundReaderFactory") && name.endsWith(".java");
+			}).sorted().toList()) {
+				builder.append(Files.readString(file));
+			}
+		}
+		return builder.toString();
 	}
 
 	private static void assertReadPlanMethodSizes(Path classes) throws Exception {
@@ -738,7 +757,7 @@ class AdversarialEvolutionTest {
 			throws Exception {
 		Path classFile;
 		try (var files = Files.list(classes.resolve("org/example/current"))) {
-			classFile = files.filter(path -> path.getFileName().toString().startsWith("CurrentVersion$BoundReaderFactory"))
+			classFile = files.filter(path -> path.getFileName().toString().startsWith("BoundReaderFactory"))
 					.filter(path -> path.getFileName().toString().endsWith("$" + typeName + "V" + version + "Reader.class"))
 					.findFirst().orElseThrow();
 		}

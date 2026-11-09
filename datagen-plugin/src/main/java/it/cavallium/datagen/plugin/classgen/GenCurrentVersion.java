@@ -24,6 +24,7 @@ import it.cavallium.datagen.DecodeLimits;
 import it.cavallium.datagen.MalformedDataException;
 import it.cavallium.stream.SafeDataInput;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -192,14 +193,26 @@ public class GenCurrentVersion extends ClassGenerator {
 			currentVersionClass.addMethod(upgradeDataToLatestVersion2MethodBuilder.build());
 		}
 
-		generateReader(currentVersionClass, currentVersionPackage);
+		var boundReaderFactories = generateReader(currentVersionClass, currentVersionPackage);
 
 		generateGetClass(dataModel.getCurrentVersion(), currentVersionClass);
 
-		return Stream.of(new GeneratedClass(dataModel.getCurrentVersion().getPackage(basePackageName), currentVersionClass));
+		// The bound reader factories are emitted as their own top-level classes instead of nested ones.
+		// Every nested class at any depth has to be listed in its nest host's constant pool (one Class plus
+		// one Utf8 entry each), and one factory entry per (type x version) is generated, so nesting them
+		// inside CurrentVersion consumed ~59% of its 65535-entry pool and a new schema version overflowed it.
+		// As top-level classes they keep their own pools, which keeps CurrentVersion roughly flat as the
+		// version history grows. See: "too many constants" at the 65535 constant pool limit.
+		var currentVersionPackageGenerated = dataModel.getCurrentVersion().getPackage(basePackageName);
+		var generatedClasses = new ArrayList<GeneratedClass>();
+		generatedClasses.add(new GeneratedClass(currentVersionPackageGenerated, currentVersionClass));
+		for (var boundReaderFactory : boundReaderFactories) {
+			generatedClasses.add(new GeneratedClass(currentVersionPackageGenerated, boundReaderFactory));
+		}
+		return generatedClasses.stream();
 	}
 
-	private void generateReader(Builder currentVersionClass, String currentVersionPackage) {
+	private List<TypeSpec.Builder> generateReader(Builder currentVersionClass, String currentVersionPackage) {
 		var iBaseType = ClassName.get(currentVersionPackage, "IBaseType");
 		var baseType = ClassName.get(dataModel.getRootPackage(basePackageName), "BaseType");
 		var readerType = ClassName.get(currentVersionPackage, "CurrentVersion").nestedClass("Reader");
@@ -322,8 +335,10 @@ public class GenCurrentVersion extends ClassGenerator {
 					.build();
 		currentVersionClass.addType(readerBase);
 
+		// Package-private rather than private: the generated BoundReaderFactory<N> classes are top-level
+		// classes in this same package (they are no longer nested here), and they extend this base.
 		var boundReaderBase = TypeSpec.classBuilder("BoundReaderBase")
-				.addModifiers(Modifier.PRIVATE, Modifier.ABSTRACT, Modifier.STATIC)
+				.addModifiers(Modifier.ABSTRACT, Modifier.STATIC)
 				.addTypeVariable(TypeVariableName.get("U", iBaseType))
 				.addSuperinterface(ParameterizedTypeName.get(boundReaderType, TypeVariableName.get("U")))
 				.addField(FieldSpec.builder(DecodeBudget.class, "budget", Modifier.PRIVATE, Modifier.FINAL).build())
@@ -388,9 +403,10 @@ public class GenCurrentVersion extends ClassGenerator {
 		for (int typeIndex = 0; typeIndex < currentTypes.size(); typeIndex++) {
 			var currentType = currentTypes.get(typeIndex);
 			if (typeIndex % BOUND_READER_FACTORY_TYPES == 0) {
+				// Emitted as a top-level package-private class (see generateClasses), so no private/static.
 				boundReaderFactories.add(TypeSpec.classBuilder("BoundReaderFactory"
 						+ typeIndex / BOUND_READER_FACTORY_TYPES)
-						.addModifiers(Modifier.PRIVATE, Modifier.STATIC, Modifier.FINAL));
+						.addModifiers(Modifier.FINAL));
 			}
 			var boundReaderFactory = boundReaderFactories.get(typeIndex / BOUND_READER_FACTORY_TYPES);
 			String className = currentType.getName() + "Reader";
@@ -503,13 +519,15 @@ public class GenCurrentVersion extends ClassGenerator {
 		for (int typeIndex = 0; typeIndex < currentTypes.size(); typeIndex++) {
 			var currentType = currentTypes.get(typeIndex);
 			var boundReaderFactory = boundReaderFactories.get(typeIndex / BOUND_READER_FACTORY_TYPES);
-			ClassName factoryClass = ClassName.get(currentVersionPackage, "CurrentVersion")
-					.nestedClass("BoundReaderFactory" + typeIndex / BOUND_READER_FACTORY_TYPES);
+			ClassName factoryClass = ClassName.get(currentVersionPackage,
+					"BoundReaderFactory" + typeIndex / BOUND_READER_FACTORY_TYPES);
 			String helperName = "new" + currentType.getName() + "BoundReader";
 			newBoundReader.addStatement("case $N -> $T.$N(version, limits)", currentType.getName(),
 					factoryClass, helperName);
 			var newTypeBoundReader = MethodSpec.methodBuilder(helperName)
-					.addModifiers(Modifier.PRIVATE, Modifier.STATIC)
+					// Package-private rather than private: called from CurrentVersion, which is no longer
+					// a nestmate of this factory now that the factory is a top-level class.
+					.addModifiers(Modifier.STATIC)
 					.returns(ParameterizedTypeName.get(boundReaderType,
 							currentType.getJTypeName(basePackageName)))
 					.addParameter(TypeName.INT, "version")
@@ -525,9 +543,9 @@ public class GenCurrentVersion extends ClassGenerator {
 					.addCode(CodeBlock.of("$<};"));
 			boundReaderFactory.addMethod(newTypeBoundReader.build());
 		}
-		boundReaderFactories.forEach(factory -> currentVersionClass.addType(factory.build()));
 		newBoundReader.addCode(CodeBlock.of("$<};"));
 		currentVersionClass.addMethod(newBoundReader.build());
+		return boundReaderFactories;
 	}
 
 	private MethodSpec storageReadMethod(String methodName,

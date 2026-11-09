@@ -64,11 +64,12 @@ public final class GeneratedCodeShapeReport {
 
 		java.util.Map<String, Integer> boundFactoryByType;
 		{
-			// The generator dispatches each type to a chunked BoundReaderFactory<N> nested class, so the
-			// bound reader binary is CurrentVersion$BoundReaderFactory<N>$<Type>V0Reader (verified shape,
-			// e.g. target/generated-sources/database-classes/java/it/cavallium/datagen/benchmark/fixture/
-			// current/CurrentVersion.java: case PrimitiveArrays -> BoundReaderFactory0.newPrimitiveArrays
-			// BoundReader(...) and case Wide2 -> BoundReaderFactory1.newWide2BoundReader(...)). Read the
+			// The generator dispatches each type to a chunked BoundReaderFactory<N> class, so the bound reader
+			// binary is BoundReaderFactory<N>$<Type>V0Reader (verified shape, e.g. target/generated-sources/
+			// database-classes/java/it/cavallium/datagen/benchmark/fixture/current/CurrentVersion.java:
+			// case PrimitiveArrays -> BoundReaderFactory0.newPrimitiveArraysBoundReader(...) and case Wide2 ->
+			// BoundReaderFactory1.newWide2BoundReader(...)). The factories are top-level classes, not nested in
+			// CurrentVersion, which keeps the latter's constant pool flat as versions accumulate. Read the
 			// factory index for each type from that dispatch instead of assuming one fixed factory.
 			String currentVersionSource = Files.readString(sourceRoot.resolve(
 					CURRENT_VERSION + ".java"));
@@ -101,8 +102,8 @@ public final class GeneratedCodeShapeReport {
 			maxMethodBytes = Math.max(maxMethodBytes, plan.maxMethodBytes());
 			readerClasses++;
 
-			// Generator's current shape: CurrentVersion$BoundReaderFactory<N>$<Type>V0Reader (see above).
-			String boundResource = CURRENT_VERSION + "$BoundReaderFactory" + boundFactoryByType.get(simpleName)
+			// Generator's current shape: BoundReaderFactory<N>$<Type>V0Reader (see above).
+			String boundResource = FIXTURE + "/current/BoundReaderFactory" + boundFactoryByType.get(simpleName)
 					+ "$" + simpleName + "V0Reader.class";
 			ClassMetrics bound = inspectClass(boundResource);
 			verifyBoundReader(simpleName, bound);
