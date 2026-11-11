@@ -18,7 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
-public class MemorySegmentBufTest2 {
+public class MemorySegmentBuf2Test {
 
 	// --- Helpers ---
 
@@ -252,7 +252,18 @@ public class MemorySegmentBufTest2 {
 			@Override
 			public byte[] asArrayStrict() {
 				return null;
-			} // Force fallback
+			}
+
+			/**
+			 * The content here is synthetic, so the inherited internal array is not it. Hiding the backing array
+			 * is what makes {@code Buf#asMemorySegmentStrict()} report no zero-copy view, which is the state this
+			 * case means to exercise: {@code setBytesFromBuf} checks for a segment before it checks for an array,
+			 * so {@code asArrayStrict() == null} alone would not reach the fallback loop.
+			 */
+			@Override
+			public byte[] getBackingByteArray() {
+				throw new UnsupportedOperationException();
+			}
 		};
 		dest.setBytesFromBuf(6, src3, 0, 1);
 
