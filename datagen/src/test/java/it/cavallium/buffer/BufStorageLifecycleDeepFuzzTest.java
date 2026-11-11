@@ -293,11 +293,14 @@ class BufStorageLifecycleDeepFuzzTest {
 		ByteBuffer byteBuffer = slice.asByteBuffer();
 		MemorySegment exactSegment = frozen.asMemorySegmentStrict();
 
-		assertTrue(mutable.isMutable());
+		assertFalse(mutable.isMutable(), "freeze() freezes the handle it was called on, not a copy of it");
+		assertFalse(slice.isMutable(), "a slice taken from frozen storage is frozen too");
 		assertFalse(frozen.isMutable());
+		assertSame(mutable, frozen, "freeze returns the handle it was called on");
 		assertSame(frozen, frozenAgain);
-		assertNotSame(mutable, frozen);
 		assertThrows(UnsupportedOperationException.class, () -> frozen.setByte(0, (byte) 1));
+		assertThrows(UnsupportedOperationException.class, () -> mutable.setByte(0, (byte) 1));
+		assertThrows(UnsupportedOperationException.class, () -> slice.setByte(0, (byte) 1));
 		assertThrows(UnsupportedOperationException.class,
 				() -> frozen.setBytesFromBuf(0, Buf.wrap((byte) 1), 0, 1));
 		assertArrayEquals(mutable.asArray(), frozen.asArray());
@@ -418,8 +421,9 @@ class BufStorageLifecycleDeepFuzzTest {
 		assertEquals(Double.doubleToRawLongBits(bigEndian.getDouble(longOffset)),
 				Double.doubleToRawLongBits(actual.getDouble(longOffset)), diagnostic);
 		int int52Offset = offset(random, expected.length, 7);
-		long expectedInt52 = 0;
-		for (int index = 0; index < 7; index++) {
+		// the spare leading nibble is not part of an Int52 value, so the model drops it like every read path
+		long expectedInt52 = Byte.toUnsignedLong(expected[int52Offset]) & 0x0fL;
+		for (int index = 1; index < 7; index++) {
 			expectedInt52 = expectedInt52 << 8 | Byte.toUnsignedLong(expected[int52Offset + index]);
 		}
 		assertEquals(expectedInt52, actual.getInt52(int52Offset), diagnostic);

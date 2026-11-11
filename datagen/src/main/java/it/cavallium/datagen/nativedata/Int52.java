@@ -70,8 +70,18 @@ public class Int52 extends Number implements Comparable<Int52> {
 		return fromBytesL(bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6]);
 	}
 
+	/**
+	 * Decodes seven big-endian bytes into an {@code Int52} value. The high nibble of the first byte is
+	 * not part of the value and is ignored, like {@code BufDataInputCore#readInt52} and {@code Buf#getInt52}
+	 * ignore it. That nibble is reserved rather than empty: the nullable Int52 encoding keeps its presence
+	 * tag in the top bit of the same byte ({@code NullableInt52Serializer} writes {@code 0b10000000} for
+	 * empty), and {@code Int52Serializer} masks the nibble on both sides for the same reason. So masking is
+	 * required, not cosmetic, and it is what keeps every construction route inside {@link #MIN_VALUE_L} ..
+	 * {@link #MAX_VALUE_L}: {@link #fromByteArray} and {@link #fromBytes} build the value through the
+	 * unchecked {@link #fromLongSafe}, so a raw nibble here would yield an out-of-domain {@code Int52}.
+	 */
 	public static long fromBytesL(byte b1, byte b2, byte b3, byte b4, byte b5, byte b6, byte b7) {
-		return (b1 & 0xFFL) << 48
+		return (b1 & 0x0fL) << 48
 				| (b2 & 0xFFL) << 40
 				| (b3 & 0xFFL) << 32
 				| (b4 & 0xFFL) << 24

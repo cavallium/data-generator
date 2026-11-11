@@ -26,6 +26,21 @@ public class MemorySegmentBuf extends AbstractByteList implements Buf {
 
 	private final MemorySegment segment;
 	private final int size;
+	/**
+	 * Freeze state shared with every handle derived from this one, so that {@link #freeze()} freezes the
+	 * storage rather than just the handle it was called on — the contract {@link Buf#freeze()} states and
+	 * {@link ByteListBuf} implements. A {@code MemorySegmentBuf} built separately from the same
+	 * {@link MemorySegment} has its own state: like a raw {@code byte[]} write to a frozen
+	 * {@link ByteListBuf}, it is outside what {@code freeze()} can reach.
+	 */
+	private final FreezeState freezeState;
+
+	private static final class FreezeState {
+		// Write-once flag, read through every handle derived from this one. Volatile so that freezing on one
+		// thread and mutating through the family on another has a happens-before edge; ByteListBuf's root flag
+		// is not volatile, so this backing is the stricter of the two.
+		private volatile boolean frozen;
+	}
 
 	// --- Layouts for Big-Endian (Buf Contract) ---
 	private static final ValueLayout.OfShort SHORT_BE = ValueLayout.JAVA_SHORT_UNALIGNED.withOrder(ByteOrder.BIG_ENDIAN);
@@ -45,14 +60,17 @@ public class MemorySegmentBuf extends AbstractByteList implements Buf {
 		}
 		this.segment = segment;
 		this.size = (int) byteSize;
+		this.freezeState = new FreezeState();
 	}
 
 	/**
-	 * Internal constructor for slicing/resizing without re-checking size bounds repeatedly
+	 * Internal constructor for slicing/resizing without re-checking size bounds repeatedly. The slice shares
+	 * the parent's freeze state: freezing either handle freezes both.
 	 */
-	private MemorySegmentBuf(MemorySegment segment, int size) {
+	private MemorySegmentBuf(MemorySegment segment, int size, FreezeState freezeState) {
 		this.segment = segment;
 		this.size = size;
+		this.freezeState = freezeState;
 	}
 
 	// --- Core List Methods ---
@@ -180,12 +198,23 @@ public class MemorySegmentBuf extends AbstractByteList implements Buf {
 	@Override
 	public boolean isMutable() {
 		// RocksDB memory passed to MergeOperators is typically const/read-only.
-		return !segment.isReadOnly();
+		return !freezeState.frozen && !segment.isReadOnly();
 	}
 
 	@Override
 	public Buf freeze() {
-		return segment.isReadOnly() ? this : new MemorySegmentBuf(segment.asReadOnly(), size);
+		freezeState.frozen = true;
+		return this;
+	}
+
+	/**
+	 * Resize request, rejected on frozen storage before anything else: like {@link ByteListBuf}, a
+	 * {@code size(currentSize)} call on frozen storage is refused rather than quietly accepted as a no-op.
+	 */
+	@Override
+	public void size(int size) {
+		ensureMutable();
+		super.size(size);
 	}
 
 	@Override
@@ -210,7 +239,7 @@ public class MemorySegmentBuf extends AbstractByteList implements Buf {
 	@Override
 	public Buf subListForced(int from, int to) {
 		Objects.checkFromToIndex(from, to, size);
-		return new MemorySegmentBuf(segment.asSlice(from, to - from), to - from);
+		return new MemorySegmentBuf(segment.asSlice(from, to - from), to - from, freezeState);
 	}
 
 	@Override

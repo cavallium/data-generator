@@ -165,6 +165,25 @@ public interface Buf extends ByteList, RandomAccess {
 
 	boolean isMutable();
 
+	/**
+	 * Marks this buffer's storage immutable and returns a handle to it. Every mutation route this buffer can
+	 * reach — through this handle or a view of it — then rejects writes; reads and the aliased bytes are
+	 * unaffected.
+	 *
+	 * <p>The state belongs to the storage, not to the handle: freezing a view freezes its parent, and freezing
+	 * a parent freezes its views. The returned handle is the same object, so {@code buf.freeze().freeze()} is
+	 * {@code buf.freeze()}.</p>
+	 *
+	 * <p>Two things are outside its reach, in both backings: writes made through the raw backing
+	 * ({@code byte[]} element writes, a {@code MemorySegment} obtained separately from the same memory), and
+	 * a {@code MemorySegmentBuf} constructed on its own from that memory, which has no way to find the
+	 * handles already sharing it. {@code freeze()} guards the {@link Buf} mutation API, not the memory.</p>
+	 *
+	 * @see #isMutable()
+	 * @apiNote On the memory-segment backing this tightens an earlier behaviour: {@code freeze()} handed out
+	 * a separate read-only handle and left the receiver writable, so {@code buf.freeze(); buf.setByte(...)}
+	 * succeeded. That call now throws, as it always did on the heap backing.
+	 */
 	Buf freeze();
 
 	@Override
@@ -268,6 +287,11 @@ public interface Buf extends ByteList, RandomAccess {
 	 * @param i byte offset
 	 */
 	default long getInt52(int i) {
+		// The lead byte contributes only its low nibble: an Int52 is the unsigned 52-bit domain
+		// (Int52.MIN_VALUE_L == 0, MAX_VALUE_L == 0x0F_FF_FF_FF_FF_FF_FF), setInt52 validates values with
+		// Int52.checkValidity, and the streaming paths mask the same nibble (BufDataInputCore#readInt52 and
+		// #getInt52At). Masking here keeps every read of the same bytes inside the domain, including bytes
+		// that did not come from a datagen writer.
 		byte b1 = getByte(i);
 		byte b2 = getByte(i + 1);
 		byte b3 = getByte(i + 2);
@@ -275,7 +299,7 @@ public interface Buf extends ByteList, RandomAccess {
 		byte b5 = getByte(i + 4);
 		byte b6 = getByte(i + 5);
 		byte b7 = getByte(i + 6);
-		return (b1 & 0xFFL) << 48
+		return (b1 & 0x0fL) << 48
 				| (b2 & 0xFFL) << 40
 				| (b3 & 0xFFL) << 32
 				| (b4 & 0xFFL) << 24

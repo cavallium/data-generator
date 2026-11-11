@@ -283,13 +283,19 @@ class BufDeepFuzzTest {
 						+ ", from=" + from + ", to=" + to;
 
 				byte[] heapStorage = values.clone();
-				Buf heapFrozen = Buf.wrap(heapStorage).subList(from, to).freeze();
-				heapStorage[from] = replacement;
+				Buf heapRoot = Buf.wrap(heapStorage);
+				Buf heapFrozen = heapRoot.subList(from, to).freeze();
+				assertFalse(heapRoot.isMutable(), diagnostic + ": freezing a heap view freezes its root");
+				heapStorage[from] = replacement; // a raw write to the backing is outside freeze()'s reach
 				assertFrozenView(heapFrozen, replacement, diagnostic);
 
-				Buf nativeMutable = nativeBuf(arena, values);
-				Buf nativeFrozen = nativeMutable.subList(from, to).freeze();
-				nativeMutable.setByte(from, replacement);
+				Buf nativeRoot = nativeBuf(arena, values);
+				Buf nativeFrozen = nativeRoot.subList(from, to).freeze();
+				assertFalse(nativeRoot.isMutable(), diagnostic + ": freezing a native view freezes its root");
+				assertThrows(UnsupportedOperationException.class, () -> nativeRoot.setByte(from, replacement),
+						diagnostic + ": the root's mutation routes are closed as well");
+				// the native counterpart of the raw write above: a handle made from the same memory
+				new MemorySegmentBuf(nativeRoot.asMemorySegmentStrict()).setByte(from, replacement);
 				assertFrozenView(nativeFrozen, replacement, diagnostic);
 			}
 		}

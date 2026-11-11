@@ -55,19 +55,39 @@ class MemorySegmentBufContractTest {
 	}
 
 	@Test
-	void freezeCreatesAReadOnlyZeroCopyView() {
+	void freezeMarksTheStorageAndKeepsTheHandle() {
 		byte[] storage = {1, 2, 3};
 		MemorySegmentBuf mutable = new MemorySegmentBuf(MemorySegment.ofArray(storage));
+		Buf view = mutable.subList(0, 2);
 		Buf frozen = mutable.freeze();
 
-		assertTrue(mutable.isMutable());
+		assertSame(mutable, frozen, "freeze returns the handle it was called on");
+		assertFalse(mutable.isMutable(), "the receiver is frozen, not just the returned handle");
+		assertFalse(view.isMutable(), "a view taken before the freeze is frozen too");
 		assertFalse(frozen.isMutable());
-		assertThrows(UnsupportedOperationException.class,
-				() -> frozen.setByte(0, (byte) 9));
-
-		mutable.setByte(0, (byte) 8);
-		assertEquals(8, frozen.getByte(0));
+		assertThrows(UnsupportedOperationException.class, () -> frozen.setByte(0, (byte) 9));
+		assertThrows(UnsupportedOperationException.class, () -> mutable.setByte(0, (byte) 9));
+		assertThrows(UnsupportedOperationException.class, () -> view.setByte(0, (byte) 9));
+		// a resize to the unchanged size is refused too, as on the heap backing, rather than accepted as no-op
+		assertThrows(UnsupportedOperationException.class, () -> mutable.size(mutable.size()));
 		assertSame(frozen, frozen.freeze());
+
+		// the bytes stay aliased and readable; freeze closes the Buf mutation routes, not the memory
+		storage[0] = 8;
+		assertEquals(8, frozen.getByte(0), "raw writes are still visible through the frozen handle");
+		assertEquals(8, mutable.getByte(0));
+
+		// a handle built separately from the same memory has its own freeze state, as Buf#freeze() documents
+		Buf sibling = new MemorySegmentBuf(MemorySegment.ofArray(storage));
+		assertTrue(sibling.isMutable(), "freeze() cannot reach a handle built from the segment itself");
+		sibling.setByte(2, (byte) 7);
+		assertEquals(7, frozen.getByte(2), "and its write is visible through the frozen handle");
+
+		// the raw views stay writable too, exactly as a frozen heap handle's backing array does: what freeze()
+		// closes is the Buf mutation API, not the memory underneath it
+		assertFalse(frozen.asMemorySegmentStrict().isReadOnly(), "freeze() guards the Buf API, not the memory");
+		frozen.asMemorySegmentStrict().set(ValueLayout.JAVA_BYTE, 1L, (byte) 4);
+		assertEquals(4, mutable.getByte(1), "and writes through the raw view are still aliased");
 	}
 
 	@Test

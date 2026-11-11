@@ -277,11 +277,15 @@ class BufApiSurfaceDeepFuzzTest {
 
 				Buf frozen = buffer.freeze();
 				assertFalse(frozen.isMutable(), diagnostic);
+				assertSame(buffer, frozen, diagnostic + ": freeze returns the handle it was called on");
 				assertThrows(UnsupportedOperationException.class,
-						() -> frozen.set(0, (byte) 1), diagnostic);
-				byte external = (byte) (buffer.getByte(0) + 1);
-				buffer.setByte(0, external);
-				assertEquals(external, frozen.getByte(0), diagnostic);
+						() -> frozen.setByte(0, (byte) 1), diagnostic);
+				assertThrows(UnsupportedOperationException.class,
+						() -> buffer.setByte(0, (byte) 1), diagnostic + ": the receiver is frozen, not just its handle");
+				byte external = (byte) (frozen.getByte(0) + 1);
+				// a handle built from the same memory is outside freeze()'s reach, and writes through it are seen
+				new MemorySegmentBuf(segment).setByte(0, external);
+				assertEquals(external, frozen.getByte(0), diagnostic + ": the frozen handle still reads live memory");
 				assertSame(frozen, frozen.freeze(), diagnostic);
 			}
 		}

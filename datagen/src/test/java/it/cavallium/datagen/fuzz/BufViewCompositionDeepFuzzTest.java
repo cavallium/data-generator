@@ -200,21 +200,23 @@ class BufViewCompositionDeepFuzzTest {
 				assertThrows(UnsupportedOperationException.class, () -> heapFrozen.setByte(at, region[at]),
 						gate("case " + caseIndex + " (frozen heap view rejects writes)"));
 
-				// one native storage: freeze hands out a new read-only handle over the same memory
+				// one native storage: the same contract — freeze keeps the handle and aliases the memory
 				MemorySegment segment = arena.allocate(bytes.length, 1);
 				MemorySegment.copy(MemorySegment.ofArray(bytes), 0, segment, 0, bytes.length);
-				Buf nativeView = chain.apply(new MemorySegmentBuf(segment));
+				Buf nativeRoot = new MemorySegmentBuf(segment);
+				Buf nativeView = chain.apply(nativeRoot);
 				Buf nativeSnapshot = nativeView.copy();
 				Buf nativeFrozen = nativeView.freeze();
-				assertNotSame(nativeView, nativeFrozen,
-						gate("case " + caseIndex + " (native freeze returns a new handle)"));
+				assertSame(nativeView, nativeFrozen,
+						gate("case " + caseIndex + " (native freeze is the same handle)"));
 				assertSame(nativeFrozen, nativeFrozen.freeze(),
 						gate("case " + caseIndex + " (native freeze idempotent)"));
 				assertFalse(nativeFrozen.isMutable(), gate("case " + caseIndex + " (native frozen is immutable)"));
-				assertTrue(nativeView.isMutable(), gate("case " + caseIndex + " (the source stays mutable)"));
-				nativeView.setByte(at, replacement); // through the source handle, never through the frozen one
+				assertFalse(nativeRoot.isMutable(), gate("case " + caseIndex + " (freezing a view freezes its root)"));
+				// a write the frozen view cannot veto, through a handle made from the same memory
+				new MemorySegmentBuf(segment).setByte(chain.absoluteFrom + at, replacement);
 				assertEquals(replacement, nativeFrozen.getByte(at),
-						gate("case " + caseIndex + " (native freeze aliases the same memory)"));
+						gate("case " + caseIndex + " (native freeze aliases, it does not snapshot)"));
 				assertEquals(region[at], nativeSnapshot.getByte(at),
 						gate("case " + caseIndex + " (native copy() is a snapshot)"));
 				assertThrows(UnsupportedOperationException.class, () -> nativeFrozen.setByte(at, region[at]),
@@ -496,12 +498,14 @@ class BufViewCompositionDeepFuzzTest {
 
 				@Override Object model(byte[] r, int i) { return inRegion(r, i, 8) ? be(r, i, 8) : null; }
 			},
-			// verified: Buf.getInt52 is a plain seven-byte big-endian read and does not mask the
-			// leading nibble, unlike BufDataInputCore.readInt52, which does
+			// verified: every Int52 read path ignores the spare leading nibble (Buf#getInt52,
+			// BufDataInputCore#readInt52 and #getInt52At, and Int52#fromBytesL), pinned across backings in
+			// Int52LeadNibbleCoherenceTest. The mask is spelled as a literal, not taken from Int52.MAX_VALUE_L,
+			// so this model cannot drift along with the production constant.
 			new Read("getInt52", 7, 1, false) {
 				@Override Object apply(Buf buf, int i) { return buf.getInt52(i); }
 
-				@Override Object model(byte[] r, int i) { return inRegion(r, i, 7) ? be(r, i, 7) : null; }
+				@Override Object model(byte[] r, int i) { return inRegion(r, i, 7) ? be(r, i, 7) & 0x000F_FFFF_FFFF_FFFFL : null; }
 			},
 			new Read("getFloat", 4, 4, false) {
 				@Override Object apply(Buf buf, int i) { return buf.getFloat(i); }

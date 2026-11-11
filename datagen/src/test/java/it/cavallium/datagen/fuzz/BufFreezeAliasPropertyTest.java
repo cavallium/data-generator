@@ -7,17 +7,21 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import it.cavallium.buffer.Buf;
+import it.cavallium.buffer.MemorySegmentBuf;
 import it.unimi.dsi.fastutil.bytes.ByteArrayList;
 import it.unimi.dsi.fastutil.bytes.ByteCollection;
 import it.unimi.dsi.fastutil.bytes.ByteList;
 import it.unimi.dsi.fastutil.bytes.ByteListIterator;
 import it.unimi.dsi.fastutil.bytes.BytePredicate;
 import it.unimi.dsi.fastutil.bytes.ByteUnaryOperator;
+import java.lang.foreign.Arena;
+import java.lang.foreign.MemorySegment;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Random;
+import java.util.function.Function;
 import net.jqwik.api.Property;
 
 /**
@@ -31,7 +35,9 @@ import net.jqwik.api.Property;
  *     <li>Freeze is a property of the <em>storage</em>, not of the handle: freezing the root or any
  *     view at any depth rejects every mutation route through every handle to the same buffer
  *     (verified: {@code sub.freeze()} also freezes the root, {@code root.freeze()} also freezes
- *     live views), and {@code freeze()} returns the same handle it was called on.</li>
+ *     live views), and {@code freeze()} returns the same handle it was called on. The first case of
+ *     every round is replayed on the memory-segment backing too, which keeps that state in the freeze
+ *     state it passes to every handle derived from it.</li>
  *     <li>Views are live aliases, not snapshots: a write through either handle is visible through
  *     the other; the view window keeps its own size, which only edits <em>through the view</em>
  *     change, while a parent append or insert merely shifts the aliased bytes underneath it.</li>
@@ -139,43 +145,71 @@ class BufFreezeAliasPropertyTest {
 			}
 			int frozenIndex = rnd.nextInt(depth + 1);
 
-			// The freeze identity and immutability checks run on one storage...
-			List<Buf> handles = buildHandles(bytes, windows);
-			Buf frozen = handles.get(frozenIndex);
-			assertSame(frozen, frozen.freeze(),
-					gate("freeze returns the same handle, case " + caseIndex));
-			for (Buf participant : handles) {
-				assertFalse(participant.isMutable(),
-						gate("every handle is immutable after freezing handle " + frozenIndex
-								+ " of " + (depth + 1) + ", case " + caseIndex));
-			}
-
-			// ...but each mutation route then runs on a freshly rebuilt storage: a rejected removal
-			// through a frozen *view* still shrinks that view's own fastutil size counter (verified:
-			// the root bytes never change), so reusing one storage across routes would surface later
-			// routes as IndexOutOfBoundsException instead of the freeze rejection under test.
-			for (FrozenMutation mutation : FROZEN_ALPHABET) {
-				for (int h = 0; h <= depth; h++) {
-					List<Buf> fresh = buildHandles(bytes, windows);
-					fresh.get(frozenIndex).freeze();
-					byte[] before = fresh.get(0).asArray().clone();
-					Buf victim = fresh.get(h);
-					assertThrows(UnsupportedOperationException.class,
-							() -> mutation.action().execute(victim),
-							gate(mutation.name() + " through handle " + h + " of " + (depth + 1)
-									+ " (frozen " + frozenIndex + "), case " + caseIndex));
-					assertArrayEquals(before, fresh.get(0).asArray(),
-							gate("no rejected mutation may write through the root, " + mutation.name()
-									+ ", case " + caseIndex));
-				}
+			// One case, both backings: the heap storage keeps its frozen state in the root object every
+			// view reads through, the memory-segment storage in the state MemorySegmentBuf hands to every
+			// handle it derives. Same contract, so the same case is replayed on each.
+			try (var arena = Arena.ofConfined()) {
+				assertFreezeContract(caseIndex, bytes, windows, frozenIndex, Buf::wrap);
+				assertFreezeContract(caseIndex, bytes, windows, frozenIndex,
+						nativeBytes -> new MemorySegmentBuf(nativeStorage(arena, nativeBytes)));
 			}
 		}
 	}
 
+	/**
+	 * Runs the freeze contract of the first case for one backing. The mutation alphabet is the heap one:
+	 * on the fixed-size memory-segment backing the structural routes are rejected for that reason too, so
+	 * those cases are weaker there, while every route still has to leave the root bytes untouched.
+	 */
+	private static void assertFreezeContract(int caseIndex,
+			byte[] bytes,
+			int[][] windows,
+			int frozenIndex,
+			Function<byte[], Buf> rootFactory) {
+		int depth = windows.length;
+
+		// The freeze identity and immutability checks run on one storage...
+		List<Buf> handles = buildHandles(rootFactory, bytes, windows);
+		Buf frozen = handles.get(frozenIndex);
+		assertSame(frozen, frozen.freeze(),
+				gate("freeze returns the same handle, case " + caseIndex));
+		for (Buf participant : handles) {
+			assertFalse(participant.isMutable(),
+					gate("every handle is immutable after freezing handle " + frozenIndex
+							+ " of " + (depth + 1) + ", case " + caseIndex));
+		}
+
+		// ...but each mutation route then runs on a freshly rebuilt storage: a rejected removal
+		// through a frozen *view* still shrinks that view's own fastutil size counter (verified:
+		// the root bytes never change), so reusing one storage across routes would surface later
+		// routes as IndexOutOfBoundsException instead of the freeze rejection under test.
+		for (FrozenMutation mutation : FROZEN_ALPHABET) {
+			for (int h = 0; h <= depth; h++) {
+				List<Buf> fresh = buildHandles(rootFactory, bytes, windows);
+				fresh.get(frozenIndex).freeze();
+				byte[] before = fresh.get(0).asArray().clone();
+				Buf victim = fresh.get(h);
+				assertThrows(UnsupportedOperationException.class,
+						() -> mutation.action().execute(victim),
+						gate(mutation.name() + " through handle " + h + " of " + (depth + 1)
+								+ " (frozen " + frozenIndex + "), case " + caseIndex));
+				assertArrayEquals(before, fresh.get(0).asArray(),
+						gate("no rejected mutation may write through the root, " + mutation.name()
+								+ ", case " + caseIndex));
+			}
+		}
+	}
+
+	private static MemorySegment nativeStorage(Arena arena, byte[] bytes) {
+		var segment = arena.allocate(bytes.length, 1);
+		MemorySegment.copy(MemorySegment.ofArray(bytes), 0, segment, 0, bytes.length);
+		return segment;
+	}
+
 	/** Builds root + the nested views of {@code windows}, with the value seeds every case needs. */
-	private static List<Buf> buildHandles(byte[] bytes, int[][] windows) {
+	private static List<Buf> buildHandles(Function<byte[], Buf> rootFactory, byte[] bytes, int[][] windows) {
 		byte[] copy = bytes.clone();
-		Buf root = Buf.wrap(copy);
+		Buf root = rootFactory.apply(copy);
 		List<Buf> handles = new ArrayList<>();
 		handles.add(root);
 		Buf handle = root;
