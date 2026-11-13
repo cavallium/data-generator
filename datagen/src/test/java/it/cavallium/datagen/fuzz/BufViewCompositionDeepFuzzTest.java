@@ -174,8 +174,18 @@ class BufViewCompositionDeepFuzzTest {
 			for (int caseIndex = 0; caseIndex < cases; caseIndex++) {
 				byte[] bytes = FuzzValues.bytes(rnd, 2 + rnd.nextInt(40));
 				Chain chain = Chain.random(rnd, bytes.length);
+				// An empty window has nothing to alias, so the case would prove nothing. That is a property of
+				// this generator, not of freeze: an empty level is one of six shapes, and several of the others
+				// collapse to empty too whenever the draw lands on the parent's end — and once a level is empty
+				// every deeper one is. At the QUICK budget the whole round is three cases, so a run where all
+				// three collapsed was a real possibility — the coverage gate below would then fail on a fuzz
+				// round that had tested nothing. Re-draw a collapsed case a few times from the same seeded
+				// generator; a case that still collapses stays skipped, and the gate keeps its teeth.
+				for (int redraw = 0; redraw < 8 && chain.length == 0; redraw++) {
+					chain = Chain.random(rnd, bytes.length);
+				}
 				if (chain.length == 0) {
-					continue; // an empty window has nothing to alias
+					continue;
 				}
 				aliased++;
 				byte[] region = chain.slice(bytes);
