@@ -4,13 +4,18 @@ import it.cavallium.stream.SafeByteArrayInputStream;
 import it.cavallium.stream.SafeByteArrayOutputStream;
 import it.cavallium.stream.SafeDataOutput;
 import it.unimi.dsi.fastutil.bytes.AbstractByteList;
+import it.unimi.dsi.fastutil.bytes.ByteCollection;
+import it.unimi.dsi.fastutil.bytes.BytePredicate;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.Charset;
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.IntPredicate;
+import java.util.function.Predicate;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -225,6 +230,74 @@ public class MemorySegmentBuf extends AbstractByteList implements Buf {
 		return previous;
 	}
 
+	// --- Mutation requests ---------------------------------------------------------------
+	//
+	// The routes below are inherited from fastutil and answer a mutation by looking for something to
+	// change: a removal of an absent element, a removeAll whose argument matches nothing, a retainAll that
+	// keeps everything, a filter that matches nothing. On a live storage each of those is a false with no
+	// edit; this backing used to answer the same way after freeze, while the heap backing — which guards
+	// every one of these, and refuses even a size(currentSize) request — answered "the buffer is
+	// immutable". A frozen storage refuses the request rather than quietly accepting it as a no-op, on
+	// either backing, which is what Buf#freeze() states.
+	//
+	// A request that does find something to remove was already rejected on this storage, because a
+	// memory-segment buffer has a fixed size and its iterator's removal is unsupported; the guard only
+	// makes the reason the freeze instead of the fixed size.
+
+	@Override
+	public boolean remove(Object key) {
+		ensureMutable();
+		return super.remove(key);
+	}
+
+	@Override
+	public boolean rem(byte key) {
+		ensureMutable();
+		return super.rem(key);
+	}
+
+	@Override
+	public boolean removeAll(@NotNull Collection<?> c) {
+		ensureMutable();
+		return super.removeAll(c);
+	}
+
+	@Override
+	public boolean removeAll(@NotNull ByteCollection c) {
+		ensureMutable();
+		return super.removeAll(c);
+	}
+
+	@Override
+	public boolean retainAll(@NotNull Collection<?> c) {
+		ensureMutable();
+		return super.retainAll(c);
+	}
+
+	@Override
+	public boolean retainAll(@NotNull ByteCollection c) {
+		ensureMutable();
+		return super.retainAll(c);
+	}
+
+	@Override
+	public boolean removeIf(@NotNull Predicate<? super Byte> filter) {
+		ensureMutable();
+		return super.removeIf(filter);
+	}
+
+	@Override
+	public boolean removeIf(@NotNull BytePredicate filter) {
+		ensureMutable();
+		return super.removeIf(filter);
+	}
+
+	@Override
+	public boolean removeIf(@NotNull IntPredicate filter) {
+		ensureMutable();
+		return super.removeIf(filter);
+	}
+
 	// --- Slicing & Copying ---
 
 	@Override
@@ -258,6 +331,23 @@ public class MemorySegmentBuf extends AbstractByteList implements Buf {
 	@Override
 	public Buf copy() {
 		return ByteListBuf.wrap(asArray());
+	}
+
+	/**
+	 * Bulk write. The inherited implementation checks the range before it writes, so without this override a
+	 * frozen storage would answer a too-long array with a bounds error; the freeze rejection is the more
+	 * informative answer, and it is what the heap backing gives, so it is checked first here as well.
+	 */
+	@Override
+	public void setElements(int index, byte[] a, int offset, int length) {
+		ensureMutable();
+		super.setElements(index, a, offset, length);
+	}
+
+	@Override
+	public void setElements(byte[] a) {
+		ensureMutable();
+		super.setElements(a);
 	}
 
 	// --- IO & Data Transfer ---

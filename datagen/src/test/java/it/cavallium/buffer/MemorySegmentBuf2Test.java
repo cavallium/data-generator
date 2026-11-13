@@ -255,10 +255,12 @@ public class MemorySegmentBuf2Test {
 			}
 
 			/**
-			 * The content here is synthetic, so the inherited internal array is not it. Hiding the backing array
-			 * is what makes {@code Buf#asMemorySegmentStrict()} report no zero-copy view, which is the state this
-			 * case means to exercise: {@code setBytesFromBuf} checks for a segment before it checks for an array,
-			 * so {@code asArrayStrict() == null} alone would not reach the fallback loop.
+			 * The content here is synthetic, so the inherited internal array is not it, and the size this double
+			 * declares is larger than that array. Either half alone is now enough for
+			 * {@code Buf#asMemorySegmentStrict()} to report no zero-copy view — a backing it cannot hand out, or
+			 * a window too short for the content — and either answer is what this case means to exercise, because
+			 * {@code setBytesFromBuf} checks for a segment before it checks for an array, so
+			 * {@code asArrayStrict() == null} alone would not reach the fallback loop.
 			 */
 			@Override
 			public byte[] getBackingByteArray() {

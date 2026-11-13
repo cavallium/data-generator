@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -12,8 +13,17 @@ import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.nio.ByteBuffer;
+import java.util.List;
 import java.util.Random;
+import java.util.function.IntPredicate;
+import java.util.stream.Stream;
+import it.unimi.dsi.fastutil.bytes.ByteArrayList;
+import it.unimi.dsi.fastutil.bytes.ByteCollection;
+import it.unimi.dsi.fastutil.bytes.BytePredicate;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 class MemorySegmentBufContractTest {
 
@@ -217,5 +227,196 @@ class MemorySegmentBufContractTest {
 		assertThrows(IndexOutOfBoundsException.class,
 				() -> target.setBytesFromBuf(3, source, 0, 2));
 		assertArrayEquals(new byte[4], target.asArray());
+	}
+
+	/** A public mutation route, so the two contract tests below can run one alphabet over both backings. */
+	@FunctionalInterface
+	private interface MutationRoute {
+		void apply(Buf buf) throws Exception;
+	}
+
+	private record NamedRoute(String name, MutationRoute route) {}
+
+	/**
+	 * The routes fastutil's {@code ByteSubList} implements by moving the view's own window first and only
+	 * then delegating to the list behind it. On a frozen storage that order leaves a rejected removal with a
+	 * shrunken view behind, so these routes need a mutability check of their own on a heap view.
+	 */
+	private static final List<NamedRoute> REJECTION_ROUTES = List.of(
+			new NamedRoute("removeByte", buf -> buf.removeByte(1)),
+			new NamedRoute("remove(int)", buf -> buf.remove(1)),
+			new NamedRoute("remove(Object)", buf -> buf.remove(Byte.valueOf((byte) 2))),
+			new NamedRoute("add(byte)", buf -> buf.add((byte) 9)),
+			new NamedRoute("add(int,byte)", buf -> buf.add(1, (byte) 9)),
+			new NamedRoute("add(Byte)", buf -> buf.add(Byte.valueOf((byte) 9))),
+			new NamedRoute("add(int,Byte)", buf -> buf.add(1, Byte.valueOf((byte) 9))),
+			new NamedRoute("addAll(Collection)", buf -> buf.addAll(List.of((byte) 7, (byte) 8))),
+			new NamedRoute("addAll(int,Collection)", buf -> buf.addAll(1, List.of((byte) 7, (byte) 8))),
+			new NamedRoute("set", buf -> buf.set(1, (byte) 9)),
+			new NamedRoute("clear", Buf::clear),
+			new NamedRoute("removeElements", buf -> buf.removeElements(1, 3)));
+
+	/**
+	 * A mutation rejected because the storage is frozen has to leave nothing behind — not even the rejecting
+	 * view's own window. That is what the heap backing gets wrong for the routes that move the window before
+	 * asking the list behind it whether it accepts the edit.
+	 */
+	@ParameterizedTest
+	@MethodSource("rejectionRoutes")
+	void aRejectedMutationLeavesAHeapViewExactlyAsItWas(String name, MutationRoute route) {
+		byte[] storage = {1, 2, 3, 4, 5, 6};
+		Buf root = Buf.wrap(storage);
+		Buf view = root.subListForced(0, 6);
+		view.freeze();
+		int sizeBefore = view.size();
+		byte[] contentBefore = view.asArray().clone();
+
+		assertThrows(UnsupportedOperationException.class, () -> route.apply(view), name);
+
+		assertEquals(sizeBefore, view.size(), name + ": a rejected removal may not shrink the view");
+		assertArrayEquals(contentBefore, view.asArray(), name + ": a rejected mutation may not move the view");
+		assertArrayEquals(new byte[] {1, 2, 3, 4, 5, 6}, storage, name + ": and it may not write through");
+	}
+
+	/**
+	 * The other half of the same rule: when a storage refuses an edit because it is frozen, that is the
+	 * reason the caller is told, on either backing and whatever else the request would have failed on.
+	 */
+	@ParameterizedTest
+	@MethodSource("rejectionRoutes")
+	void aFrozenStorageReportsTheFreezeBeforeAnyBoundsError(String name, MutationRoute route) {
+		// heap, frozen through the view
+		Buf heapView = Buf.wrap(new byte[] {1, 2, 3, 4, 5, 6}).subListForced(0, 6);
+		heapView.freeze();
+		assertThrows(UnsupportedOperationException.class, () -> route.apply(heapView), "heap view, " + name);
+
+		// native, frozen through the handle itself
+		Buf nativeBuf = new MemorySegmentBuf(MemorySegment.ofArray(new byte[] {1, 2, 3, 4, 5, 6}));
+		nativeBuf.freeze();
+		assertThrows(UnsupportedOperationException.class, () -> route.apply(nativeBuf), "native, " + name);
+
+		// native, frozen through a slice of the handle
+		MemorySegment segment = MemorySegment.ofArray(new byte[] {1, 2, 3, 4, 5, 6});
+		Buf nativeRoot = new MemorySegmentBuf(segment);
+		Buf nativeSlice = nativeRoot.subListForced(0, 6);
+		nativeRoot.freeze();
+		assertThrows(UnsupportedOperationException.class, () -> route.apply(nativeSlice), "native slice, " + name);
+	}
+
+	public static Stream<Arguments> rejectionRoutes() {
+		return REJECTION_ROUTES.stream().map(r -> Arguments.of(r.name(), r.route()));
+	}
+
+	/** A mutation request that reports whether it changed anything, so the no-op rule below can pin both halves. */
+	@FunctionalInterface
+	private interface BooleanRoute {
+		boolean apply(Buf buf) throws Exception;
+	}
+
+	private record NamedBooleanRoute(String name, BooleanRoute route) {}
+
+	/**
+	 * Mutation requests that ask for something to change and, on this content, would find nothing to change:
+	 * fastutil answers those by searching, so before this rule they slipped past a frozen storage as a
+	 * {@code false} — on the native backing they still did, while the heap backing, which guards every one of
+	 * them, answered "the buffer is immutable". A frozen storage refuses the request instead of quietly
+	 * accepting it as a no-op, which is the same stance both backings already take for a
+	 * {@code size(currentSize)} call.
+	 */
+	private static final List<NamedBooleanRoute> NO_OP_REQUESTS = List.of(
+			new NamedBooleanRoute("remove(absent Object)", buf -> buf.remove(Byte.valueOf((byte) 99))),
+			new NamedBooleanRoute("rem(absent)", buf -> buf.rem((byte) 99)),
+			new NamedBooleanRoute("removeAll(empty ByteCollection)", buf -> buf.removeAll((ByteCollection) new ByteArrayList())),
+			new NamedBooleanRoute("removeAll(ByteCollection)", buf -> buf.removeAll((ByteCollection) new ByteArrayList(new byte[] {98, 99}))),
+			new NamedBooleanRoute("removeAll(Collection)", buf -> buf.removeAll(List.of((byte) 98, (byte) 99))),
+			new NamedBooleanRoute("retainAll(ByteCollection)", buf -> buf.retainAll((ByteCollection) new ByteArrayList(new byte[] {1, 2, 3, 4, 5, 6, 7}))),
+			new NamedBooleanRoute("retainAll(Collection)", buf -> buf.retainAll(List.of((byte) 1, (byte) 2, (byte) 3, (byte) 4, (byte) 5, (byte) 6, (byte) 7))),
+			new NamedBooleanRoute("removeIf(Predicate)", buf -> buf.removeIf((java.util.function.Predicate<Byte>) value -> value == 99)),
+			new NamedBooleanRoute("removeIf(BytePredicate)", buf -> buf.removeIf((BytePredicate) value -> value == 99)),
+			new NamedBooleanRoute("removeIf(IntPredicate)", buf -> buf.removeIf((IntPredicate) value -> value == 99)));
+
+	/** On a live storage these requests are a plain "nothing changed", so the refusal below is about the freeze. */
+	@ParameterizedTest
+	@MethodSource("noOpRequests")
+	void anUnfrozenStorageStillCarriesANoOpMutationRequestOut(String name, BooleanRoute route) throws Exception {
+		for (Buf buf : List.of(
+				Buf.wrap(new byte[] {1, 2, 3, 4, 5, 6}),
+				new MemorySegmentBuf(MemorySegment.ofArray(new byte[] {1, 2, 3, 4, 5, 6})))) {
+			assertFalse(route.apply(buf), name + ": expected a request that changes nothing");
+			assertArrayEquals(new byte[] {1, 2, 3, 4, 5, 6}, buf.asArray(), name + " on a live storage");
+		}
+	}
+
+	/** And once the storage is frozen it is refused — through the root, a view, the handle or a slice of it. */
+	@ParameterizedTest
+	@MethodSource("noOpRequests")
+	void aFrozenStorageRefusesEvenAMutationRequestThatWouldChangeNothing(String name, BooleanRoute route) {
+		Buf heapRoot = Buf.wrap(new byte[] {1, 2, 3, 4, 5, 6});
+		Buf heapView = heapRoot.subListForced(0, 6);
+		heapView.freeze();
+		assertThrows(UnsupportedOperationException.class, () -> route.apply(heapView), "heap view, " + name);
+		assertThrows(UnsupportedOperationException.class, () -> route.apply(heapRoot), "heap root, " + name);
+
+		Buf nativeRoot = new MemorySegmentBuf(MemorySegment.ofArray(new byte[] {1, 2, 3, 4, 5, 6}));
+		nativeRoot.freeze();
+		assertThrows(UnsupportedOperationException.class, () -> route.apply(nativeRoot), "native, " + name);
+
+		MemorySegment segment = MemorySegment.ofArray(new byte[] {1, 2, 3, 4, 5, 6});
+		Buf frozenNativeRoot = new MemorySegmentBuf(segment);
+		Buf nativeSlice = frozenNativeRoot.subListForced(0, 6);
+		frozenNativeRoot.freeze();
+		assertThrows(UnsupportedOperationException.class, () -> route.apply(nativeSlice), "native slice, " + name);
+	}
+
+	public static Stream<Arguments> noOpRequests() {
+		return NO_OP_REQUESTS.stream().map(r -> Arguments.of(r.name(), r.route()));
+	}
+
+	/**
+	 * A declared backing window that cannot describe the buffer's own content is not a zero-copy view: it
+	 * reports no segment at all, so bulk copies fall back to reading the buffer element by element instead of
+	 * failing inside {@code MemorySegment.copy} on a range the window never covered.
+	 */
+	@Test
+	void aBackingWindowTooSmallForTheContentIsNotAZeroCopyView() {
+		// A buffer that declares more content than the backing window it advertises: the bytes are honest,
+		// only the window claim is too small. This is the state a zero-copy view must refuse to make.
+		Buf inconsistent = new ByteListBuf(new byte[] {7}) {
+			@Override
+			public int size() {
+				return 2;
+			}
+
+			@Override
+			public byte getByte(int index) {
+				return index == 0 ? (byte) 7 : (byte) 0;
+			}
+		};
+		assertEquals(2, inconsistent.size());
+		assertEquals(1, inconsistent.getBackingByteArray().length);
+		assertTrue(inconsistent.getBackingByteArrayLength() < inconsistent.size(), "the inconsistency under test");
+		assertNull(inconsistent.asMemorySegmentStrict(), "a window that cannot cover the content is no view");
+		assertNull(inconsistent.asMemorySegmentStrict(), "and the claim does not depend on how often it is asked");
+		assertEquals(7, inconsistent.getByte(0), "the byte the window does cover reads normally");
+		assertEquals(0, inconsistent.getByte(1), "and the one beyond it reads through the ordinary route");
+
+		// and the copy routes still work, through their element fallback
+		MemorySegmentBuf nativeTarget = new MemorySegmentBuf(MemorySegment.ofArray(new byte[2]));
+		nativeTarget.setBytesFromBuf(0, inconsistent, 0, 2);
+		assertArrayEquals(new byte[] {7, 0}, nativeTarget.asArray());
+
+		Buf heapTarget = Buf.createZeroes(2);
+		heapTarget.setBytesFromBuf(0, inconsistent, 0, 2);
+		assertArrayEquals(new byte[] {7, 0}, heapTarget.asArray());
+	}
+
+	/** A window that does cover the content keeps its zero-copy segment: this rejection is not a blanket one. */
+	@Test
+	void aConsistentBackingWindowStillYieldsAZeroCopyView() {
+		Buf buf = Buf.wrap(new byte[] {1, 2, 3, 4});
+		MemorySegment segment = buf.asMemorySegmentStrict();
+		assertNotNull(segment);
+		assertEquals(4, segment.byteSize());
+		assertEquals(2, segment.get(ValueLayout.JAVA_BYTE, 1));
 	}
 }

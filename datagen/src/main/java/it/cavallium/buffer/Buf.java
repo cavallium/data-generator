@@ -105,8 +105,16 @@ public interface Buf extends ByteList, RandomAccess {
 		} catch (UnsupportedOperationException unsupported) {
 			return null;
 		}
-		return MemorySegment.ofArray(array)
-				.asSlice(getBackingByteArrayOffset(), getBackingByteArrayLength());
+		int offset = getBackingByteArrayOffset();
+		int length = getBackingByteArrayLength();
+		// A window the buffer declares about itself has to describe what the buffer holds. A backing that is
+		// shorter than size() — a buffer whose declared content outgrows the window it advertises — is not a
+		// zero-copy view of that content: handing out the short slice would make every bulk copy fail on a
+		// range the slice never covered, instead of reading the buffer the ordinary way.
+		if (offset < 0 || length < 0 || length > array.length - offset || length < size()) {
+			return null;
+		}
+		return MemorySegment.ofArray(array).asSlice(offset, length);
 	}
 
 	/**
@@ -174,6 +182,13 @@ public interface Buf extends ByteList, RandomAccess {
 	 * a parent freezes its views. The returned handle is the same object, so {@code buf.freeze().freeze()} is
 	 * {@code buf.freeze()}.</p>
 	 *
+	 * <p>A rejected write leaves nothing behind: neither the aliased bytes nor the size of the handle that
+	 * rejected it moves. A mutation <em>request</em> is refused on the same terms even when it would have
+	 * changed nothing — removing an absent element, {@code removeAll} over a collection that matches nothing,
+	 * {@code retainAll} over a collection that keeps everything, a filter that matches nothing, a
+	 * {@code size(currentSize)} call. Both backings refuse those, rather than answering the caller as if the
+	 * storage had accepted an edit it could not make.</p>
+	 *
 	 * <p>Two things are outside its reach, in both backings: writes made through the raw backing
 	 * ({@code byte[]} element writes, a {@code MemorySegment} obtained separately from the same memory), and
 	 * a {@code MemorySegmentBuf} constructed on its own from that memory, which has no way to find the
@@ -183,6 +198,10 @@ public interface Buf extends ByteList, RandomAccess {
 	 * @apiNote On the memory-segment backing this tightens an earlier behaviour: {@code freeze()} handed out
 	 * a separate read-only handle and left the receiver writable, so {@code buf.freeze(); buf.setByte(...)}
 	 * succeeded. That call now throws, as it always did on the heap backing.
+	 * @apiNote Some routes are refused on the memory-segment backing whether or not anything is frozen,
+	 * because that storage has a fixed size: a growth or a removal it cannot perform. They throw the same
+	 * {@link UnsupportedOperationException} a freeze throws, for a different reason, so a test that wants to
+	 * attribute a rejection to the freeze has to run the route on a live storage first.
 	 */
 	Buf freeze();
 

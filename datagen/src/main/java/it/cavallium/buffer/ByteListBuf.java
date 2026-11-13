@@ -463,6 +463,158 @@ class ByteListBuf extends ByteArrayList implements Buf {
             return this;
         }
 
+        // --- Mutation guards ---------------------------------------------------------------
+        //
+        // Every route below is inherited from fastutil's ByteSubList or AbstractByteList and reaches the
+        // parent buffer through one of its own guarded methods, so a frozen storage already rejects it. What
+        // it does NOT do is reject it *before* touching this view: ByteSubList.removeByte decrements this
+        // view's own end offset, and its addAll(int, Collection) advances it, before the parent is asked —
+        // so a rejected removal used to leave a shrunken view behind. Checking mutability first keeps a
+        // rejected edit a no-op through the handle that rejected it, and makes "the storage is frozen" the
+        // reason a caller is given, whatever else the request would have failed on.
+
+        @Override
+        public byte removeByte(int index) {
+            ensureMutable();
+            return super.removeByte(index);
+        }
+
+        @Override
+        public boolean add(byte k) {
+            ensureMutable();
+            return super.add(k);
+        }
+
+        @Override
+        public void add(int index, byte k) {
+            ensureMutable();
+            super.add(index, k);
+        }
+
+        @Override
+        public boolean add(Byte k) {
+            ensureMutable();
+            return super.add(k);
+        }
+
+        @Override
+        public void add(int index, Byte k) {
+            ensureMutable();
+            super.add(index, k);
+        }
+
+        @Override
+        public byte set(int index, byte k) {
+            ensureMutable();
+            return super.set(index, k);
+        }
+
+        @Override
+        public Byte set(int index, Byte k) {
+            ensureMutable();
+            return super.set(index, k);
+        }
+
+        @Override
+        public boolean remove(Object key) {
+            ensureMutable();
+            return super.remove(key);
+        }
+
+        @Override
+        public boolean rem(byte key) {
+            ensureMutable();
+            return super.rem(key);
+        }
+
+        @Override
+        public boolean removeAll(java.util.Collection<?> c) {
+            ensureMutable();
+            return super.removeAll(c);
+        }
+
+        @Override
+        public boolean removeAll(ByteCollection c) {
+            ensureMutable();
+            return super.removeAll(c);
+        }
+
+        @Override
+        public boolean retainAll(ByteCollection c) {
+            ensureMutable();
+            return super.retainAll(c);
+        }
+
+        @Override
+        public boolean retainAll(java.util.Collection<?> c) {
+            ensureMutable();
+            return super.retainAll(c);
+        }
+
+        // The root guards these three, so the view has to as well: without a guard of its own, a filter that
+        // matches nothing is answered with "false" through a frozen view while the same storage answers
+        // "immutable" through its root, and a filter that does match removes through the view's iterator,
+        // which moves this window before the parent rejects the removal.
+        @Override
+        public boolean removeIf(java.util.function.Predicate<? super Byte> filter) {
+            ensureMutable();
+            return super.removeIf(filter);
+        }
+
+        @Override
+        public boolean removeIf(it.unimi.dsi.fastutil.bytes.BytePredicate filter) {
+            ensureMutable();
+            return super.removeIf(filter);
+        }
+
+        @Override
+        public boolean removeIf(java.util.function.IntPredicate filter) {
+            ensureMutable();
+            return super.removeIf(filter);
+        }
+
+        @Override
+        public boolean addAll(int index, java.util.Collection<? extends Byte> c) {
+            ensureMutable();
+            return super.addAll(index, c);
+        }
+
+        @Override
+        public void removeElements(int from, int to) {
+            ensureMutable();
+            super.removeElements(from, to);
+        }
+
+        @Override
+        public void addElements(int index, byte[] a, int offset, int length) {
+            ensureMutable();
+            super.addElements(index, a, offset, length);
+        }
+
+        @Override
+        public void addElements(int index, byte[] a) {
+            ensureMutable();
+            super.addElements(index, a);
+        }
+
+        @Override
+        public void setElements(int index, byte[] a, int offset, int length) {
+            ensureMutable();
+            super.setElements(index, a, offset, length);
+        }
+
+        @Override
+        public void clear() {
+            ensureMutable();
+            super.clear();
+        }
+
+        @Override
+        public void size(int size) {
+            ensureMutable();
+            super.size(size);
+        }
+
         private final class SubListIterator extends ByteIterators.AbstractIndexBasedListIterator {
             // We are using pos == 0 to be 0 relative to SubList.from (meaning you need to do a[from + i] when
             // accessing array).

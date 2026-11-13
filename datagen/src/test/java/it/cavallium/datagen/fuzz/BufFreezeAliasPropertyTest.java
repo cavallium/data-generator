@@ -1,5 +1,6 @@
 package it.cavallium.datagen.fuzz;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -29,15 +30,20 @@ import net.jqwik.api.Property;
  * {@link Buf#subListForced(int, int)} — the freeze/aliasing counterpart of the collection state
  * machine in {@code BufCollectionSurfaceDeepFuzzTest}, which only freezes whole roots.
  *
- * <p>Three behaviours of the real implementation are pinned, in the style of that file's
+ * <p>Four behaviours of the real implementation are pinned, in the style of that file's
  * hand-written frozen-mutation alphabet but at randomized nesting depth:</p>
  * <ol>
  *     <li>Freeze is a property of the <em>storage</em>, not of the handle: freezing the root or any
  *     view at any depth rejects every mutation route through every handle to the same buffer
  *     (verified: {@code sub.freeze()} also freezes the root, {@code root.freeze()} also freezes
- *     live views), and {@code freeze()} returns the same handle it was called on. The first case of
- *     every round is replayed on the memory-segment backing too, which keeps that state in the freeze
- *     state it passes to every handle derived from it.</li>
+ *     live views), {@code freeze()} returns the same handle it was called on, and a rejected route
+ *     leaves no trace — neither the root's bytes nor the rejecting handle's own window moves. The
+ *     first case of every round is replayed on the memory-segment backing too, which keeps that
+ *     state in the freeze state it passes to every handle derived from it.</li>
+ *     <li>Each route is first run against a <em>live</em> storage of the same backing, so a rejection
+ *     is attributed honestly: routes the live storage itself carries out have to be rejected once
+ *     frozen, while routes a fixed-size storage refuses regardless of any freeze stay counted as
+ *     always-rejected instead of being claimed as proof of the freeze.</li>
  *     <li>Views are live aliases, not snapshots: a write through either handle is visible through
  *     the other; the view window keeps its own size, which only edits <em>through the view</em>
  *     change, while a parent append or insert merely shifts the aliased bytes underneath it.</li>
@@ -179,24 +185,54 @@ class BufFreezeAliasPropertyTest {
 							+ " of " + (depth + 1) + ", case " + caseIndex));
 		}
 
-		// ...but each mutation route then runs on a freshly rebuilt storage: a rejected removal
-		// through a frozen *view* still shrinks that view's own fastutil size counter (verified:
-		// the root bytes never change), so reusing one storage across routes would surface later
-		// routes as IndexOutOfBoundsException instead of the freeze rejection under test.
+		// ...but each mutation route then runs on a freshly rebuilt storage, twice: once unfrozen, as the
+		// control that says what this backing does to the request at all, and once frozen. Without the
+		// control the native leg would quietly prove "rejected" for routes a fixed-size storage rejects
+		// whether or not anything is frozen — a frozen handle rejects them too, but not *because* it is
+		// frozen, and only the control can tell the two apart.
 		for (FrozenMutation mutation : FROZEN_ALPHABET) {
+			Class<? extends Throwable> control = rejectionOutcome(rootFactory, bytes, windows, mutation);
 			for (int h = 0; h <= depth; h++) {
 				List<Buf> fresh = buildHandles(rootFactory, bytes, windows);
 				fresh.get(frozenIndex).freeze();
 				byte[] before = fresh.get(0).asArray().clone();
 				Buf victim = fresh.get(h);
+				int victimSize = victim.size();
 				assertThrows(UnsupportedOperationException.class,
 						() -> mutation.action().execute(victim),
 						gate(mutation.name() + " through handle " + h + " of " + (depth + 1)
-								+ " (frozen " + frozenIndex + "), case " + caseIndex));
+								+ " (frozen " + frozenIndex + ", live storage "
+								+ (control == null ? "accepts it" : control.getSimpleName())
+								+ "), case " + caseIndex));
 				assertArrayEquals(before, fresh.get(0).asArray(),
 						gate("no rejected mutation may write through the root, " + mutation.name()
 								+ ", case " + caseIndex));
+				assertEquals(victimSize, victim.size(),
+						gate("no rejected mutation may move the rejecting handle's own window, "
+								+ mutation.name() + " through handle " + h + ", case " + caseIndex));
 			}
+		}
+	}
+
+	/**
+	 * What a live, unfrozen storage of this backing does to one mutation route: {@code null} when it carries
+	 * the edit out, otherwise the exception it answers with. The reply is read from the exception's own
+	 * class — deliberately not via {@code assertDoesNotThrow}, which replaces whatever the route threw with
+	 * an assertion error of its own and would therefore report the same reason for every rejection. That
+	 * class lives in a different module than this test, so it is kept as a bare type, and only its identity
+	 * is used: the frozen leg stays a rejection of its own kind whatever the live storage answered.
+	 */
+	private static Class<? extends Throwable> rejectionOutcome(Function<byte[], Buf> rootFactory,
+			byte[] bytes,
+			int[][] windows,
+			FrozenMutation mutation) {
+		List<Buf> handles = buildHandles(rootFactory, bytes, windows);
+		Buf victim = handles.get(0);
+		try {
+			mutation.action().execute(victim);
+			return null;
+		} catch (Throwable rejection) {
+			return rejection.getClass();
 		}
 	}
 
