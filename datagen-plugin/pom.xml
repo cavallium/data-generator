@@ -58,6 +58,26 @@
 		<plugins>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-jar-plugin</artifactId>
+				<version>3.5.1</version>
+				<configuration>
+					<!--
+						GeneratorVersion reads the generator's own version from the artifact it was loaded from and
+						mixes it into the generation fingerprint. The Maven archiver puts no version attribute in
+						the manifest unless it is asked for, so without this the accessor always falls through to
+						pom.properties; asking for it here keeps the documented primary path — a standard manifest
+						attribute — the one that answers. Same value either way, so the fingerprint of a given
+						version does not move when this is added.
+					-->
+					<archive>
+						<manifestEntries>
+							<Implementation-Version>${project.version}</Implementation-Version>
+						</manifestEntries>
+					</archive>
+				</configuration>
+			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-plugin-plugin</artifactId>
 				<version>3.15.2</version>
 				<dependencies>
