@@ -287,7 +287,23 @@ class ByteListBuf extends ByteArrayList implements Buf {
 
     @Override
     public String getString(int i, int length, Charset charset) {
+        // Bounds of the CONTENT, not of the backing array: a root is routinely backed by more bytes than it
+        // holds (Buf.wrap(array, length), a buffer that grew), and those extra bytes are not data. Without
+        // this the read answered with whatever was behind the content — a plausible wrong value on the heap
+        // where the same request is an IndexOutOfBoundsException through a view or on the native backing.
+        java.util.Objects.checkFromIndexSize(i, length, size);
         return new String(a, i, length, charset);
+    }
+
+    /**
+     * Bulk read. {@code ByteArrayList} overrides this with a raw {@code arraycopy} that checks only the
+     * destination, so the range inside this buffer went unchecked and a read past the end returned the bytes
+     * behind it; {@link java.util.AbstractList#getElements} — the implementation a view uses — does check.
+     */
+    @Override
+    public void getElements(int from, byte @NotNull [] destination, int offset, int length) {
+        java.util.Objects.checkFromIndexSize(from, length, size);
+        super.getElements(from, destination, offset, length);
     }
 
     class SubList extends AbstractByteList.ByteRandomAccessSubList implements Buf {
@@ -575,6 +591,27 @@ class ByteListBuf extends ByteArrayList implements Buf {
 
         @Override
         public boolean addAll(int index, java.util.Collection<? extends Byte> c) {
+            ensureMutable();
+            return super.addAll(index, c);
+        }
+
+        // The addAll family arrives through four doors and only some of them funnel through the one above:
+        // addAll(Collection) does, but addAll(ByteCollection) and addAll(int, ByteCollection) reach the parent
+        // by their own route, so each needs its own check to keep a frozen storage from accepting one of them.
+        @Override
+        public boolean addAll(java.util.Collection<? extends Byte> c) {
+            ensureMutable();
+            return super.addAll(c);
+        }
+
+        @Override
+        public boolean addAll(it.unimi.dsi.fastutil.bytes.ByteCollection c) {
+            ensureMutable();
+            return super.addAll(c);
+        }
+
+        @Override
+        public boolean addAll(int index, it.unimi.dsi.fastutil.bytes.ByteCollection c) {
             ensureMutable();
             return super.addAll(index, c);
         }

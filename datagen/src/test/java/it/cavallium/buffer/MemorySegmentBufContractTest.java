@@ -1,6 +1,7 @@
 package it.cavallium.buffer;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -370,6 +371,82 @@ class MemorySegmentBufContractTest {
 
 	public static Stream<Arguments> noOpRequests() {
 		return NO_OP_REQUESTS.stream().map(r -> Arguments.of(r.name(), r.route()));
+	}
+
+	/**
+	 * The structural siblings of the requests above: an empty range removed, an empty array added, an empty
+	 * collection added. fastutil answers all three without touching the storage, so a frozen memory-segment
+	 * buffer let them through while the heap backing refused them — the same split this test already closes for
+	 * the searching routes.
+	 */
+	private static final List<NamedRoute> EMPTY_STRUCTURAL_REQUESTS = List.of(
+			new NamedRoute("removeElements(1,1)", buf -> buf.removeElements(1, 1)),
+			new NamedRoute("removeElements(0,0)", buf -> buf.removeElements(0, 0)),
+			new NamedRoute("addElements(int,byte[])", buf -> buf.addElements(1, new byte[0])),
+			new NamedRoute("addElements(int,byte[],int,int)", buf -> buf.addElements(1, new byte[0], 0, 0)),
+			new NamedRoute("addAll(empty Collection)", buf -> buf.addAll(List.of())),
+			new NamedRoute("addAll(int,empty Collection)", buf -> buf.addAll(1, List.of())),
+			new NamedRoute("addAll(empty ByteCollection)", buf -> buf.addAll((ByteCollection) new ByteArrayList())));
+
+	/** A live storage carries all of them out, so the refusal below is about the freeze and nothing else. */
+	@ParameterizedTest
+	@MethodSource("emptyStructuralRequests")
+	void anUnfrozenStorageCarriesAnEmptyStructuralRequestOut(String name, MutationRoute route) {
+		for (Buf buf : List.of(
+				Buf.wrap(new byte[] {1, 2, 3, 4}),
+				new MemorySegmentBuf(MemorySegment.ofArray(new byte[] {1, 2, 3, 4})))) {
+			assertDoesNotThrow(() -> route.apply(buf), name + " on a live storage");
+			assertArrayEquals(new byte[] {1, 2, 3, 4}, buf.asArray(), name + " on a live storage");
+			assertEquals(4, buf.size(), name + " on a live storage");
+		}
+	}
+
+	@ParameterizedTest
+	@MethodSource("emptyStructuralRequests")
+	void aFrozenStorageRefusesEvenAnEmptyStructuralRequest(String name, MutationRoute route) {
+		Buf heapRoot = Buf.wrap(new byte[] {1, 2, 3, 4});
+		Buf heapView = heapRoot.subListForced(0, 4);
+		heapView.freeze();
+		assertThrows(UnsupportedOperationException.class, () -> route.apply(heapView), "heap view, " + name);
+		assertThrows(UnsupportedOperationException.class, () -> route.apply(heapRoot), "heap root, " + name);
+
+		Buf nativeRoot = new MemorySegmentBuf(MemorySegment.ofArray(new byte[] {1, 2, 3, 4}));
+		nativeRoot.freeze();
+		assertThrows(UnsupportedOperationException.class, () -> route.apply(nativeRoot), "native, " + name);
+
+		MemorySegment segment = MemorySegment.ofArray(new byte[] {1, 2, 3, 4});
+		Buf frozenNativeRoot = new MemorySegmentBuf(segment);
+		Buf nativeSlice = frozenNativeRoot.subListForced(0, 4);
+		frozenNativeRoot.freeze();
+		assertThrows(UnsupportedOperationException.class, () -> route.apply(nativeSlice), "native slice, " + name);
+	}
+
+	public static Stream<Arguments> emptyStructuralRequests() {
+		return EMPTY_STRUCTURAL_REQUESTS.stream().map(r -> Arguments.of(r.name(), r.route()));
+	}
+
+	/**
+	 * {@code clear()} on a buffer that is already empty is the most empty request of all. It succeeds on a live
+	 * storage of either backing, which is why the memory-segment one also let it through when frozen — and it
+	 * is refused when frozen on both, because a frozen storage does not accept a request to empty it, however
+	 * little there is to do.
+	 */
+	@Test
+	void clearingAnEmptyBufferIsRefusedOnceFrozenButAcceptedWhileLive() {
+		for (Buf buf : List.of(
+				Buf.wrap(new byte[0]),
+				new MemorySegmentBuf(MemorySegment.ofArray(new byte[0])))) {
+			assertDoesNotThrow(buf::clear, "live clear() of an empty buffer");
+			buf.freeze();
+			assertThrows(UnsupportedOperationException.class, buf::clear, "frozen clear() of an empty buffer");
+		}
+		for (Buf buf : List.of(
+				Buf.wrap(new byte[0]).subListForced(0, 0),
+				new MemorySegmentBuf(MemorySegment.ofArray(new byte[0])).subListForced(0, 0))) {
+			assertDoesNotThrow(buf::clear, "live clear() of an empty view");
+			buf.freeze();
+			assertThrows(UnsupportedOperationException.class, buf::clear, "frozen clear() of an empty view");
+		}
 	}
 
 	/**

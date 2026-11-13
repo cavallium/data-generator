@@ -121,6 +121,11 @@ public interface Buf extends ByteList, RandomAccess {
 	 * Returns an exact byte-buffer view, preserving heap or native backing when
 	 * possible. Ownership and lifetime are the same as for
 	 * {@link #asMemorySegment()}.
+	 *
+	 * <p>This is a raw accessor like the backing-array ones below, so it is not policed by
+	 * {@link #freeze()}: the view it hands out writes through to the storage, whether or not this buffer is
+	 * frozen, and a heap view of a growing buffer follows the array it was given rather than the buffer.
+	 * Treat the result as read-only, and do not keep it across a growth or a release.</p>
 	 */
 	default ByteBuffer asByteBuffer() {
 		return asMemorySegment().asByteBuffer();

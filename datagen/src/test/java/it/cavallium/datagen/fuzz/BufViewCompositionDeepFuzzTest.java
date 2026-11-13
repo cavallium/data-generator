@@ -430,6 +430,8 @@ class BufViewCompositionDeepFuzzTest {
 		 * The length the native claim states: the whole access for the accessors
 		 * {@code MemorySegmentBuf} overrides, and one byte for {@code getChar} and {@code getInt52},
 		 * which it does not override, so they read byte by byte and fail on the first byte outside.
+		 * A range-style read no longer states one — it is refused by the range check, which names the
+		 * requested range instead — but its width is still the span the two wordings have to agree on.
 		 */
 		private final int nativeClaimLength;
 		private final boolean rangeStyle;
@@ -606,8 +608,9 @@ class BufViewCompositionDeepFuzzTest {
 	 * The bounds claims the two backing families really produce, each one verified against the
 	 * implementation: a heap handle reports the first byte that fell outside the window together with
 	 * the window's size, a native handle reports the access it asked the segment for. The flat heap root
-	 * words a negative index as an array access and a short string as a string range, and every variant
-	 * stays inside the {@link IndexOutOfBoundsException} family.
+	 * words a negative single-byte access as an array access, and every variant stays inside the
+	 * {@link IndexOutOfBoundsException} family. A ranged read is the one claim all four shapes state
+	 * identically, because both backings check the range against the content before touching storage.
 	 */
 	private static final class Bounds {
 
@@ -666,23 +669,25 @@ class BufViewCompositionDeepFuzzTest {
 		 * a fastutil or JDK upgrade will need these pinned literals revisited.
 		 */
 		static String claim(int shape, boolean heapViewIsRoot, Read read, int index, int size) {
+			if (read.rangeStyle()) {
+				// One claim for all four shapes, because a ranged read is checked against the content by
+				// both backings before either touches storage. It used to differ: the flat heap root went
+				// straight into new String(byte[], …) and reported a StringIndexOutOfBoundsException, and
+				// a native handle blamed the segment for the same request — and, worse, answered an empty
+				// read past the end instead of refusing it, because its copy is bounded by the segment.
+				return "IndexOutOfBoundsException: Range [" + index + ", " + index + " + " + read.width()
+						+ ") out of bounds for length " + size;
+			}
 			boolean negative = index < 0;
 			int offending = firstByteOutside(read, index, size);
 			boolean listContract = shape == 0 && !heapViewIsRoot;
 			if (shape <= 1 && listContract) { // a heap view: always the list contract
-				return read.rangeStyle()
-						? "IndexOutOfBoundsException: Range [" + index + ", " + index + " + " + read.width()
-								+ ") out of bounds for length " + size
-						: negative
-								? "IndexOutOfBoundsException: Index (" + index + ") is negative"
-								: "IndexOutOfBoundsException: Index (" + offending
-										+ ") is greater than or equal to list size (" + size + ")";
+				return negative
+						? "IndexOutOfBoundsException: Index (" + index + ") is negative"
+						: "IndexOutOfBoundsException: Index (" + offending
+								+ ") is greater than or equal to list size (" + size + ")";
 			}
 			if (shape <= 1) { // a heap root, either the flat twin or the chain that collapsed into one
-				if (read.rangeStyle()) {
-					return "StringIndexOutOfBoundsException: Range [" + index + ", " + index + " + "
-							+ read.width() + ") out of bounds for length " + size;
-				}
 				return negative
 						? "ArrayIndexOutOfBoundsException: Index " + index + " out of bounds for length " + size
 						: "IndexOutOfBoundsException: Index (" + offending

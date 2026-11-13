@@ -12,6 +12,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.Charset;
 import java.util.Collection;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.IntPredicate;
@@ -48,6 +49,7 @@ public class MemorySegmentBuf extends AbstractByteList implements Buf {
 	}
 
 	// --- Layouts for Big-Endian (Buf Contract) ---
+	private static final HexFormat HEX_FORMAT = HexFormat.of().withUpperCase();
 	private static final ValueLayout.OfShort SHORT_BE = ValueLayout.JAVA_SHORT_UNALIGNED.withOrder(ByteOrder.BIG_ENDIAN);
 	private static final ValueLayout.OfInt INT_BE = ValueLayout.JAVA_INT_UNALIGNED.withOrder(ByteOrder.BIG_ENDIAN);
 	private static final ValueLayout.OfLong LONG_BE = ValueLayout.JAVA_LONG_UNALIGNED.withOrder(ByteOrder.BIG_ENDIAN);
@@ -298,6 +300,59 @@ public class MemorySegmentBuf extends AbstractByteList implements Buf {
 		return super.removeIf(filter);
 	}
 
+	// The structural siblings: an empty range removed, an empty array added, an empty collection added, a
+	// clear of a buffer that is already empty. fastutil answers every one of them without touching the
+	// storage, so a frozen memory-segment buffer let them through as a success while the heap backing refused
+	// them. Same rule as above: a frozen storage does not accept a request to change it.
+
+	@Override
+	public void clear() {
+		ensureMutable();
+		super.clear();
+	}
+
+	@Override
+	public void removeElements(int from, int to) {
+		ensureMutable();
+		super.removeElements(from, to);
+	}
+
+	@Override
+	public void addElements(int index, byte @NotNull [] a) {
+		ensureMutable();
+		super.addElements(index, a);
+	}
+
+	@Override
+	public void addElements(int index, byte @NotNull [] a, int offset, int length) {
+		ensureMutable();
+		super.addElements(index, a, offset, length);
+	}
+
+	@Override
+	public boolean addAll(@NotNull Collection<? extends Byte> c) {
+		ensureMutable();
+		return super.addAll(c);
+	}
+
+	@Override
+	public boolean addAll(int index, @NotNull Collection<? extends Byte> c) {
+		ensureMutable();
+		return super.addAll(index, c);
+	}
+
+	@Override
+	public boolean addAll(@NotNull ByteCollection c) {
+		ensureMutable();
+		return super.addAll(c);
+	}
+
+	@Override
+	public boolean addAll(int index, @NotNull ByteCollection c) {
+		ensureMutable();
+		return super.addAll(index, c);
+	}
+
 	// --- Slicing & Copying ---
 
 	@Override
@@ -470,6 +525,10 @@ public class MemorySegmentBuf extends AbstractByteList implements Buf {
 
 	@Override
 	public String getString(int i, int length, Charset charset) {
+		// Bounds of the content: the copy below is bounded by the segment, and a slice's segment reaches to
+		// the end of the storage behind it, so without this an empty read at an index past the end answered
+		// "" instead of a bad index. The heap backing and a heap view both reject it.
+		Objects.checkFromIndexSize(i, length, size);
 		if (length == 0) {
 			return "";
 		}
@@ -477,6 +536,16 @@ public class MemorySegmentBuf extends AbstractByteList implements Buf {
 		byte[] tmp = new byte[length];
 		MemorySegment.copy(segment, i, MemorySegment.ofArray(tmp), 0, length);
 		return new String(tmp, charset);
+	}
+
+	/**
+	 * The same upper-case hex dump the heap backing prints. {@code toString()} is what reaches a log line or a
+	 * comparison failure, and this class used to inherit fastutil's list dump, so the same three bytes printed
+	 * as {@code 010203} from one backing and {@code "[1, 2, 3]"} from the other.
+	 */
+	@Override
+	public String toString() {
+		return HEX_FORMAT.formatHex(asArray());
 	}
 
 	@Override
