@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayInputStream;
@@ -29,7 +30,10 @@ import org.junit.jupiter.api.io.TempDir;
  * {@code SourcesGenerator.generationFingerprint(String, boolean, boolean, boolean, byte[])} through
  * reflection, so the expected values are computed by the generator's own code path and are not literals.
  * The manifest expectations come from a manifest written by a real {@code generateSources} run, parsed
- * independently in this test.
+ * independently in this test. The two pinned vectors in {@code generatorVersionIsPinnedIntoTheFingerprintInputs}
+ * are the exception: they are literals, computed independently over the documented hash-input layout, so they
+ * notice any change to the fingerprint inputs — the {@code SERIAL_VERSION} bump to 22 and the generator version
+ * among them.
  */
 class FingerprintsManifestsTest {
 
@@ -44,6 +48,15 @@ class FingerprintsManifestsTest {
 			versions:
 			  v1:
 			""";
+
+	/** Byte-exact schema for the pinned fingerprint vectors: no text-block indentation to reinterpret. */
+	private static final String VECTOR_SCHEMA = "currentVersion: v1\n"
+			+ "baseTypesData:\n"
+			+ "  A: {data: {value: int}}\n"
+			+ "superTypesData:\n"
+			+ "  Choice: [A]\n"
+			+ "versions:\n"
+			+ "  v1:\n";
 
 	private static final String SMALL_SCHEMA_VARIANT = """
 			currentVersion: v1
@@ -81,7 +94,7 @@ class FingerprintsManifestsTest {
 					testCase.oldSerializers(), testCase.binaryStrings(), testCase.vectorKernels());
 			String actual = Fingerprints.ofSchema(testCase.yaml().getBytes(StandardCharsets.UTF_8),
 					testCase.basePackage(), testCase.oldSerializers(), testCase.binaryStrings(),
-					testCase.vectorKernels());
+					testCase.vectorKernels(), GeneratorVersion.current());
 			assertEquals(expected, actual, () -> "fingerprint mismatch for " + testCase.name());
 			assertEquals(64, actual.length(), testCase.name());
 		}
@@ -90,23 +103,71 @@ class FingerprintsManifestsTest {
 	@Test
 	void everyFingerprintInputChangesTheFingerprintAndRepeatsAreIdentical() throws Exception {
 		String baseline = Fingerprints.ofSchema(SMALL_SCHEMA.getBytes(StandardCharsets.UTF_8),
-				BASE_PACKAGE, false, false, false);
+				BASE_PACKAGE, false, false, false, GeneratorVersion.current());
 
 		assertEquals(baseline, Fingerprints.ofSchema(SMALL_SCHEMA.getBytes(StandardCharsets.UTF_8),
-				BASE_PACKAGE, false, false, false), "identical schema and options must repeat");
+				BASE_PACKAGE, false, false, false, GeneratorVersion.current()),
+				"identical schema and options must repeat");
 		assertNotEquals(baseline, Fingerprints.ofSchema(SMALL_SCHEMA.getBytes(StandardCharsets.UTF_8),
-				BASE_PACKAGE, true, false, false), "generateOldSerializers must change the fingerprint");
+				BASE_PACKAGE, true, false, false, GeneratorVersion.current()),
+				"generateOldSerializers must change the fingerprint");
 		assertNotEquals(baseline, Fingerprints.ofSchema(SMALL_SCHEMA.getBytes(StandardCharsets.UTF_8),
-				BASE_PACKAGE, false, true, false), "binaryStrings must change the fingerprint");
+				BASE_PACKAGE, false, true, false, GeneratorVersion.current()),
+				"binaryStrings must change the fingerprint");
 		assertNotEquals(baseline, Fingerprints.ofSchema(SMALL_SCHEMA.getBytes(StandardCharsets.UTF_8),
-				BASE_PACKAGE, false, false, true), "vectorKernels must change the fingerprint");
+				BASE_PACKAGE, false, false, true, GeneratorVersion.current()),
+				"vectorKernels must change the fingerprint");
 		assertNotEquals(baseline, Fingerprints.ofSchema(SMALL_SCHEMA.getBytes(StandardCharsets.UTF_8),
-				"org.example.other", false, false, false), "basePackageName must change the fingerprint");
+				"org.example.other", false, false, false, GeneratorVersion.current()),
+				"basePackageName must change the fingerprint");
 		assertNotEquals(baseline, Fingerprints.ofSchema(SMALL_SCHEMA_VARIANT.getBytes(StandardCharsets.UTF_8),
-				BASE_PACKAGE, false, false, false), "schema content must change the fingerprint");
+				BASE_PACKAGE, false, false, false, GeneratorVersion.current()),
+				"schema content must change the fingerprint");
 		// The fingerprint is over raw schema bytes, so even a comment-only difference is visible.
 		assertNotEquals(baseline, Fingerprints.ofSchema((SMALL_SCHEMA + "# mutation\n").getBytes(StandardCharsets.UTF_8),
-				BASE_PACKAGE, false, false, false), "raw schema bytes must change the fingerprint");
+				BASE_PACKAGE, false, false, false, GeneratorVersion.current()),
+				"raw schema bytes must change the fingerprint");
+	}
+
+	@Test
+	void generatorVersionIsPinnedIntoTheFingerprintInputs() {
+		byte[] schemaYaml = VECTOR_SCHEMA.getBytes(StandardCharsets.UTF_8);
+		// Pinned vectors, computed independently of Fingerprints over the length-prefixed inputs, in order:
+		// "22", "org.example", 0, 0, 0, <generator version>, <schema bytes>. SERIAL_VERSION 22 is the version that
+		// mixes the generator version in, so these fail if that input is dropped, reordered or re-encoded.
+		assertEquals("47e9a30e018cef82b861b9533a064c649759f802c4ea2bb93a72b59b126327fe",
+				Fingerprints.ofSchema(schemaYaml, BASE_PACKAGE, false, false, false, "1.2.3"),
+				"pinned fingerprint of the vector schema under generator version 1.2.3");
+		assertEquals("3f886cfff0e762a7bf67fb52ecab990aef3df4b602572d3e52d47ecd7f4ae8eb",
+				Fingerprints.ofSchema(schemaYaml, BASE_PACKAGE, false, false, false, "9.9.9"),
+				"pinned fingerprint of the vector schema under generator version 9.9.9");
+	}
+
+	@Test
+	void everyGeneratorVersionChangesTheFingerprintAndTheGeneratorUsesItsOwnVersion() throws Exception {
+		byte[] schemaYaml = VECTOR_SCHEMA.getBytes(StandardCharsets.UTF_8);
+		String baseline = Fingerprints.ofSchema(schemaYaml, BASE_PACKAGE, false, false, false, "1.0.0");
+		assertNotEquals(baseline, Fingerprints.ofSchema(schemaYaml, BASE_PACKAGE, false, false, false, "1.0.1"),
+				"a different generator version must change the fingerprint");
+		assertNotEquals(baseline,
+				Fingerprints.ofSchema(schemaYaml, BASE_PACKAGE, false, false, false, "1.0.0.0-SNAPSHOT"),
+				"a snapshot generator version must change the fingerprint");
+		assertNotEquals(baseline, Fingerprints.ofSchema(schemaYaml, BASE_PACKAGE, false, false, false, ""),
+				"even an empty generator version must change the fingerprint");
+		// What a stored manifest must match is the schema fingerprint under the running plugin's own version.
+		assertEquals(privateGenerationFingerprint(VECTOR_SCHEMA, BASE_PACKAGE, false, false, false),
+				Fingerprints.ofSchema(schemaYaml, BASE_PACKAGE, false, false, false, GeneratorVersion.current()),
+				"the generator's fingerprint must be the schema fingerprint under GeneratorVersion.current()");
+	}
+
+	@Test
+	void generatorVersionIsNonEmptyAndStableAcrossCalls() {
+		assertFalse(GeneratorVersion.UNKNOWN.isEmpty(), "the fallback must be usable as a fingerprint input");
+		String first = GeneratorVersion.current();
+		assertNotNull(first, "the generator version must never be null");
+		assertFalse(first.isBlank(), "the generator version must never be blank");
+		assertSame(first, GeneratorVersion.current(), "the version must be read at most once and then reused");
+		assertEquals(first, GeneratorVersion.current(), "the version must be stable across calls");
 	}
 
 	@Test

@@ -1,6 +1,7 @@
 package it.cavallium.datagen.plugin.fuzz.support;
 
 import it.cavallium.datagen.plugin.Fingerprints;
+import it.cavallium.datagen.plugin.GeneratorVersion;
 import it.cavallium.datagen.plugin.Manifests;
 import it.cavallium.datagen.plugin.SourcesGenerator;
 import it.cavallium.datagen.plugin.SourcesGeneratorConfiguration;
@@ -154,12 +155,15 @@ public final class SchemaCompiler {
 		}
 	}
 
-	/** The fingerprint of {@code config} under {@code options}, without touching the filesystem. */
+	/**
+	 * The fingerprint of {@code config} under {@code options}, without touching the filesystem. It includes
+	 * {@link GeneratorVersion#current()}, so a cache entry written by another generator version is not reused.
+	 */
 	public static String fingerprint(SourcesGeneratorConfiguration config, CompileOptions options) {
 		Objects.requireNonNull(config, "config");
 		Objects.requireNonNull(options, "options");
 		return Fingerprints.ofSchema(yamlBytes(config), options.basePackage(), options.generateOldSerializers(),
-				options.binaryStrings(), options.vectorKernels());
+				options.binaryStrings(), options.vectorKernels(), GeneratorVersion.current());
 	}
 
 	/**
@@ -199,7 +203,7 @@ public final class SchemaCompiler {
 		Objects.requireNonNull(options, "options");
 		byte[] yaml = yamlBytes(config);
 		String fingerprint = Fingerprints.ofSchema(yaml, options.basePackage(), options.generateOldSerializers(),
-				options.binaryStrings(), options.vectorKernels());
+				options.binaryStrings(), options.vectorKernels(), GeneratorVersion.current());
 		Path entryDir = options.cacheRoot().resolve(fingerprint);
 		Path sourcesDir = entryDir.resolve(SOURCES_DIRECTORY);
 		Path classesDir = entryDir.resolve(CLASSES_DIRECTORY);

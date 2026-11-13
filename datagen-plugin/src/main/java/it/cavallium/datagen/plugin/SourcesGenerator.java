@@ -233,7 +233,7 @@ public class SourcesGenerator {
                                                 boolean vectorKernels,
                                                 byte[] yamlBytes) {
         return Fingerprints.ofSchema(yamlBytes, basePackageName, generateOldSerializers, binaryStrings,
-                vectorKernels);
+                vectorKernels, GeneratorVersion.current());
     }
 
     private static boolean manifestFilesMatch(Path outPath, Manifests.Manifest manifest) throws IOException {
