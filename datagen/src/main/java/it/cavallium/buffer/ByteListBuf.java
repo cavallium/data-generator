@@ -1219,8 +1219,6 @@ class ByteListBuf extends ByteArrayList implements Buf {
      *
      * @param l a type-specific array list.
      * @return true if the argument contains the same elements of this type-specific array list.
-     * @apiNote This method exists only for sake of efficiency. The implementation inherited from the
-     * abstract implementation would already work.
      */
     public boolean equals(final ByteArrayList l) {
         if (l == this) return true;
