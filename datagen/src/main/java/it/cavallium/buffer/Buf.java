@@ -6,13 +6,14 @@ import it.cavallium.stream.SafeByteArrayOutputStream;
 import it.cavallium.stream.SafeDataOutput;
 import it.unimi.dsi.fastutil.bytes.ByteArrayList;
 import it.unimi.dsi.fastutil.bytes.ByteList;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.VisibleForTesting;
+
 import java.lang.foreign.MemorySegment;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.util.RandomAccess;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
-import org.jetbrains.annotations.VisibleForTesting;
 
 public interface Buf extends ByteList, RandomAccess {
 	static Buf wrap(ByteList bytes) {
@@ -199,14 +200,17 @@ public interface Buf extends ByteList, RandomAccess {
 	 * a {@code MemorySegmentBuf} constructed on its own from that memory, which has no way to find the
 	 * handles already sharing it. {@code freeze()} guards the {@link Buf} mutation API, not the memory.</p>
 	 *
-	 * @see #isMutable()
-	 * @apiNote On the memory-segment backing this tightens an earlier behaviour: {@code freeze()} handed out
+	 *
+	 * On the memory-segment backing this tightens an earlier behaviour: {@code freeze()} handed out
 	 * a separate read-only handle and left the receiver writable, so {@code buf.freeze(); buf.setByte(...)}
 	 * succeeded. That call now throws, as it always did on the heap backing.
-	 * @apiNote Some routes are refused on the memory-segment backing whether or not anything is frozen,
+	 * <p>
+	 * Some routes are refused on the memory-segment backing whether or not anything is frozen,
 	 * because that storage has a fixed size: a growth or a removal it cannot perform. They throw the same
 	 * {@link UnsupportedOperationException} a freeze throws, for a different reason, so a test that wants to
 	 * attribute a rejection to the freeze has to run the route on a live storage first.
+	 *
+	 * @see #isMutable()
 	 */
 	Buf freeze();
 

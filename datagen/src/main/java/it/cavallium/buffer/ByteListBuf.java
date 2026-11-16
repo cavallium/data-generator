@@ -1214,6 +1214,9 @@ class ByteListBuf extends ByteArrayList implements Buf {
     /**
      * Compares this type-specific array list to another one.
      *
+     * This method exists only for sake of efficiency. The implementation inherited from the
+     * abstract implementation would already work.
+     *
      * @param l a type-specific array list.
      * @return true if the argument contains the same elements of this type-specific array list.
      * @apiNote This method exists only for sake of efficiency. The implementation inherited from the
